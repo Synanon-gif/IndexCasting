@@ -2968,6 +2968,10 @@ const MyModelsTab: React.FC<{
   const [addModelImageRightsConfirmed, setAddModelImageRightsConfirmed] = useState(false);
 
   const [importSectionExpanded, setImportSectionExpanded] = useState(false);
+  // Package-import pane (preview-then-commit MediaSlide / Netwalk URL).
+  // Collapsed by default so the My Models tab opens with the model list
+  // dominant — agencies that need it expand on demand.
+  const [packageImportExpanded, setPackageImportExpanded] = useState(false);
   const [showMediaslideInput, setShowMediaslideInput] = useState(false);
   const [showNetwalkInput, setShowNetwalkInput] = useState(false);
   const [mediaslideKey, setMediaslideKey] = useState('');
@@ -5328,16 +5332,57 @@ const MyModelsTab: React.FC<{
         </View>
       )}
 
-      {/* MediaSlide Package Import (Phase 2) — additive, opt-in via link input.
-          We pass `defaultTerritory` so the territory input pre-fills with the
-          agency's home country (only when it already looks like an ISO-2 code,
-          e.g. "AT"; long country names are intentionally NOT auto-mapped). */}
+      {/* Package Import (Phase 2 — preview-then-commit) wrapped in a
+          collapsible header. One URL input handles both MediaSlide (live) and
+          Netwalk (stub today, friendly "not enabled yet" message inside the
+          pane). Default closed so the model list stays the dominant element
+          on the My Models tab; agencies that need to import expand on demand.
+          `defaultTerritory` pre-fills only when the agency country is already
+          ISO-2 (e.g. "AT"); long country names are intentionally NOT mapped. */}
       {agencyId ? (
-        <PackageImportPane
-          agencyId={agencyId}
-          onModelsChanged={onRefresh}
-          defaultTerritory={agencyCountry ?? null}
-        />
+        <View style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => setPackageImportExpanded((v) => !v)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.sm,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
+              borderBottomWidth: packageImportExpanded ? 0 : 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={{ ...typography.label, fontSize: 13, color: colors.textPrimary }}>
+                Import package (MediaSlide / Netwalk)
+              </Text>
+              <Text
+                style={{
+                  ...typography.body,
+                  fontSize: 11,
+                  color: colors.textSecondary,
+                  marginTop: 2,
+                }}
+              >
+                Paste a package link, review the rows, then commit.
+              </Text>
+            </View>
+            <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+              {packageImportExpanded ? '▲' : '▼'}
+            </Text>
+          </TouchableOpacity>
+          {packageImportExpanded && (
+            <PackageImportPane
+              agencyId={agencyId}
+              onModelsChanged={onRefresh}
+              defaultTerritory={agencyCountry ?? null}
+            />
+          )}
+        </View>
       ) : null}
 
       {/* Agency-to-Agency Roster Share inbox (recipient entry-point) */}
@@ -5889,7 +5934,14 @@ const MyModelsTab: React.FC<{
         </Text>
       )}
 
-      {/* ── Import (collapsible) ─────────────────────────────────────── */}
+      {/* ── External services & advanced import (collapsible) ───────────
+          Restructured 2026-12: this section is for the *live* connectors
+          (MediaSlide / Netwalk API keys + scheduled sync) and the older
+          one-shot helpers (auto-pair-by-email, generic JSON link). The
+          preview-then-commit MediaSlide / Netwalk Package import lives in
+          its own collapsible above the model list — that is the
+          *recommended* path for new imports. Everything in here is an
+          ADVANCED tool that runs without preview. */}
       <TouchableOpacity
         activeOpacity={0.7}
         onPress={() => setImportSectionExpanded((v) => !v)}
@@ -5904,16 +5956,44 @@ const MyModelsTab: React.FC<{
           borderTopColor: colors.border,
         }}
       >
-        <Text style={{ ...typography.label, fontSize: 13, color: colors.textSecondary }}>
-          Import
-        </Text>
+        <View style={{ flex: 1 }}>
+          <Text style={{ ...typography.label, fontSize: 13, color: colors.textPrimary }}>
+            External services & advanced import
+          </Text>
+          <Text
+            style={{
+              ...typography.body,
+              fontSize: 11,
+              color: colors.textSecondary,
+              marginTop: 2,
+            }}
+          >
+            API keys for live sync, bulk auto-pair, and direct JSON merge — no preview.
+          </Text>
+        </View>
         <Text style={{ fontSize: 12, color: colors.textSecondary }}>
           {importSectionExpanded ? '▲' : '▼'}
         </Text>
       </TouchableOpacity>
       {importSectionExpanded && (
         <View style={{ paddingBottom: spacing.md }}>
+          {/* ── 1) Live connectors: API keys + scheduled sync of already-paired models ── */}
           <View style={s.apiSection}>
+            <Text style={s.sectionLabel}>
+              Live connectors — API keys & sync of already-paired models
+            </Text>
+            <Text
+              style={{
+                ...typography.body,
+                fontSize: 12,
+                color: colors.textSecondary,
+                marginBottom: spacing.sm,
+              }}
+            >
+              Connect MediaSlide / Netwalk so already-paired models (mediaslide_sync_id /
+              netwalk_model_id set) stay up to date. Keys are also used by auto-pair below. They are
+              NOT used for the preview package import above.
+            </Text>
             <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm }}>
               <TouchableOpacity style={s.apiBtn} onPress={() => setShowMediaslideInput((v) => !v)}>
                 <Text style={s.apiBtnLabel}>Connect Mediaslide</Text>

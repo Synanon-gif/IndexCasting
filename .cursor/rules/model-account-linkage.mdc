@@ -1,0 +1,124 @@
+---
+description: Model ↔ User-Account Verknüpfung — kanonische Quelle, Cross-Account-Guard, UI-Statusanzeige
+alwaysApply: true
+---
+
+# Model ↔ User-Account linkage invariants
+
+Diese Regeln gelten überall wo `models.user_id` gelesen, geschrieben, oder als
+Visibility-/Workflow-Signal verwendet wird (Agency UI, Booking-Flows,
+Negotiation, Invite-Finalisierung, Claim-RPCs, Notifications).
+
+Architekturreferenz: `src/services/finalizePendingInviteOrClaim.ts`,
+`supabase/migrations/20261205_claim_model_by_token_user_id_guard.sql` (kanonischer
+Cross-Account-Guard), `src/views/AgencyControllerView.tsx` (UI-Badges),
+`src/constants/uiCopy.ts` (`modelClaimErrors`, `inviteResend`),
+`docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md`.
+
+## A. Quelle der Wahrheit
+
+- **`models.user_id` ist die EINZIGE Wahrheit** für "hat dieses Model einen
+  App-Account?". Abgeleitete Felder wie `model_account_linked` MÜSSEN aus
+  `user_id IS NOT NULL` berechnet werden — nie aus `email` oder einem anderen
+  Proxy.
+- **`models.email` allein zeigt KEINEN Account an.** Email kann von der Agency
+  bei Import oder manuellem Anlegen gesetzt werden, ohne dass ein User-Account
+  existiert. UI darf einen Account-Badge NIEMALS aus `email` ableiten.
+- **`models.agency_relationship_status = 'pending_link'`** signalisiert eine
+  ausgestellte Claim-Einladung, KEINEN abgeschlossenen Account-Link. Der Wert
+  flippt erst in `claim_model_by_token` auf `active`, nachdem `user_id`
+  erfolgreich gesetzt wurde.
+
+## B. UI-Status — drei kanonische Stufen (My Models — Liste & Galerie)
+
+Die My-Models-Liste und -Galerie in `AgencyControllerView.tsx` MUSS GENAU DREI
+Stufen anzeigen, abgeleitet ausschließlich aus `user_id` + `email` +
+`agency_relationship_status` — keine zusätzlichen DB-Queries:
+
+| Bedingung | Badge | Semantik |
+|-----------|-------|----------|
+| `user_id IS NOT NULL` | `Account ✓` (grün) | Model hat App-Account, ist verknüpft |
+| `agency_relationship_status = 'pending_link'` ODER (`!user_id` AND `email`) | `Pending app account link` (gelb) + `Resend` Button | Invite ausstellbar / ausgestellt |
+| `!user_id AND !email AND status != 'pending_link'` | `No account · add email to invite` (grau) | Reines Import-/Stub-Model ohne Pfad zum Account |
+
+- **Verboten:** Mischformen (z. B. `Account ✓` UND `Pending`), oder Anzeige auf
+  Basis weiterer Felder ohne Produkt-Review.
+- **Resend-Button** nutzt `handleResendModelClaimInvite` (cooldown via
+  `resendModelCooldownUntil`); Copy aus `uiCopy.inviteResend`.
+- **Galerie-Tile** rendert dieselben drei Stufen unter dem Namen, kompakter
+  Stil — gleiche Logik, gleiche Quelle.
+
+## C. `claim_model_by_token` — Cross-Account-Guard (kanonisch)
+
+Migration `supabase/migrations/20261205_claim_model_by_token_user_id_guard.sql`
+ergänzt `claim_model_by_token` um einen **frühen Guard**, der den Token
+**NICHT konsumiert** wenn die Bedingung nicht stimmt:
+
+```sql
+-- 2) NEW GUARD: read current user_id of the target model BEFORE we burn the token.
+SELECT user_id INTO v_model_user
+FROM public.models
+WHERE id = v_claim_row.model_id
+LIMIT 1;
+
+IF v_model_user IS NOT NULL AND v_model_user <> v_caller THEN
+  RAISE EXCEPTION 'model_already_claimed_by_other_user';
+END IF;
+```
+
+**Invarianten:**
+- **Reihenfolge ist Pflicht:** Guard läuft VOR dem `UPDATE model_claim_tokens
+  SET claimed_*` (Token-Burn) und VOR dem `UPDATE profiles SET role='model'`.
+  Andernfalls würde ein fremder Caller den Token verbrauchen UND seine
+  `profiles.role` fälschlich auf `'model'` flippen — beide Side-Effects sind
+  destruktiv und schwer rückgängig zu machen.
+- **Idempotenz für denselben User bleibt:** Wenn `v_model_user = v_caller`
+  läuft alles weiter durch (Re-Claim ist ein No-Op auf `models.user_id` dank
+  `WHERE user_id IS NULL` im UPDATE).
+- **Kein Bypass:** Der Guard darf NIEMALS hinter einer Admin-Override entfernt
+  werden. Cross-Account-Linkage geht ausschließlich über einen separaten
+  Admin-RPC (existiert noch nicht — wenn benötigt, neu in `admin_*` Namespace
+  anlegen, NIE diesen Guard aufweichen).
+
+## D. Frontend-Klassifikation des Cross-Account-Errors
+
+`src/services/finalizePendingInviteOrClaim.ts`:
+
+- **`isFatalClaimError`** MUSS `model_already_claimed_by_other_user` matchen
+  (auch in Postgres-Wrapping-Form `Postgres error: model_already_claimed_…`).
+- **`isAlreadyDoneClaimError`** MUSS diesen Error EXPLIZIT AUSSCHLIESSEN —
+  sonst frisst die breite `/already_linked|already_claimed/i`-Regex den Fall
+  auf und die UI zeigt fälschlich Erfolg.
+- **`showClaimAlerts`** zeigt `uiCopy.modelClaimErrors.alreadyClaimedByOther`
+  als dedizierten, actionable Alert ("Sign in with the email originally used
+  to claim this model"), KEINE generische Fehlermeldung.
+- Tests in `src/services/__tests__/finalizePendingInviteOrClaim.test.ts`
+  für beide Error-Formen sind Pflicht-Regressionsschutz und dürfen nicht
+  ohne Ersatz entfernt werden.
+
+## E. Negotiation / Workflow-Verbindung
+
+- `model_account_linked` in Option/Casting-RPCs (`agency_create_option_request`,
+  `addOptionRequest`) MUSS aus `models.user_id IS NOT NULL` abgeleitet werden,
+  konsistent mit der UI in §B. Siehe auch `agency-only-option-casting.mdc`
+  ("`model_approval` korrekt setzen") und §28.3 `.cursorrules` (Negotiation
+  Invariante K).
+- **Verboten:** ein Model das `Account ✓` zeigt als `model_account_linked=false`
+  in einer Option zu führen (oder umgekehrt). Beide Seiten lesen aus
+  `models.user_id`.
+
+## F. Verbotene Pattern
+
+- **Verboten:** Account-Status aus `email`, `display_name`, `mediaslide_sync_id`
+  oder anderen Feldern ableiten.
+- **Verboten:** Token konsumieren BEVOR der Cross-Account-Guard läuft
+  (Reihenfolge in §C).
+- **Verboten:** `profiles.role = 'model'` setzen ohne erfolgreichen
+  `models.user_id`-Link für genau diesen Caller.
+- **Verboten:** Drei-Stufen-Badge erweitern oder reduzieren ohne UX-Review —
+  weitere Stufen zerklüften die Visualisierung; weniger Stufen verstecken
+  echte Zustände (z. B. ein Import-only Model das keinen Invite-Pfad hat).
+- **Verboten:** Cross-Agency-Claim-Pfad (Mother-Agency-Sharing) den
+  `model_already_claimed_by_other_user`-Guard umgehen lassen. Mother-Agency
+  teilt Roster-Snapshots, NICHT Auth-Identitäten — siehe
+  `mother-agency.mdc` und `.cursorrules` §29.2.

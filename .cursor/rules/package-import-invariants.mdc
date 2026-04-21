@@ -161,6 +161,31 @@ Diese Smoke-Tests dürfen NICHT entfernt oder weichgespült werden ohne Ersatz m
 - KEIN Aktivieren von `confirmImageRights`/`hasRecentImageRightsConfirmation` für Package-Bild-Persistenz —
   die Agency hat den Package-Link bewusst gepasted; das Audit-Log läuft pro Bild über `uploadModelPhoto`.
 
+## H1. Discoverability & UI-Hierarchie (Phase 2 — 2026-12)
+
+- **Preview-Pfad ist kanonisch.** Der MediaSlide / Netwalk Package-Import durchläuft IMMER
+  `PackageImportPane` (preview-then-commit). Direkte Aufrufe von `importModelAndMerge` aus
+  Agency-UI-Komponenten dürfen NUR für (a) das manuelle "Add Model" Formular und (b) den
+  generischen JSON-`handleImportByLink`-Pfad existieren — beide sind explizit als
+  *"direct merge — no preview"* gelabelt.
+- **Ein Eingabefeld für alle Provider.** `PackageImportPane` nimmt EINE URL und delegiert die
+  Provider-Erkennung an `getProviderForUrl`. Es gibt KEIN separates Eingabefeld pro Provider —
+  Auto-Detect ist die einzige Quelle für die Provider-Wahl. Netwalk-URLs liefern den Reason
+  `netwalk_provider_not_implemented` und werden via `humaniseError` zu der freundlichen
+  Friendly-Copy übersetzt; KEIN stiller Fallback auf MediaSlide.
+- **Pane ist collapsible.** Im `MyModelsTab` (`AgencyControllerView.tsx`) wird die
+  `PackageImportPane` in einem collapsible Wrapper gerendert (`packageImportExpanded`,
+  default `false`). Begründung: die My-Models-Liste muss als Hauptelement sichtbar bleiben;
+  Import wird *bei Bedarf* aufgeklappt. Der collapsible Header benennt den Pfad explizit
+  ("Import package (MediaSlide / Netwalk)").
+- **Quick-Import ≠ Preview-Import.** Die collapsible "External services & advanced import"
+  Sektion enthält `Connect MediaSlide/Netwalk` (API-Keys für Cron-Sync), `Sync Models`
+  (refresh bereits verlinkter Models), `Auto-pair by email` (Bulk-Pairing für Models mit Email
+  ohne `mediaslide_sync_id`/`netwalk_model_id`) und `Import from Link (direct merge — no preview)`.
+  Diese Pfade dürfen NIEMALS still in den Preview-Pfad verlegt werden — sie sind alle
+  *"no preview"* und müssen in der UI explizit so gelabelt sein. Der Header der Sektion macht
+  klar: API-Keys sind NICHT für den Package-Preview-Import gedacht.
+
 ## I. Mother-Agency-Felder bleiben außerhalb des Imports
 
 - `models.mother_agency_name` und `models.mother_agency_contact` sind reine
