@@ -667,6 +667,7 @@ Ergänzt und schärft die obigen Regeln **ohne** sie zu ersetzen. Bei Widerspruc
 - **Reihenfolge:** **Invite zuerst**; **Claim danach**, wenn der Invite-Pfad erfolgreich abgeschlossen ist (siehe `docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md`).
 - **Tokens** bleiben erhalten bis **Erfolg** oder **fataler Fehler** (kein verfrühes Löschen, das Recovery bricht).
 - Ergänzt §4b / §6 Model-Claim-Token: technische Finalisierung ist **kanonisch**, nicht UI-gekoppelt.
+- **CROSS-ACCOUNT GUARD (Fix 20261205, KRITISCH):** `claim_model_by_token` MUSS den Token VERWERFEN (`model_already_claimed_by_other_user`) wenn `models.user_id` schon auf einen ANDEREN User zeigt — siehe §30.2 + [.cursor/rules/model-account-linkage.mdc](.cursor/rules/model-account-linkage.mdc) §C. Frontend klassifiziert als `fatal` (NICHT `already_done`) und zeigt `uiCopy.modelClaimErrors.alreadyClaimedByOther`.
 - **INVITE-BEFORE-BOOTSTRAP (Fix 20260818, KRITISCH):** In `bootstrapThenLoadProfile` MUSS `finalizePendingInviteOrClaim` **VOR** `ensurePlainSignupB2bOwnerBootstrap` laufen. Wenn der Invite erfolgreich akzeptiert wurde, wird der Owner-Bootstrap **übersprungen**. Andernfalls erzeugt der Bootstrap eine Zombie-Org für den eingeladenen User. Drei-Schichten-Schutz: (1) Frontend-Reihenfolge, (2) pending-invite-Check in Bootstrap-RPC, (3) Zombie-Cleanup in `accept_organization_invitation`. Gilt für **Client-Org (Employee)** und **Agency-Org (Booker)** gleichermaßen. Siehe `system-invariants.mdc` **INVITE-BEFORE-BOOTSTRAP INVARIANT**.
 
 ### 27.6 Invite-Kontext — UI-Invariante
@@ -866,3 +867,30 @@ Ergänzt Kalender-Farb-Disziplin (§28.2) und feste Domänen aus dem Release-Tag
 
 - Bidirektionale Sync-Connectors ändern **nicht** die harte Regel **EXTERNE PROFIL-SYNCS** in `system-invariants.mdc` (kein implizites Storage-Mirror ohne Produktentscheid). Sync-Metadaten vs. Asset-Copy strikt trennen.
 - **Package-Import-Persistenz (Phase 2)** ist die EINZIGE produktbestätigte Storage-Mirror-Pipeline für externe Provider (`mediaslide`, `netwalk`, …): Bilder werden im Commit über `src/services/packageImagePersistence.ts` heruntergeladen, durch `uploadModelPhoto({ skipConsentCheck: true })` validiert und in `model_photos` + Storage gespiegelt; Mirror-Spalten (`models.portfolio_images` / `models.polaroids`) werden ausschließlich aus `model_photos` neu aufgebaut. Verbindlich: `.cursor/rules/package-import-invariants.mdc` §D2 (Persistenz, Failure-Codes, Cancel-Semantik, Provider-Neutralität, **Legacy-Mirror-Schutz** = kein Rebuild-Wipe wenn 0 Bilder persistiert wurden, **kein Auto-Delete alter `model_photos`-Rows beim Re-Import**).
+
+## 30. Produkt-Ergänzungen vom 2026-12 (Model-Account-Status, Cross-Account-Guard, Import-UI-Hierarchie)
+
+### 30.1 Model ↔ Account-Verknüpfung (Verweis)
+
+- **Quelle der Wahrheit:** `models.user_id` (NIE `email`, NIE Proxy-Felder).
+- **My-Models-UI:** drei kanonische Badges (`Account ✓` / `Pending app account link` + Resend / `No account · add email to invite`) — Liste UND Galerie identisch. Implementierung in `src/views/AgencyControllerView.tsx`.
+- **Negotiation:** `model_account_linked` in Option/Casting-RPCs ist konsistent mit der UI (`models.user_id IS NOT NULL`).
+- Vollständige Invarianten (Quelle, UI-Stufen, Negotiation-Konsistenz): [.cursor/rules/model-account-linkage.mdc](.cursor/rules/model-account-linkage.mdc).
+
+### 30.2 `claim_model_by_token` Cross-Account-Guard (kanonisch, 20261205)
+
+- **Migration:** `supabase/migrations/20261205_claim_model_by_token_user_id_guard.sql` ergänzt einen frühen Guard. Wenn `models.user_id` bereits auf einen ANDEREN User zeigt, wirft die RPC `model_already_claimed_by_other_user` — **OHNE** den Token zu verbrauchen und **OHNE** `profiles.role` zu flippen.
+- **Reihenfolge ist kritisch:** Guard MUSS VOR dem Token-Burn UND VOR dem `UPDATE profiles SET role='model'` laufen. Re-Claim durch DENSELBEN User bleibt idempotent (No-Op auf `models.user_id` dank `WHERE user_id IS NULL`).
+- **Frontend-Klassifikation:** `src/services/finalizePendingInviteOrClaim.ts` MUSS:
+  - `model_already_claimed_by_other_user` als `fatal` klassifizieren (`isFatalClaimError`).
+  - Diesen Error EXPLIZIT aus `isAlreadyDoneClaimError` ausschließen (sonst frisst die `/already_claimed/i`-Regex den Fall).
+  - Über `showClaimAlerts` die dedizierte Copy `uiCopy.modelClaimErrors.alreadyClaimedByOther` zeigen — KEINE generische Fehlermeldung.
+- **Tests:** `src/services/__tests__/finalizePendingInviteOrClaim.test.ts` enthält Regressionstests für `fatal`-Klassifikation + Copy + Token-Cleanup. Pflicht-Schutz, nicht entfernen ohne Ersatz.
+
+### 30.3 Import-UI-Hierarchie (My Models tab — 2026-12)
+
+- **Preview-Pfad ist kanonisch:** `PackageImportPane` (preview-then-commit) ist der einzige offizielle Pfad für MediaSlide / Netwalk Package-Imports. Direkter `importModelAndMerge`-Call ist NUR für (a) manuelles "Add Model" und (b) generischen `handleImportByLink` (JSON-URL) erlaubt — beide explizit als *"direct merge — no preview"* gelabelt.
+- **Ein Eingabefeld für alle Provider:** `PackageImportPane` nimmt EINE URL und nutzt `getProviderForUrl` (Auto-Detect). Netwalk-URLs liefern `netwalk_provider_not_implemented` mit Friendly-Copy — KEIN stiller Fallback auf MediaSlide, KEIN separates Eingabefeld pro Provider.
+- **Pane ist collapsible:** Im My-Models-Tab default `false` (`packageImportExpanded`) — die Liste/Galerie ist das Hauptelement; Import wird bei Bedarf aufgeklappt.
+- **Quick-Import-Sektion** ("External services & advanced import" collapsible) bündelt: API-Keys + Sync (für bereits verknüpfte Models), Auto-pair-by-email, generic JSON Link-Import. Diese Pfade sind ALLE *"no preview"* und müssen so gelabelt sein. Die Sektion macht klar: API-Keys sind NICHT für den Package-Preview-Import (die laden öffentliche HTML-Pakete via Edge-Proxy).
+- Vollständig: [.cursor/rules/package-import-invariants.mdc](.cursor/rules/package-import-invariants.mdc) §H1 (Discoverability & UI-Hierarchie).

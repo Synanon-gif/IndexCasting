@@ -395,10 +395,11 @@ export const PackageImportPane: React.FC<Props> = ({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Import MediaSlide Package</Text>
+      <Text style={styles.title}>Package import — MediaSlide (live) · Netwalk (coming soon)</Text>
       <Text style={styles.description}>
-        Paste a MediaSlide package link. We read models, measurements and image URLs and show them
-        for your confirmation before anything is created.
+        Paste a MediaSlide or Netwalk package link. We read models, measurements and image URLs and
+        show them for your confirmation before anything is created. Netwalk package URLs are
+        recognised but not yet enabled — you will see a friendly notice when you analyse one.
       </Text>
       <Text style={styles.hint}>
         Note (Phase 2 active): images are copied into our storage during import (HEIC→JPEG, EXIF
