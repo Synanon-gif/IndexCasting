@@ -9,7 +9,15 @@ export const CALENDAR_COLORS = {
   casting: '#1565C0', // blue
   gosee: '#0288D1', // light blue
   option: '#E65100', // deep orange
-  booking: '#B71C1C', // red
+  // `booking` and `job` MUST stay the same hex.
+  // Product semantics: a `calendar_entries.entry_type='booking'` row is always
+  // a confirmed Job (DB triggers set the title to 'Job – …'). The user-facing
+  // colour legend exposes a single "Job" swatch (green) — there is no separate
+  // "Booking" pill. If you want to give a tentative booking a different colour,
+  // do it via the `status='tentative' → CALENDAR_COLORS.option` override
+  // (see `agencyCalendarUnified.ts` and `calendarProjectionLabel.ts`), not by
+  // making this base mapping diverge from `job`.
+  booking: '#1B5E20', // dark green — kept identical to .job by invariant
   personal: '#616161', // grey
   job: '#1B5E20', // dark green
 } as const;
