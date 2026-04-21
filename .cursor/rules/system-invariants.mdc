@@ -141,13 +141,36 @@ Wenn ein DB-Constraint umbenannt wird, MÜSSEN alle referenzierenden Funktionen 
 2. Root-Dateien NICHT direkt editieren — sie sind historische Referenzen; stattdessen neue Migration anlegen
 3. Verifikation: `ASSERT NOT EXISTS (SELECT 1 FROM pg_proc WHERE pg_get_functiondef(oid) ILIKE '%alter_constraint_name%')` in der Migration
 
-## KEIN pgcrypto / digest() — PFLICHT
+## KEIN pgcrypto / digest() / gen_random_bytes() — PFLICHT
 
-`digest(text, 'sha256')` aus pgcrypto ist **verboten** in SECURITY DEFINER Funktionen:
+`digest(text, 'sha256')`, `gen_random_bytes(int)` und `pgp_sym_*` aus **pgcrypto** sind in `public.*` SECURITY DEFINER Funktionen **verboten**:
 
-- pgcrypto ist auf Supabase-Projekten nicht garantiert installiert → `42883` bei Runtime → PostgREST gibt 404
-- **Korrekte Alternative:** `encode(sha256(lower(text)::bytea), 'hex')` — PostgreSQL 13+ built-in, kein Extension nötig
-- Gilt für alle Hashing-Operationen in DB-Funktionen (Trial-Email-Hash, Token-Hash, etc.)
+- pgcrypto wohnt auf diesem Supabase-Projekt im Schema `extensions` und ist NICHT auf dem `search_path = public` der SECURITY-DEFINER-Funktionen → **`42883` zur Runtime** → PostgREST gibt 400/404 → Feature komplett kaputt (z. B. „Add Model" → `generateModelClaimToken`).
+- **Korrekte Alternativen** (alle PG13+ built-in, **kein** Extension nötig):
+  - Hashing: `encode(sha256(lower(text)::bytea), 'hex')`
+  - Random-Token (256 bit): `encode(sha256((gen_random_uuid()::text || gen_random_uuid()::text)::bytea), 'hex')`
+- Falls (in Ausnahmefällen) wirklich pgcrypto gebraucht wird: **vollständig schema-qualifiziert** (`extensions.gen_random_bytes(32)`) UND mit `SET search_path = public, extensions` in der Funktion. Niemals unqualifiziert.
+- **Regressionshistorie** (gleicher Fehler dreimal eingebaut): `20260515` → `20261023` → `20261207` → `20261209`. Migration `20261209b` enthält einen GLOBALEN Verifikations-Block, der bei JEDER künftigen Migration den Build kippt, sobald irgendeine `public.*` Funktion `gen_random_bytes`, `pgp_sym_*` oder unqualifiziertes `digest(` enthält. **Diesen Block niemals deaktivieren.**
+
+## KALENDER-FARBEN — `user_calendar_events` muss `request_type` folgen
+
+`user_calendar_events.color` MUSS bei `option_request`-Sync-Triggern immer aus `option_requests.request_type` abgeleitet werden, nie hartkodiert pro `owner_type`:
+
+- `request_type = 'casting'` → `#1565C0` (blue)
+- `request_type = 'option'` → `#E65100` (orange)
+- `final_status = 'job_confirmed'` → `#1B5E20` (green) — erzwungen durch Trigger `tr_option_requests_sync_calendars_on_job_confirmed` (`20261208`)
+
+Migration `20261209c_user_calendar_colors_per_request_type.sql` enthält den ASSERT, der die alten Hardcodes (`#2E7D32` für Agency-Row vor Job, etc.) verbietet. Frontend-Invariante in `src/utils/calendarColors.ts`: `CALENDAR_COLORS.booking === CALENDAR_COLORS.job` (gesperrt durch `src/utils/__tests__/calendarColors.test.ts`).
+
+## KALENDER-TITLE — IMMER SICHTBAR (alle Surfaces)
+
+Jedes Event MUSS in jeder Kalender-Sicht (Day/Week/Month/Agenda) sichtbar mit Titel (nicht nur Farbpunkt) gerendert werden:
+
+- Day-Timeline (`CalendarDayTimeline.tsx`): Titel im Block ✓
+- Week-Grid (`CalendarWeekGrid.tsx`): Titel im Chip — Desktop UND Mobile (Mobile rendert Zeit + Titel auf zwei Zeilen) ✓
+- Month-Grid (`MonthCalendarView.tsx`): bei `compact={false}` farbige Mini-Chips MIT Titel; bei `compact={true}` Punkte mit `accessibilityLabel={ev.title}` (Titel wird via Day-Detail sichtbar) ✓
+
+Niemals neue Sichten hinzufügen, die nur die Farbe ohne Titel rendern.
 
 ## KEINE IMPLIZITE ORG-AUFLÖSUNG (unveränderlich, Fix B 2026-04-13)
 

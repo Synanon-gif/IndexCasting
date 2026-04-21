@@ -30,14 +30,18 @@ export type MonthCalendarViewProps = {
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-function getMonthGrid(year: number, month: number): { date: string | null; dayNum: number; isCurrentMonth: boolean }[] {
+function getMonthGrid(
+  year: number,
+  month: number,
+): { date: string | null; dayNum: number; isCurrentMonth: boolean }[] {
   const first = new Date(year, month, 1);
   const last = new Date(year, month + 1, 0);
   const daysInMonth = last.getDate();
   const startWeekday = (first.getDay() + 6) % 7;
   const cells: { date: string | null; dayNum: number; isCurrentMonth: boolean }[] = [];
   const pad = (n: number) => String(n).padStart(2, '0');
-  for (let i = 0; i < startWeekday; i++) cells.push({ date: null, dayNum: 0, isCurrentMonth: false });
+  for (let i = 0; i < startWeekday; i++)
+    cells.push({ date: null, dayNum: 0, isCurrentMonth: false });
   for (let d = 1; d <= daysInMonth; d++) {
     cells.push({ date: `${year}-${pad(month + 1)}-${pad(d)}`, dayNum: d, isCurrentMonth: true });
   }
@@ -58,7 +62,10 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
   compact = false,
 }) => {
   const grid = React.useMemo(() => getMonthGrid(year, month), [year, month]);
-  const monthLabel = new Date(year, month).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const monthLabel = new Date(year, month).toLocaleString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  });
 
   return (
     <View style={s.wrapper}>
@@ -73,7 +80,9 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
       </View>
       <View style={s.weekdayRow}>
         {WEEKDAYS.map((w) => (
-          <Text key={w} style={s.weekdayCell}>{w}</Text>
+          <Text key={w} style={s.weekdayCell}>
+            {w}
+          </Text>
         ))}
       </View>
       <View style={s.grid}>
@@ -103,16 +112,39 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
               >
                 {cell.dayNum}
               </Text>
-              {events.length > 0 && (
-                <View style={[s.dotsRow, compact && s.dotsRowCompact]}>
-                  {events.slice(0, compact ? 2 : 3).map((ev) => (
-                    <View key={ev.id} style={[s.dot, compact && s.dotCompact, { backgroundColor: ev.color }]} />
-                  ))}
-                  {events.length > (compact ? 2 : 3) && (
-                    <Text style={s.moreText}>+{events.length - (compact ? 2 : 3)}</Text>
-                  )}
-                </View>
-              )}
+              {events.length > 0 &&
+                (compact ? (
+                  // Compact (week+month combined): keep dot-row to save vertical
+                  // space — titles are visible in the adjacent week/day surface.
+                  <View style={[s.dotsRow, s.dotsRowCompact]}>
+                    {events.slice(0, 2).map((ev) => (
+                      <View
+                        key={ev.id}
+                        style={[s.dot, s.dotCompact, { backgroundColor: ev.color }]}
+                        accessibilityLabel={ev.title}
+                      />
+                    ))}
+                    {events.length > 2 && <Text style={s.moreText}>+{events.length - 2}</Text>}
+                  </View>
+                ) : (
+                  // Standalone month grid: ALWAYS render the event title for
+                  // every party (per product invariant — see calendar legend).
+                  // Titles are truncated; full title is on the day-detail tap.
+                  <View style={s.eventsCol}>
+                    {events.slice(0, 2).map((ev) => (
+                      <View
+                        key={ev.id}
+                        style={[s.eventChip, { backgroundColor: ev.color }]}
+                        accessibilityLabel={ev.title}
+                      >
+                        <Text style={s.eventChipText} numberOfLines={1}>
+                          {ev.title}
+                        </Text>
+                      </View>
+                    ))}
+                    {events.length > 2 && <Text style={s.moreText}>+{events.length - 2}</Text>}
+                  </View>
+                ))}
             </TouchableOpacity>
           );
         })}
@@ -151,15 +183,16 @@ const s = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   dayCell: {
     width: '14.28%',
-    aspectRatio: 1,
-    maxHeight: 48,
+    minHeight: 56,
     padding: 2,
     justifyContent: 'flex-start',
-    alignItems: 'center',
+    alignItems: 'stretch',
   },
   dayCellCompact: {
+    minHeight: 40,
     maxHeight: 40,
     padding: 1,
+    alignItems: 'center',
   },
   dayCellActive: { borderRadius: 8 },
   dayCellSelected: {
@@ -171,9 +204,20 @@ const s = StyleSheet.create({
   dayNumCompact: { fontSize: 10 },
   dayNumSelected: { fontWeight: '700' },
   dayNumMuted: { color: colors.border },
-  dotsRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 2, marginTop: 2 },
+  dotsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 2,
+    marginTop: 2,
+  },
   dotsRowCompact: { marginTop: 1, gap: 1 },
   dot: { width: 6, height: 6, borderRadius: 3 },
   dotCompact: { width: 5, height: 5, borderRadius: 2 },
-  moreText: { fontSize: 8, color: colors.textSecondary },
+  moreText: { fontSize: 8, color: colors.textSecondary, textAlign: 'center' },
+  // Day-cell with chip layout (titles always visible) — non-compact only.
+  dayNumLeft: { textAlign: 'left', alignSelf: 'flex-start' },
+  eventsCol: { marginTop: 2, gap: 2 },
+  eventChip: { borderRadius: 3, paddingHorizontal: 3, paddingVertical: 1 },
+  eventChipText: { fontSize: 8, color: '#fff', fontWeight: '600' },
 });

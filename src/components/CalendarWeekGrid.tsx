@@ -1,5 +1,12 @@
 import React, { useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  useWindowDimensions,
+} from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { isMobileWidth } from '../theme/breakpoints';
 import type { CalendarScheduleBlock } from '../utils/calendarUnifiedTimeline';
@@ -93,7 +100,12 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
             return (
               <TouchableOpacity
                 key={date}
-                style={[styles.col, { width: colWidth, minHeight: 110 }, isSelected && styles.colSelected, isToday && !isSelected && styles.colToday]}
+                style={[
+                  styles.col,
+                  { width: colWidth, minHeight: 110 },
+                  isSelected && styles.colSelected,
+                  isToday && !isSelected && styles.colToday,
+                ]}
                 onPress={() => onSelectDay(date)}
                 activeOpacity={0.85}
               >
@@ -108,9 +120,19 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
                         onEventPress(ev);
                       }}
                       style={[styles.chip, { backgroundColor: ev.color }]}
+                      accessibilityLabel={`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
                     >
+                      {/* Mobile week chip: show TIME on first line and TITLE on
+                          a second line so every party always sees the event
+                          title — not only the desktop layout. */}
                       <Text style={[styles.chipText, { fontSize: chipFontSize }]} numberOfLines={1}>
                         {formatMinutesAsHm(ev.startMin)}
+                      </Text>
+                      <Text
+                        style={[styles.chipTextTitle, { fontSize: chipFontSize }]}
+                        numberOfLines={1}
+                      >
+                        {ev.title}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -133,7 +155,12 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
               return (
                 <TouchableOpacity
                   key={date}
-                  style={[styles.col, { width: colWidth }, isSelected && styles.colSelected, isToday && !isSelected && styles.colToday]}
+                  style={[
+                    styles.col,
+                    { width: colWidth },
+                    isSelected && styles.colSelected,
+                    isToday && !isSelected && styles.colToday,
+                  ]}
                   onPress={() => onSelectDay(date)}
                   activeOpacity={0.85}
                 >
@@ -148,6 +175,7 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
                           onEventPress(ev);
                         }}
                         style={[styles.chip, { backgroundColor: ev.color }]}
+                        accessibilityLabel={`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
                       >
                         <Text style={styles.chipText} numberOfLines={1}>
                           {formatMinutesAsHm(ev.startMin)} {ev.title}
@@ -185,7 +213,13 @@ const styles = StyleSheet.create({
   },
   navHit: { padding: spacing.xs },
   navChevron: { fontSize: 22, color: colors.textPrimary, fontWeight: '600' },
-  rangeText: { ...typography.label, fontSize: 12, color: colors.textPrimary, flex: 1, textAlign: 'center' },
+  rangeText: {
+    ...typography.label,
+    fontSize: 12,
+    color: colors.textPrimary,
+    flex: 1,
+    textAlign: 'center',
+  },
   columns: { flexDirection: 'row' },
   col: {
     minHeight: 140,
@@ -203,7 +237,13 @@ const styles = StyleSheet.create({
     borderColor: colors.accentGreen,
   },
   wd: { fontSize: 10, color: colors.textSecondary, textAlign: 'center' },
-  dayNum: { fontSize: 15, fontWeight: '600', color: colors.textPrimary, textAlign: 'center', marginBottom: 4 },
+  dayNum: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
   dayNumSelected: { color: colors.textPrimary },
   chips: { gap: 4 },
   chip: {
@@ -212,5 +252,6 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   chipText: { fontSize: 9, color: '#fff', fontWeight: '600' },
+  chipTextTitle: { fontSize: 9, color: '#fff', fontWeight: '500', opacity: 0.95 },
   more: { fontSize: 9, color: colors.textSecondary, textAlign: 'center' },
 });
