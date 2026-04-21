@@ -14,8 +14,11 @@
  */
 
 import {
+  PACKAGE_IMPORT_ESTIMATED_BYTES_PER_IMAGE,
   buildPerRowTerritoryClaims,
+  classifyStoragePreflight,
   computeEffectiveTerritories,
+  estimatePackageImportBytes,
   findSelectedWithoutTerritory,
 } from '../PackageImportPane.utils';
 
@@ -196,6 +199,80 @@ describe('integration — UI invariants for the territory pipeline', () => {
       effective: eff,
     });
     expect(missing).toEqual([]);
+  });
+
+  it('storage preflight: estimateBytes counts only ready+selected rows, totals match constant', () => {
+    const previews = [
+      {
+        externalId: 'A',
+        status: 'ready',
+        portfolio_image_urls: ['x', 'y', 'z'],
+        polaroid_image_urls: ['p1'],
+      },
+      {
+        externalId: 'B',
+        status: 'ready',
+        portfolio_image_urls: ['x'],
+        polaroid_image_urls: [],
+      },
+      {
+        externalId: 'SKIP',
+        status: 'skipped',
+        portfolio_image_urls: ['x', 'y', 'z', 'q'],
+        polaroid_image_urls: ['p'],
+      },
+    ];
+    const out = estimatePackageImportBytes({
+      previews,
+      selected: new Set(['A', 'SKIP']), // SKIP must be ignored even if selected
+    });
+    expect(out.imageCount).toBe(4); // A: 3 portfolio + 1 polaroid
+    expect(out.totalBytes).toBe(4 * PACKAGE_IMPORT_ESTIMATED_BYTES_PER_IMAGE);
+  });
+
+  it('storage preflight: projection > 90% of cap → warn (default threshold)', () => {
+    const verdict = classifyStoragePreflight({
+      usedBytes: 4_000_000_000, // 4 GB used
+      limitBytes: 5_000_000_000, // 5 GB cap
+      projectedAddBytes: 700_000_000, // +0.7 GB → 4.7 / 5 = 94 %
+    });
+    expect(verdict).toBe('warn');
+  });
+
+  it('storage preflight: projection well under threshold → ok', () => {
+    const verdict = classifyStoragePreflight({
+      usedBytes: 1_000_000_000,
+      limitBytes: 50_000_000_000,
+      projectedAddBytes: 2_000_000_000,
+    });
+    expect(verdict).toBe('ok');
+  });
+
+  it('storage preflight: unlimited plan is always unlimited regardless of projection', () => {
+    const verdict = classifyStoragePreflight({
+      usedBytes: 4_900_000_000,
+      limitBytes: 5_000_000_000,
+      isUnlimited: true,
+      projectedAddBytes: 100_000_000_000,
+    });
+    expect(verdict).toBe('unlimited');
+  });
+
+  it('storage preflight: missing snapshot data → unknown (do not falsely warn)', () => {
+    expect(
+      classifyStoragePreflight({
+        usedBytes: null,
+        limitBytes: null,
+        projectedAddBytes: 1_000,
+      }),
+    ).toBe('unknown');
+    expect(
+      classifyStoragePreflight({
+        usedBytes: 1_000,
+        limitBytes: 0,
+        projectedAddBytes: 1_000,
+      }),
+    ).toBe('unknown');
   });
 
   it('global empty + missing per-row override flags ALL selected rows as missing (UI blocks commit)', () => {

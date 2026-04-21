@@ -69,6 +69,16 @@ export type ImportModelPayload = {
    */
   forceUpdateMeasurements?: boolean;
   /**
+   * When true and the model is matched via mediaslide_sync_id / netwalk_model_id,
+   * the appearance fields `hair_color` and `eye_color` are always overwritten
+   * with the incoming raw strings instead of only filling missing ones.
+   * Without this flag, an existing colour is never touched (`consider`-rule).
+   * Use this when the package is the authoritative source for appearance, e.g.
+   * after the agency edited the colour in MediaSlide and wants the local copy
+   * to follow. Symmetric semantics to `forceUpdateMeasurements`.
+   */
+  forceUpdateAppearance?: boolean;
+  /**
    * Quelle der Bilder/Profildaten. Bei INSERT direkt in die Spalte gesetzt; bei
    * UPDATE eines bestehenden Models mit `photo_source='own'` wird sie zusätzlich
    * via `set_model_photo_source`-RPC nachgezogen, damit Package-Importe nicht
@@ -160,6 +170,8 @@ export async function importModelAndMerge(
       const updates: any = {};
       const forceMs =
         params.forceUpdateMeasurements === true && (Boolean(externalId) || Boolean(netwalkId));
+      const forceApp =
+        params.forceUpdateAppearance === true && (Boolean(externalId) || Boolean(netwalkId));
 
       const consider = (key: string, value: unknown, allowEmptyString = false) => {
         if (value === undefined || value === null) return;
@@ -203,8 +215,15 @@ export async function importModelAndMerge(
 
       consider('city', params.city ?? null);
       consider('country_code', params.country_code ?? null);
-      consider('hair_color', params.hair_color ?? null);
-      consider('eye_color', params.eye_color ?? null);
+      // Appearance: force-overwrite when the package is authoritative, otherwise
+      // fill missing only. Symmetric to the measurement branch above.
+      if (forceApp) {
+        forceSet('hair_color', params.hair_color ?? null);
+        forceSet('eye_color', params.eye_color ?? null);
+      } else {
+        consider('hair_color', params.hair_color ?? null);
+        consider('eye_color', params.eye_color ?? null);
+      }
       consider('ethnicity', params.ethnicity ?? null);
       consider('current_location', params.current_location ?? null);
       consider('sex', params.sex ?? null);

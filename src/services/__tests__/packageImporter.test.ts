@@ -455,3 +455,123 @@ describe('commitPreview — partial-failure resilience', () => {
     expect(summary.outcomes[1].status).toBe('created');
   });
 });
+
+// ---------------------------------------------------------------------------
+// commitPreview — defense-in-depth MAX_MODELS_PER_RUN guard
+// ---------------------------------------------------------------------------
+
+describe('commitPreview — MAX_MODELS_PER_RUN cap', () => {
+  it('throws when selected length exceeds the hard cap (defense against future non-UI callers)', async () => {
+    // The Analyze-phase UI already blocks at 100, but a CLI / RPC / scripted
+    // re-commit path could bypass it. Without the importer-side guard a
+    // 1000-model loop would (a) block the agency thread for 30+ minutes,
+    // (b) saturate the storage upload queue, (c) generate enough Edge
+    // Function calls to risk a per-JWT rate trip.
+    const previews = Array.from({ length: PACKAGE_IMPORT_LIMITS.MAX_MODELS_PER_RUN + 1 }, (_, i) =>
+      makePayload({ externalId: `M-${i}`, name: `Model ${i}` }),
+    );
+    const builtPreviews = toPreviewModels(previews);
+    const importImpl = jest.fn();
+
+    await expect(
+      commitPreview({
+        selected: builtPreviews,
+        agencyId: 'agency-X',
+        options: {},
+        importImpl,
+      }),
+    ).rejects.toThrow(/MAX_MODELS_PER_RUN=100/);
+    expect(importImpl).not.toHaveBeenCalled();
+  });
+
+  it('accepts exactly MAX_MODELS_PER_RUN selected models (boundary is inclusive)', async () => {
+    const previews = Array.from({ length: PACKAGE_IMPORT_LIMITS.MAX_MODELS_PER_RUN }, (_, i) =>
+      makePayload({ externalId: `M-${i}`, name: `M${i}` }),
+    );
+    const builtPreviews = toPreviewModels(previews);
+    const importImpl = jest.fn(async () => ({ model_id: 'mx', created: true }));
+    const summary = await commitPreview({
+      selected: builtPreviews,
+      agencyId: 'a',
+      options: {},
+      importImpl,
+    });
+    expect(summary.outcomes).toHaveLength(PACKAGE_IMPORT_LIMITS.MAX_MODELS_PER_RUN);
+    expect(importImpl).toHaveBeenCalledTimes(PACKAGE_IMPORT_LIMITS.MAX_MODELS_PER_RUN);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// commitPreview — progress throttling
+// ---------------------------------------------------------------------------
+
+describe('commitPreview — onProgress throttling', () => {
+  it('forces a fresh emit at every model boundary even if throttled', async () => {
+    // The agency needs to see "Importing 5/10 — Rémi" the moment a new model
+    // starts; throttling per-image emits is fine but per-model emits MUST be
+    // immediate, otherwise the progress bar visibly stalls.
+    const previews = toPreviewModels([
+      makePayload({ externalId: '1', name: 'One' }),
+      makePayload({ externalId: '2', name: 'Two' }),
+      makePayload({ externalId: '3', name: 'Three' }),
+    ]);
+    const importImpl = jest.fn(async () => ({ model_id: 'm', created: true }));
+    const seenLabels: Array<string | undefined> = [];
+    const onProgress = jest.fn((p: { currentLabel?: string }) => {
+      seenLabels.push(p.currentLabel);
+    });
+
+    await commitPreview({
+      selected: previews,
+      agencyId: 'a',
+      options: {},
+      importImpl,
+      onProgress,
+    });
+
+    // Three model-start emits + final done emit (no label) = at least 4 emits,
+    // and each model name must appear in the label stream.
+    expect(seenLabels.filter((l) => l === 'One')).toHaveLength(1);
+    expect(seenLabels.filter((l) => l === 'Two')).toHaveLength(1);
+    expect(seenLabels.filter((l) => l === 'Three')).toHaveLength(1);
+    // Final emit has no label → done=total signal for the UI to flip to done.
+    expect(seenLabels[seenLabels.length - 1]).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// previewToImportPayload — forceUpdateAppearance forwarding
+// ---------------------------------------------------------------------------
+
+describe('previewToImportPayload — forceUpdateAppearance', () => {
+  it('forwards forceUpdateAppearance:true into the importer payload', () => {
+    const previews = toPreviewModels([makePayload({ externalId: 'A', name: 'A' })]);
+    const payload = previewToImportPayload({
+      preview: previews[0],
+      agencyId: 'a',
+      options: { forceUpdateAppearance: true },
+    });
+    expect(payload.forceUpdateAppearance).toBe(true);
+  });
+
+  it('defaults forceUpdateAppearance to false when not set (existing values protected)', () => {
+    const previews = toPreviewModels([makePayload({ externalId: 'A', name: 'A' })]);
+    const payload = previewToImportPayload({
+      preview: previews[0],
+      agencyId: 'a',
+      options: {},
+    });
+    expect(payload.forceUpdateAppearance).toBe(false);
+  });
+
+  it('forceUpdateAppearance is independent from forceUpdateMeasurements', () => {
+    const previews = toPreviewModels([makePayload({ externalId: 'A', name: 'A' })]);
+    const payload = previewToImportPayload({
+      preview: previews[0],
+      agencyId: 'a',
+      options: { forceUpdateAppearance: true, forceUpdateMeasurements: false },
+    });
+    expect(payload.forceUpdateAppearance).toBe(true);
+    expect(payload.forceUpdateMeasurements).toBe(false);
+  });
+});
