@@ -180,6 +180,72 @@ describe('mediaslidePackageParser — robustness', () => {
     expect(book.eye_color_raw).toBe('Green brown');
   });
 
+  it('extracts hair_color_raw / eye_color_raw from German labels (Haarfarbe / Augenfarbe)', () => {
+    // Mediaslide tenants in DACH frequently use the long-form labels.
+    // The matcher must prefer "Haarfarbe" over the shorter "Haare" candidate
+    // (longest-match-first), otherwise "Haarfarbe: Blond" would still be
+    // consumed by the "Haare" prefix-rule and the eye-colour element would
+    // be misclassified for tenants that drop the short form altogether.
+    const html = `
+      <div id="bookModelMeasurements">
+        <div class="measurementElement"><span class="measurementTitle">Height</span> <span class="measurementEu">180<span class="measurementUnit">cm</span></span></div>
+        <div class="measurementElement"><span class="measurementTitle">Haarfarbe</span> Blond</div>
+        <div class="measurementElement"><span class="measurementTitle">Augenfarbe</span> Blau</div>
+      </div>
+    `;
+    const book = parsePackageBook(html);
+    expect(book.hair_color_raw).toBe('Blond');
+    expect(book.eye_color_raw).toBe('Blau');
+  });
+
+  it('extracts hair / eye from short German labels (Haare / Augen) too', () => {
+    const html = `
+      <div id="bookModelMeasurements">
+        <div class="measurementElement"><span class="measurementTitle">Haare</span> Brünett</div>
+        <div class="measurementElement"><span class="measurementTitle">Augen</span> Grün</div>
+      </div>
+    `;
+    const book = parsePackageBook(html);
+    expect(book.hair_color_raw).toBe('Brünett');
+    expect(book.eye_color_raw).toBe('Grün');
+  });
+
+  it('extracts hair / eye from Spanish labels (Pelo / Ojos, Color de pelo / Color de ojos)', () => {
+    const html = `
+      <div id="bookModelMeasurements">
+        <div class="measurementElement"><span class="measurementTitle">Color de pelo</span> Castaño</div>
+        <div class="measurementElement"><span class="measurementTitle">Color de ojos</span> Marrones</div>
+      </div>
+    `;
+    const book = parsePackageBook(html);
+    expect(book.hair_color_raw).toBe('Castaño');
+    expect(book.eye_color_raw).toBe('Marrones');
+  });
+
+  it('extracts hair / eye from English long-form labels (Hair color / Eye color)', () => {
+    const html = `
+      <div id="bookModelMeasurements">
+        <div class="measurementElement"><span class="measurementTitle">Hair color</span> Auburn</div>
+        <div class="measurementElement"><span class="measurementTitle">Eye colour</span> Hazel</div>
+      </div>
+    `;
+    const book = parsePackageBook(html);
+    expect(book.hair_color_raw).toBe('Auburn');
+    expect(book.eye_color_raw).toBe('Hazel');
+  });
+
+  it('returns null for hair/eye when the only candidates have empty bodies (does not crash)', () => {
+    const html = `
+      <div id="bookModelMeasurements">
+        <div class="measurementElement"><span class="measurementTitle">Haare</span></div>
+        <div class="measurementElement"><span class="measurementTitle">Augen</span>   </div>
+      </div>
+    `;
+    const book = parsePackageBook(html);
+    expect(book.hair_color_raw).toBeNull();
+    expect(book.eye_color_raw).toBeNull();
+  });
+
   it('shoe size with US-only annotation does NOT silently land as cm', () => {
     // If MediaSlide ever omits the 'eu' annotation, we must NOT misinterpret.
     const html = `

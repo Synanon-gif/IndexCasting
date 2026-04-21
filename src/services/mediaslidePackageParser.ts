@@ -101,8 +101,34 @@ export function parsePackageBook(html: string): ParsedBookFragment {
   return {
     name: extractBookName(html),
     measurements: extractMeasurementsFromBook(html),
-    hair_color_raw: extractMeasurementText(html, ['Hair', 'Cheveux', 'Capelli', 'Haare']),
-    eye_color_raw: extractMeasurementText(html, ['Eyes', 'Yeux', 'Occhi', 'Augen']),
+    hair_color_raw: extractMeasurementText(html, [
+      'Hair',
+      'Hair color',
+      'Hair colour',
+      'Cheveux',
+      'Couleur de cheveux',
+      'Capelli',
+      'Colore capelli',
+      'Pelo',
+      'Cabello',
+      'Color de pelo',
+      'Haar',
+      'Haare',
+      'Haarfarbe',
+    ]),
+    eye_color_raw: extractMeasurementText(html, [
+      'Eyes',
+      'Eye color',
+      'Eye colour',
+      'Yeux',
+      'Couleur des yeux',
+      'Occhi',
+      'Colore occhi',
+      'Ojos',
+      'Color de ojos',
+      'Augen',
+      'Augenfarbe',
+    ]),
     albumCatalog: extractAlbumCatalog(html),
     imagesForCurrentCategory: extractBookImages(html),
   };
@@ -313,15 +339,23 @@ function parseShoeEu(html: string): number | null {
 }
 
 function extractMeasurementText(html: string, labelCandidates: string[]): string | null {
-  // Picks plain text after `<span class="measurementTitle">{label}</span>`
+  // Picks plain text after `<span class="measurementTitle">{label}</span>`.
+  //
+  // Matching rule: longest candidate first, equality OR startsWith, case-insensitive.
+  // Sorting by length descending ensures "Haarfarbe" wins over "Haare" when both
+  // are in the list — without it, `startsWith("haare")` would consume "haarfarbe"
+  // and we'd silently store "Blond" in `hair_color` for a "Haare: Blond" element
+  // but ALSO claim a match for "Haarfarbe: Blond" (the second hit would be
+  // ignored because the first non-empty result is returned). Stable + predictable.
   const elements = extractMeasurementElements(html);
+  const sorted = [...labelCandidates].sort((a, b) => b.length - a.length);
   for (const el of elements) {
+    const titleLc = el.title.toLowerCase();
     if (
-      labelCandidates.some(
-        (lbl) =>
-          el.title.toLowerCase() === lbl.toLowerCase() ||
-          el.title.toLowerCase().startsWith(lbl.toLowerCase()),
-      )
+      sorted.some((lbl) => {
+        const lc = lbl.toLowerCase();
+        return titleLc === lc || titleLc.startsWith(lc);
+      })
     ) {
       const text = decodeAndTrim(stripTags(el.body));
       if (text.length === 0) return null;

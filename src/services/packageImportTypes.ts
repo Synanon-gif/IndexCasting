@@ -193,6 +193,14 @@ export type CommitOptions = {
    */
   forceUpdateMeasurements?: boolean;
   /**
+   * Wenn true und das Model via mediaslide_sync_id / netwalk_model_id matcht,
+   * werden Augen- und Haarfarbe (`hair_color`, `eye_color`) IMMER aus dem
+   * Package-Payload überschrieben — ohne das Flag bleibt der bestehende Wert
+   * stehen (`consider`-Regel). Symmetrisch zu `forceUpdateMeasurements`.
+   * Default: false → bestehende Werte gewinnen, nur Lücken werden gefüllt.
+   */
+  forceUpdateAppearance?: boolean;
+  /**
    * Territory-Claims, die JEDEM importierten Model angeheftet werden. Pflicht für
    * neu angelegte Models, weil unser Roster-Read (`getModelsForAgencyFromSupabase`)
    * über `model_agency_territories` (MAT) gated ist. Models ohne MAT-Eintrag für

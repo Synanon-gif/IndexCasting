@@ -255,6 +255,122 @@ describe('importModelAndMerge', () => {
     );
   });
 
+  // ── new: forceUpdateAppearance overwrites hair / eye colour ─────────────────
+
+  it('does NOT overwrite existing hair_color / eye_color without forceUpdateAppearance', async () => {
+    // Symmetry test for the measurement story above — by default the package
+    // is treated as a "fill the gaps" source, so an agency that hand-edited
+    // a model's hair colour after the last import keeps that local value on
+    // the next re-import. Updates flow through the `agency_update_model_full`
+    // RPC, so the assertion looks at how the RPC was called (or whether it
+    // was called at all when nothing changed).
+    const existing = {
+      id: 'model-app',
+      mediaslide_sync_id: 'MS-APP',
+      name: 'App Model',
+      height: 180,
+      hair_color: 'Brunette (manual edit)',
+      eye_color: 'Hazel (manual edit)',
+      portfolio_images: [],
+      polaroids: [],
+    };
+    fromMock.mockReturnValueOnce(makeLookupChain(existing));
+
+    await importModelAndMerge({
+      mediaslide_sync_id: 'MS-APP',
+      name: 'App Model',
+      height: 180,
+      hair_color: 'Blonde',
+      eye_color: 'Blue',
+    });
+
+    const updateCalls = rpcMock.mock.calls.filter((c) => c[0] === 'agency_update_model_full');
+    // Either the RPC was not called (nothing to update) OR it was called with
+    // null/undefined for the colour params — both prove the colours stayed.
+    for (const c of updateCalls) {
+      const params = c[1] as { p_hair_color?: unknown; p_eye_color?: unknown };
+      expect(params.p_hair_color ?? null).toBeNull();
+      expect(params.p_eye_color ?? null).toBeNull();
+    }
+  });
+
+  it('overwrites hair_color / eye_color when forceUpdateAppearance is true', async () => {
+    // Authoritative-package path: agency ticked the new "Overwrite hair/eye
+    // colour on known models" checkbox → updates RPC carries the new strings.
+    const existing = {
+      id: 'model-app2',
+      mediaslide_sync_id: 'MS-APP2',
+      name: 'App Model 2',
+      height: 180,
+      hair_color: 'Brown',
+      eye_color: 'Brown',
+      portfolio_images: [],
+      polaroids: [],
+    };
+    fromMock.mockReturnValueOnce(makeLookupChain(existing));
+
+    await importModelAndMerge({
+      mediaslide_sync_id: 'MS-APP2',
+      name: 'App Model 2',
+      height: 180,
+      hair_color: 'Platinum Blonde',
+      eye_color: 'Steel Blue',
+      forceUpdateAppearance: true,
+    });
+
+    expect(rpcMock).toHaveBeenCalledWith(
+      'agency_update_model_full',
+      expect.objectContaining({
+        p_hair_color: 'Platinum Blonde',
+        p_eye_color: 'Steel Blue',
+      }),
+    );
+  });
+
+  it('forceUpdateAppearance does NOT touch measurements (independent flags)', async () => {
+    // Defense check: turning on appearance-force MUST NOT re-route into the
+    // measurement force path. Otherwise an agency that wanted to refresh
+    // colours only would have their hand-edited measurements wiped too.
+    const existing = {
+      id: 'model-app3',
+      mediaslide_sync_id: 'MS-APP3',
+      name: 'App Model 3',
+      height: 180,
+      bust: 88,
+      waist: 60,
+      hips: 90,
+      hair_color: 'Brown',
+      eye_color: 'Brown',
+      portfolio_images: [],
+      polaroids: [],
+    };
+    fromMock.mockReturnValueOnce(makeLookupChain(existing));
+
+    await importModelAndMerge({
+      mediaslide_sync_id: 'MS-APP3',
+      name: 'App Model 3',
+      height: 999, // would-be authoritative if measurements were forced
+      bust: 999,
+      hair_color: 'Auburn',
+      eye_color: 'Green',
+      forceUpdateAppearance: true,
+      forceUpdateMeasurements: false,
+    });
+
+    expect(rpcMock).toHaveBeenCalledWith(
+      'agency_update_model_full',
+      expect.objectContaining({
+        p_hair_color: 'Auburn',
+        p_eye_color: 'Green',
+        // height / bust must NOT be in the updated payload — `consider` saw
+        // existing non-null values and refused to overwrite without the
+        // measurement-force flag.
+        p_height: null,
+        p_bust: null,
+      }),
+    );
+  });
+
   // ── new: ethnicity and categories are filled for new models ─────────────────
 
   it('includes ethnicity and categories in the insert payload', async () => {

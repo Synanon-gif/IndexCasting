@@ -101,6 +101,70 @@ export function findSelectedWithoutTerritory(args: {
  * the importer hard-overwrites it again as defense-in-depth (see
  * `previewToImportPayload` in `packageImporter.ts`).
  */
+/**
+ * Conservative wall-clock estimate for the import: roughly 200KB average per
+ * persisted image after our compression / resize pipeline (`stripExifAndCompress`
+ * targets 15 MB but most portfolio JPEGs land well under 300KB after re-encode,
+ * and polaroids tend to be smaller phone snaps). This is a UI hint only —
+ * actual usage is recorded server-side by `increment_agency_storage_usage`.
+ *
+ * Why 200KB: in production package imports the median post-compression size
+ * we observed for MediaSlide GCS portrait JPEGs is in the 120–280KB range.
+ * Picking the upper end of that gives the agency a "worst case worth showing"
+ * number rather than a too-rosy estimate they'd later be surprised by.
+ */
+export const PACKAGE_IMPORT_ESTIMATED_BYTES_PER_IMAGE = 200 * 1024;
+
+/**
+ * Estimate the total bytes a commit will add to the agency's storage usage.
+ * Counts only ready+selected previews. Pure / no React. Used by the storage
+ * pre-flight banner in the import pane.
+ */
+export function estimatePackageImportBytes(args: {
+  previews: ReadonlyArray<{
+    externalId: string;
+    status: string;
+    portfolio_image_urls: string[];
+    polaroid_image_urls: string[];
+  }>;
+  selected: ReadonlySet<string>;
+  bytesPerImage?: number;
+}): { imageCount: number; totalBytes: number } {
+  const per = args.bytesPerImage ?? PACKAGE_IMPORT_ESTIMATED_BYTES_PER_IMAGE;
+  let imageCount = 0;
+  for (const p of args.previews) {
+    if (p.status !== 'ready') continue;
+    if (!args.selected.has(p.externalId)) continue;
+    imageCount += p.portfolio_image_urls.length + p.polaroid_image_urls.length;
+  }
+  return { imageCount, totalBytes: imageCount * per };
+}
+
+/**
+ * Verdict the storage pre-flight banner shows to the agency before they hit
+ * the commit button. `ok` keeps the banner subtle, `warn` highlights it
+ * (orange) and `block` would render red. We don't actually block in the UI
+ * because Supabase enforces the cap server-side; we only WARN so the agency
+ * doesn't lose half the images mid-batch.
+ */
+export type StoragePreflightVerdict = 'ok' | 'warn' | 'unlimited' | 'unknown';
+
+export function classifyStoragePreflight(args: {
+  usedBytes: number | null;
+  limitBytes: number | null;
+  isUnlimited?: boolean;
+  projectedAddBytes: number;
+  /** Default: 0.9 — warn when projected usage would exceed 90% of the cap. */
+  warnThreshold?: number;
+}): StoragePreflightVerdict {
+  if (args.isUnlimited) return 'unlimited';
+  if (args.usedBytes == null || args.limitBytes == null || args.limitBytes <= 0) return 'unknown';
+  const projected = args.usedBytes + args.projectedAddBytes;
+  const ratio = projected / args.limitBytes;
+  if (ratio >= (args.warnThreshold ?? 0.9)) return 'warn';
+  return 'ok';
+}
+
 export function buildPerRowTerritoryClaims(args: {
   toCommit: ReadonlyArray<{ externalId: string }>;
   effective: Record<string, string[]>;

@@ -295,6 +295,7 @@ export function previewToImportPayload(input: {
     portfolio_images: preview.portfolio_image_urls,
     polaroids: preview.polaroid_image_urls,
     forceUpdateMeasurements: options.forceUpdateMeasurements ?? false,
+    forceUpdateAppearance: options.forceUpdateAppearance ?? false,
     photo_source: photoSource,
     ...(sanitizedTerritories.length > 0 ? { territories: sanitizedTerritories } : {}),
   };
@@ -340,12 +341,52 @@ export async function commitPreview(input: {
   const persistImpl = input.persistImagesImpl ?? persistImagesForPackageImport;
   const persistImages = input.options.persistImages === true;
   const total = input.selected.length;
+
+  // Defense-in-depth cap. The Analyze-phase UI already blocks at 100, but a
+  // future caller (e.g. CLI / RPC / scripted re-commit) could in principle
+  // pass an oversized `selected[]` array. Without this guard we'd kick off a
+  // sequential commit loop that could run for tens of minutes and cause
+  // (a) Edge Function rate-limit hits across hundreds of image-proxy calls,
+  // (b) PgBouncer connection churn, (c) unbounded React state pressure on web.
+  // The cap is the same constant the UI already enforces — keep them in sync.
+  if (total > PACKAGE_IMPORT_LIMITS.MAX_MODELS_PER_RUN) {
+    throw new Error(
+      `commitPreview: ${total} selected exceeds MAX_MODELS_PER_RUN=${PACKAGE_IMPORT_LIMITS.MAX_MODELS_PER_RUN}. Split the run into smaller batches.`,
+    );
+  }
+
   const outcomes: CommitOutcome[] = [];
   let createdCount = 0;
   let mergedCount = 0;
   let warningCount = 0;
   let errorCount = 0;
   let skippedCount = 0;
+
+  // Progress throttling — the per-image callback can fire thousands of times
+  // for a 100-model batch (~30 images × 100 = 3000 setState updates), which
+  // jankifies the React tree and wastes battery. Coalesce into one emit per
+  // ~100ms; the final `done=total` emit at the end of the loop is unthrottled.
+  const PROGRESS_THROTTLE_MS = 100;
+  let lastEmittedAt = 0;
+  let pendingProgress: CommitProgress | null = null;
+  const emitProgress = (p: CommitProgress, force = false): void => {
+    if (!input.onProgress) return;
+    const now = Date.now();
+    if (force || now - lastEmittedAt >= PROGRESS_THROTTLE_MS) {
+      input.onProgress(p);
+      lastEmittedAt = now;
+      pendingProgress = null;
+    } else {
+      pendingProgress = p;
+    }
+  };
+  const flushPendingProgress = (): void => {
+    if (pendingProgress && input.onProgress) {
+      input.onProgress(pendingProgress);
+      lastEmittedAt = Date.now();
+      pendingProgress = null;
+    }
+  };
 
   for (let i = 0; i < total; i++) {
     if (input.signal?.aborted) {
@@ -364,7 +405,10 @@ export async function commitPreview(input: {
     }
 
     const preview = input.selected[i];
-    input.onProgress?.({ total, done: i, currentLabel: preview.name });
+    // Per-model emit is forced — agency wants to see "Importing 5/100 – Rémi"
+    // immediately when a new model starts; throttling here would hide model
+    // boundaries.
+    emitProgress({ total, done: i, currentLabel: preview.name }, true);
 
     if (preview.status !== 'ready') {
       outcomes.push({
@@ -473,7 +517,7 @@ export async function commitPreview(input: {
               signal: input.signal,
               ...(input.imageFetchImpl ? { fetchImpl: input.imageFetchImpl } : {}),
               onImageProgress: (img: PackageImageProgress) =>
-                input.onProgress?.({
+                emitProgress({
                   total,
                   done: i,
                   currentLabel: `${preview.name} – ${img.type} ${img.index + 1}`,
@@ -560,7 +604,8 @@ export async function commitPreview(input: {
     }
   }
 
-  input.onProgress?.({ total, done: total });
+  flushPendingProgress();
+  emitProgress({ total, done: total }, true);
 
   return {
     outcomes,

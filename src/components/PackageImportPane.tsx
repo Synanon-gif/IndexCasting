@@ -51,11 +51,17 @@ import {
 import { commitPreview, toPreviewModels } from '../services/packageImporter';
 import {
   buildPerRowTerritoryClaims,
+  classifyStoragePreflight,
   computeEffectiveTerritories,
   deriveDefaultTerritoryInput,
+  estimatePackageImportBytes,
   findSelectedWithoutTerritory,
   parseTerritoryInput,
 } from './PackageImportPane.utils';
+import {
+  type AgencyStorageUsage,
+  getMyAgencyStorageUsage,
+} from '../services/agencyStorageSupabase';
 
 type Props = {
   agencyId: string;
@@ -93,6 +99,10 @@ export const PackageImportPane: React.FC<Props> = ({
   const [previews, setPreviews] = useState<PreviewModel[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [forceMeasurements, setForceMeasurements] = useState(false);
+  // Force-overwrite hair_color / eye_color on re-import. Default off — same
+  // policy as `forceMeasurements`: existing local edits stay protected unless
+  // the agency explicitly says "the package is now authoritative for colours".
+  const [forceAppearance, setForceAppearance] = useState(false);
   const [territoriesInput, setTerritoriesInput] = useState<string>(() =>
     deriveDefaultTerritoryInput(defaultTerritory),
   );
@@ -110,6 +120,12 @@ export const PackageImportPane: React.FC<Props> = ({
 
   const [drift, setDrift] = useState<DriftResult | null>(null);
   const [overrideText, setOverrideText] = useState('');
+
+  // Snapshot of the agency's storage usage. Refreshed when we enter the
+  // preview phase so the agency sees a realistic projection BEFORE they
+  // start a 100-model batch. Server-side `increment_agency_storage_usage`
+  // is the source of truth and will reject uploads when the cap is hit.
+  const [storageSnapshot, setStorageSnapshot] = useState<AgencyStorageUsage | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -255,6 +271,38 @@ export const PackageImportPane: React.FC<Props> = ({
     [selected, effectiveTerritoriesByExternalId],
   );
 
+  // Refresh the storage snapshot when entering the preview phase. We do NOT
+  // refresh on every selection change — the agency's used_bytes only really
+  // changes after they actually commit something. Showing a slightly-stale
+  // baseline plus a fresh projection is the right trade-off; the server-side
+  // RPC is the actual gate.
+  useEffect(() => {
+    if (phase !== 'previewing') return;
+    let cancelled = false;
+    void getMyAgencyStorageUsage().then((snap) => {
+      if (!cancelled) setStorageSnapshot(snap);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase]);
+
+  const storageEstimate = useMemo(
+    () => estimatePackageImportBytes({ previews, selected }),
+    [previews, selected],
+  );
+
+  const storageVerdict = useMemo(
+    () =>
+      classifyStoragePreflight({
+        usedBytes: storageSnapshot?.used_bytes ?? null,
+        limitBytes: storageSnapshot?.effective_limit_bytes ?? null,
+        isUnlimited: storageSnapshot?.is_unlimited,
+        projectedAddBytes: storageEstimate.totalBytes,
+      }),
+    [storageSnapshot, storageEstimate.totalBytes],
+  );
+
   const handleCommit = useCallback(async () => {
     if (phase !== 'previewing') return;
     const toCommit = previews.filter((p) => p.status === 'ready' && selected.has(p.externalId));
@@ -297,6 +345,7 @@ export const PackageImportPane: React.FC<Props> = ({
         agencyId,
         options: {
           forceUpdateMeasurements: forceMeasurements,
+          forceUpdateAppearance: forceAppearance,
           persistImages: true,
           ...(globalTerritoryClaims.length > 0 ? { territories: globalTerritoryClaims } : {}),
           ...(Object.keys(perRowClaims).length > 0
@@ -324,6 +373,7 @@ export const PackageImportPane: React.FC<Props> = ({
     selected,
     agencyId,
     forceMeasurements,
+    forceAppearance,
     onModelsChanged,
     parsedTerritories,
     effectiveTerritoriesByExternalId,
@@ -523,6 +573,49 @@ export const PackageImportPane: React.FC<Props> = ({
             </Text>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={[styles.row, { marginTop: spacing.sm }]}
+            onPress={() => setForceAppearance((v) => !v)}
+          >
+            <View style={[styles.checkbox, forceAppearance && styles.checkboxOn]}>
+              {forceAppearance && <Text style={styles.checkboxMark}>✓</Text>}
+            </View>
+            <Text style={styles.checkboxLabel}>
+              Overwrite existing hair / eye colour on known models (otherwise only fill gaps)
+            </Text>
+          </TouchableOpacity>
+
+          {storageEstimate.imageCount > 0 && (
+            <View
+              style={[
+                styles.storagePreflight,
+                storageVerdict === 'warn' && styles.storagePreflightWarn,
+              ]}
+            >
+              <Text style={styles.storagePreflightTitle}>
+                Storage estimate
+                {storageVerdict === 'warn' ? ' — approaching cap' : ''}
+                {storageVerdict === 'unlimited' ? ' — unlimited plan' : ''}
+              </Text>
+              <Text style={styles.storagePreflightLine}>
+                ~{storageEstimate.imageCount} image(s), {formatMb(storageEstimate.totalBytes)}{' '}
+                projected (rough estimate after compression).
+              </Text>
+              {storageSnapshot && !storageSnapshot.is_unlimited && (
+                <Text style={styles.storagePreflightLine}>
+                  Currently used: {formatMb(storageSnapshot.used_bytes)} of{' '}
+                  {formatMb(storageSnapshot.effective_limit_bytes ?? storageSnapshot.limit_bytes)}.
+                </Text>
+              )}
+              {storageVerdict === 'warn' && (
+                <Text style={styles.storagePreflightLine}>
+                  This batch may push your agency over the storage cap. Server uploads will start to
+                  reject once the cap is hit — you may end up with partially imported models.
+                </Text>
+              )}
+            </View>
+          )}
+
           <View style={[styles.row, { marginTop: spacing.md, gap: spacing.sm }]}>
             <TouchableOpacity
               style={[
@@ -709,6 +802,11 @@ const PreviewRow: React.FC<{
                   ? ` (+${preview.discardedPolaroids} discarded)`
                   : ''}
               </Text>
+              {(preview.hair_color_raw || preview.eye_color_raw) && (
+                <Text style={styles.previewMeta}>
+                  Hair: {preview.hair_color_raw ?? '—'} · Eyes: {preview.eye_color_raw ?? '—'}
+                </Text>
+              )}
               <Text style={[styles.previewMeta, { color: territoryBadgeColor }]}>
                 {territoryBadgeText}
               </Text>
@@ -790,6 +888,13 @@ function renderAnalyzeLabel(p: AnalyzeProgress | null): string {
   if (p.phase === 'fetch_list') return 'Loading package list…';
   if (p.phase === 'parse') return `Parsing ${p.modelsTotal} model(s)…`;
   return `Loading books ${p.modelsDone}/${p.modelsTotal}${p.currentLabel ? ` – ${p.currentLabel}` : ''}`;
+}
+
+function formatMb(bytes: number | null | undefined): string {
+  if (bytes == null) return '—';
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 function humaniseError(code: string): string {
@@ -941,6 +1046,29 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     marginBottom: 0,
     textAlign: 'center',
+  },
+  storagePreflight: {
+    marginTop: spacing.md,
+    padding: spacing.sm,
+    borderRadius: 6,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  storagePreflightWarn: {
+    borderColor: colors.buttonSkipRed,
+  },
+  storagePreflightTitle: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textPrimary,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  storagePreflightLine: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
   },
   previewRowDisabled: {
     opacity: 0.5,
