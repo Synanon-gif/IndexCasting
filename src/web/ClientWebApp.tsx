@@ -144,6 +144,7 @@ import {
   loadOptionRequestsForClient,
   purgeOptionThreadFromStore,
   refreshOptionRequestInCache,
+  subscribeToOptionRequestRowChanges,
   loadMessagesForThread,
   loadOlderMessagesForThread,
   agencyConfirmAvailabilityStore,
@@ -5891,11 +5892,19 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   useEffect(() => {
     const req = selectedThreadId ? getRequestByThreadId(selectedThreadId) : undefined;
     if (!req) return;
-    const unsub = subscribeToOptionMessages(req.id, () => {
+    const unsubMsgs = subscribeToOptionMessages(req.id, () => {
       loadMessagesForThread(selectedThreadId!);
       refreshOptionRequestInCache(selectedThreadId!);
     });
-    return unsub;
+    // ALSO subscribe to direct row UPDATEs on option_requests so that field changes
+    // arriving without an accompanying system message (e.g. agency_counter_price set
+    // by `agency_set_counter_offer` if the system-message insert silently fails) still
+    // refresh the open thread. Both subscriptions de-dupe via the cache layer.
+    const unsubRow = subscribeToOptionRequestRowChanges(req.id);
+    return () => {
+      unsubMsgs();
+      unsubRow();
+    };
   }, [selectedThreadId]);
 
   // Resolve agency display name for the open option thread (client side only).
@@ -6135,31 +6144,76 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     }, 4000);
   }, [onOptionProjectionChanged]);
 
+  // Generic fail-closed handler for all negotiation actions: refresh local cache
+  // (so any UI affordances re-evaluate against the actual server state) and surface
+  // a single, consistent alert. Previously each action silently swallowed the boolean
+  // return, leaving the UI stale and the user convinced the action had succeeded
+  // (e.g. the counter-offer "no-op" bug). Wraps any Promise<boolean> store call.
+  const runNegotiationAction = useCallback(
+    async (label: string, fn: () => Promise<boolean>, onSuccess?: () => void): Promise<boolean> => {
+      try {
+        const ok = await fn();
+        if (!ok) {
+          setRequests(getOptionRequests());
+          showAppAlert(
+            uiCopy.optionNegotiationChat.negotiationActionFailedTitle,
+            uiCopy.optionNegotiationChat.negotiationActionFailedMessage,
+          );
+          return false;
+        }
+        onSuccess?.();
+        setRequests(getOptionRequests());
+        showNegotiationCalendarHint();
+        return true;
+      } catch (e) {
+        console.error(`runNegotiationAction(${label}) exception`, e);
+        setRequests(getOptionRequests());
+        showAppAlert(
+          uiCopy.optionNegotiationChat.negotiationActionFailedTitle,
+          uiCopy.optionNegotiationChat.negotiationActionFailedMessage,
+        );
+        return false;
+      }
+    },
+    [showNegotiationCalendarHint],
+  );
+
   const runAgencyConfirmAvailability = useCallback(async () => {
     if (!request?.threadId) return;
-    await agencyConfirmAvailabilityStore(request.threadId);
-    setRequests(getOptionRequests());
-    showNegotiationCalendarHint();
-  }, [request?.threadId, showNegotiationCalendarHint]);
+    await runNegotiationAction('agencyConfirmAvailability', () =>
+      agencyConfirmAvailabilityStore(request.threadId!),
+    );
+  }, [request?.threadId, runNegotiationAction]);
 
   const runAgencyAcceptClientPrice = useCallback(async () => {
     if (!request?.threadId) return;
-    await agencyAcceptClientPriceStore(request.threadId);
-    setRequests(getOptionRequests());
-    showNegotiationCalendarHint();
-  }, [request?.threadId, showNegotiationCalendarHint]);
+    await runNegotiationAction('agencyAcceptClientPrice', () =>
+      agencyAcceptClientPriceStore(request.threadId!),
+    );
+  }, [request?.threadId, runNegotiationAction]);
 
   const runAgencyRejectClientPrice = useCallback(async () => {
     if (!request?.threadId) return;
-    await agencyRejectClientPriceStore(request.threadId);
-    setRequests(getOptionRequests());
-    showNegotiationCalendarHint();
-  }, [request?.threadId, showNegotiationCalendarHint]);
+    await runNegotiationAction('agencyRejectClientPrice', () =>
+      agencyRejectClientPriceStore(request.threadId!),
+    );
+  }, [request?.threadId, runNegotiationAction]);
 
   const runAgencyCounterOffer = useCallback(
     async (amount: number) => {
       if (!request?.threadId) return;
-      await agencyCounterOfferStore(request.threadId, amount, currency);
+      // Counter-offer has its OWN dedicated copy so users can distinguish the most
+      // common failure mode (request no longer in_negotiation). Use the dedicated
+      // alert when the underlying store reports failure; otherwise reset input.
+      const ok = await agencyCounterOfferStore(request.threadId, amount, currency);
+      if (!ok) {
+        setRequests(getOptionRequests());
+        showAppAlert(
+          uiCopy.optionNegotiationChat.negotiationActionFailedTitle,
+          uiCopy.optionNegotiationChat.counterOfferFailedNotInNegotiation,
+        );
+        return;
+      }
       setAgencyCounterInput('');
       setNegotiationCounterExpanded(false);
       setRequests(getOptionRequests());
@@ -6170,24 +6224,22 @@ const MessagesView: React.FC<MessagesViewProps> = ({
 
   const runClientAcceptCounter = useCallback(async () => {
     if (!request?.threadId) return;
-    await clientAcceptCounterStore(request.threadId);
-    setRequests(getOptionRequests());
-    showNegotiationCalendarHint();
-  }, [request?.threadId, showNegotiationCalendarHint]);
+    await runNegotiationAction('clientAcceptCounter', () =>
+      clientAcceptCounterStore(request.threadId!),
+    );
+  }, [request?.threadId, runNegotiationAction]);
 
   const runClientConfirmJob = useCallback(async () => {
     if (!request?.threadId) return;
-    await clientConfirmJobStore(request.threadId);
-    setRequests(getOptionRequests());
-    showNegotiationCalendarHint();
-  }, [request?.threadId, showNegotiationCalendarHint]);
+    await runNegotiationAction('clientConfirmJob', () => clientConfirmJobStore(request.threadId!));
+  }, [request?.threadId, runNegotiationAction]);
 
   const runAgencyConfirmJobAgencyOnly = useCallback(async () => {
     if (!request?.threadId) return;
-    await agencyConfirmJobAgencyOnlyStore(request.threadId);
-    setRequests(getOptionRequests());
-    showNegotiationCalendarHint();
-  }, [request?.threadId, showNegotiationCalendarHint]);
+    await runNegotiationAction('agencyConfirmJobAgencyOnly', () =>
+      agencyConfirmJobAgencyOnlyStore(request.threadId!),
+    );
+  }, [request?.threadId, runNegotiationAction]);
 
   const openRejectCounterModal = useCallback(async () => {
     if (!request?.threadId) return;

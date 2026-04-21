@@ -127,14 +127,26 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   const isAgencyOnlyRequest = request.isAgencyOnly === true;
   const priceLocked = isAgencyOnlyRequest || priceCommerciallySettledForUi(signals);
   const isMobileNative = Platform.OS !== 'web';
+  // The DB RPC `agency_set_counter_offer` (and other negotiation RPCs) requires
+  // status='in_negotiation'. Once the model approves availability the row is flipped
+  // to status='confirmed' (not yet job_confirmed), and any further price negotiation
+  // RPCs would fail with `not_in_negotiation`. We therefore hide all price-negotiation
+  // CTAs (counter offer, accept/reject proposed price) once status leaves
+  // 'in_negotiation'. The job-confirmation CTA must still be reachable, so we keep
+  // `isTerminal` strictly limited to the historical terminal states.
+  const negotiationOpen = status === 'in_negotiation';
   const agencyAwaitingClientOnCounter =
     isAgency &&
     !isAgencyOnlyRequest &&
     !priceLocked &&
+    // negotiationOpen already implies status === 'in_negotiation', so the
+    // historic `status !== 'rejected'` guard is redundant (TS even flags it
+    // as unintentional). The other negotiationOpen guards on this view rely
+    // on the same narrowing — keep them aligned.
+    negotiationOpen &&
     agencyCounterPrice != null &&
     clientPriceStatus === 'pending' &&
-    finalStatus !== 'job_confirmed' &&
-    status !== 'rejected';
+    finalStatus !== 'job_confirmed';
 
   const isTerminal = finalStatus === 'job_confirmed' || status === 'rejected';
   const availabilityNotYetConfirmed =
@@ -378,57 +390,62 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
       )}
 
       {/* ── Axis 1: Price actions (Accept + inline counter) ── */}
-      {isAgency && !priceLocked && !agencyAwaitingClientOnCounter && !isTerminal && (
-        <>
-          {request.proposedPrice != null &&
-          clientPriceStatus === 'pending' &&
-          agencyCounterPrice == null ? (
-            <View
-              style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                gap: spacing.sm,
-                marginBottom: spacing.sm,
-              }}
-            >
-              <TouchableOpacity
-                style={[
-                  styles.filterPill,
-                  { backgroundColor: colors.accentBrown },
-                  busy && { opacity: 0.5 },
-                ]}
-                disabled={busy}
-                onPress={() => {
-                  void onAgencyAcceptClientPrice();
+      {isAgency &&
+        !priceLocked &&
+        !agencyAwaitingClientOnCounter &&
+        !isTerminal &&
+        negotiationOpen && (
+          <>
+            {request.proposedPrice != null &&
+            clientPriceStatus === 'pending' &&
+            agencyCounterPrice == null ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: spacing.sm,
+                  marginBottom: spacing.sm,
                 }}
               >
-                <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
-                  {uiCopy.optionNegotiationChat.acceptProposedFee}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.filterPill,
-                  { borderWidth: 1, borderColor: colors.buttonSkipRed },
-                  busy && { opacity: 0.5 },
-                ]}
-                disabled={busy}
-                onPress={() => {
-                  void onAgencyRejectClientPrice();
-                }}
-              >
-                <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>
-                  {uiCopy.optionNegotiationChat.declineProposedFee}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
-        </>
-      )}
+                <TouchableOpacity
+                  style={[
+                    styles.filterPill,
+                    { backgroundColor: colors.accentBrown },
+                    busy && { opacity: 0.5 },
+                  ]}
+                  disabled={busy}
+                  onPress={() => {
+                    void onAgencyAcceptClientPrice();
+                  }}
+                >
+                  <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
+                    {uiCopy.optionNegotiationChat.acceptProposedFee}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.filterPill,
+                    { borderWidth: 1, borderColor: colors.buttonSkipRed },
+                    busy && { opacity: 0.5 },
+                  ]}
+                  disabled={busy}
+                  onPress={() => {
+                    void onAgencyRejectClientPrice();
+                  }}
+                >
+                  <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>
+                    {uiCopy.optionNegotiationChat.declineProposedFee}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </>
+        )}
 
       {/* ── Counter-offer input (pending proposed — always visible when price is pending) ── */}
       {isAgency &&
         !priceLocked &&
+        negotiationOpen &&
         clientPriceStatus === 'pending' &&
         request.proposedPrice != null &&
         agencyCounterPrice == null &&
@@ -487,6 +504,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
       {isAgency &&
         negotiationCounterExpanded &&
         !priceLocked &&
+        negotiationOpen &&
         clientPriceStatus === 'rejected' &&
         !isTerminal && (
           <View style={styles.counterBox}>
@@ -544,6 +562,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
       {isAgency &&
         negotiationCounterExpanded &&
         !priceLocked &&
+        negotiationOpen &&
         clientPriceStatus === 'pending' &&
         !isTerminal &&
         request.proposedPrice == null && (
@@ -772,6 +791,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
       {/* ── Client: accept agency counter (price only) ── */}
       {!isAgency &&
         !priceLocked &&
+        negotiationOpen &&
         agencyCounterPrice != null &&
         clientPriceStatus === 'pending' &&
         !isTerminal && (

@@ -12,12 +12,7 @@
 
 import { validateText, sanitizeHtml, escapeHtml } from '../text';
 import { validateUrl, extractSafeUrls, safeLinkProps } from '../url';
-import {
-  validateFile,
-  checkMagicBytes,
-  MAX_FILE_SIZE_BYTES,
-  ALLOWED_MIME_TYPES,
-} from '../file';
+import { validateFile, checkMagicBytes, MAX_FILE_SIZE_BYTES, ALLOWED_MIME_TYPES } from '../file';
 import { RateLimiter, messageLimiter, uploadLimiter } from '../rateLimit';
 
 // ---------------------------------------------------------------------------
@@ -93,7 +88,7 @@ describe('URL validation', () => {
     'file:///etc/passwd',
     'blob:https://example.com/some-id',
     'ftp://example.com/file',
-    'http://example.com',    // http (non-https) blocked
+    'http://example.com', // http (non-https) blocked
     'not-a-url',
     '',
   ];
@@ -157,6 +152,41 @@ describe('File size validation', () => {
   });
 });
 
+describe('validateFile — empty file.type recovery from filename extension', () => {
+  // Windows / Linux Chrome reports an empty MIME for HEIC files exported from iPhones.
+  // Without filename-based recovery, every iPhone HEIC upload was rejected BEFORE the
+  // HEIC→JPEG conversion pipeline could run.
+  test('recovers image/heic from .heic when file.type is empty', () => {
+    const f = new File(
+      [new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63])],
+      'photo.HEIC',
+      { type: '' },
+    );
+    expect(validateFile(f).ok).toBe(true);
+  });
+
+  test('recovers image/heif from .heif when file.type is empty', () => {
+    const f = new File(
+      [new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x66])],
+      'photo.heif',
+      { type: '' },
+    );
+    expect(validateFile(f).ok).toBe(true);
+  });
+
+  test('still rejects File with empty type and unknown extension', () => {
+    const f = new File([new Uint8Array([0x01, 0x02])], 'mystery.xyz', { type: '' });
+    const r = validateFile(f);
+    expect(r.ok).toBe(false);
+  });
+
+  test('Blob with empty type (no filename) is still rejected', () => {
+    const b = new Blob([new Uint8Array([0x01])], { type: '' });
+    const r = validateFile(b);
+    expect(r.ok).toBe(false);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 4. Fake file type (renamed executable) → rejected
 // ---------------------------------------------------------------------------
@@ -180,25 +210,28 @@ describe('Magic bytes validation (fake file type)', () => {
   });
 
   test('checkMagicBytes accepts real JPEG magic bytes', async () => {
-    const realJpeg = makeBlobWithBytes('image/jpeg', [
-      0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
-    ]);
+    const realJpeg = makeBlobWithBytes(
+      'image/jpeg',
+      [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01],
+    );
     const result = await checkMagicBytes(realJpeg);
     expect(result.ok).toBe(true);
   });
 
   test('checkMagicBytes accepts real PNG magic bytes', async () => {
-    const realPng = makeBlobWithBytes('image/png', [
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00,
-    ]);
+    const realPng = makeBlobWithBytes(
+      'image/png',
+      [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00],
+    );
     const result = await checkMagicBytes(realPng);
     expect(result.ok).toBe(true);
   });
 
   test('checkMagicBytes accepts real PDF magic bytes', async () => {
-    const realPdf = makeBlobWithBytes('application/pdf', [
-      0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34,
-    ]);
+    const realPdf = makeBlobWithBytes(
+      'application/pdf',
+      [0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34],
+    );
     const result = await checkMagicBytes(realPdf);
     expect(result.ok).toBe(true);
   });
@@ -206,9 +239,18 @@ describe('Magic bytes validation (fake file type)', () => {
   test('checkMagicBytes accepts real HEIC magic bytes (ftyp box + heic brand)', async () => {
     // box size (4 bytes) + "ftyp" + "heic" brand
     const realHeic = makeBlobWithBytes('image/heic', [
-      0x00, 0x00, 0x00, 0x18, // box size = 24
-      0x66, 0x74, 0x79, 0x70, // "ftyp"
-      0x68, 0x65, 0x69, 0x63, // "heic" brand
+      0x00,
+      0x00,
+      0x00,
+      0x18, // box size = 24
+      0x66,
+      0x74,
+      0x79,
+      0x70, // "ftyp"
+      0x68,
+      0x65,
+      0x69,
+      0x63, // "heic" brand
     ]);
     const result = await checkMagicBytes(realHeic);
     expect(result.ok).toBe(true);
@@ -216,9 +258,18 @@ describe('Magic bytes validation (fake file type)', () => {
 
   test('checkMagicBytes accepts HEIF magic bytes (mif1 brand)', async () => {
     const realHeif = makeBlobWithBytes('image/heif', [
-      0x00, 0x00, 0x00, 0x18,
-      0x66, 0x74, 0x79, 0x70, // "ftyp"
-      0x6d, 0x69, 0x66, 0x31, // "mif1" brand
+      0x00,
+      0x00,
+      0x00,
+      0x18,
+      0x66,
+      0x74,
+      0x79,
+      0x70, // "ftyp"
+      0x6d,
+      0x69,
+      0x66,
+      0x31, // "mif1" brand
     ]);
     const result = await checkMagicBytes(realHeif);
     expect(result.ok).toBe(true);
@@ -227,9 +278,18 @@ describe('Magic bytes validation (fake file type)', () => {
   test('checkMagicBytes rejects file claiming image/heic but missing ftyp box', async () => {
     // Random bytes — no ftyp at offset 4
     const fakeHeic = makeBlobWithBytes('image/heic', [
-      0x00, 0x00, 0x00, 0x18,
-      0x4d, 0x5a, 0x00, 0x00, // "MZ" (PE header, not ftyp)
-      0x00, 0x00, 0x00, 0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x18,
+      0x4d,
+      0x5a,
+      0x00,
+      0x00, // "MZ" (PE header, not ftyp)
+      0x00,
+      0x00,
+      0x00,
+      0x00,
     ]);
     const result = await checkMagicBytes(fakeHeic);
     expect(result.ok).toBe(false);
@@ -402,7 +462,8 @@ describe('Signed URL guard (download security)', () => {
   });
 
   test('legacy public URL is rewritten to storage path before signing', () => {
-    const legacyUrl = 'https://project.supabase.co/storage/v1/object/public/chat-files/chat/abc/file.jpg';
+    const legacyUrl =
+      'https://project.supabase.co/storage/v1/object/public/chat-files/chat/abc/file.jpg';
     const storagePath = legacyUrl.includes('/storage/v1/object/public/chat-files/')
       ? legacyUrl.split('/storage/v1/object/public/chat-files/')[1]
       : legacyUrl;

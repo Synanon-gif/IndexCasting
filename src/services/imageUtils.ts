@@ -51,20 +51,62 @@ export function isHeicOrHeifFile(file: File | Blob): boolean {
  * Converts HEIC/HEIF to JPEG. Non-HEIC files are returned with conversionFailed: false.
  * Callers can show UX when conversionFailed is true (browser cannot process this file).
  *
- * **Web:** `heic2any` is not bundled reliably (dynamic import can fail). HEIC/HEIF returns
- * `conversionFailed: true` without attempting conversion — callers must show explicit UX.
+ * Works on:
+ *   - Web (browser): dynamic-imports `heic2any` (browser-only, uses Canvas + WebAssembly).
+ *   - Native (iOS/Android via Capacitor/Expo Web): same dynamic import — heic2any only
+ *     runs in WebView contexts.
+ *
+ * Defense-in-depth:
+ *   - If `heic2any` cannot be imported (e.g. no Canvas in test env, SSR, ad-blocker), we
+ *     return `conversionFailed: true` so callers can render explicit UX rather than
+ *     silently uploading an unviewable HEIC.
+ *   - Empty buffers / corrupt files surface as `conversionFailed: true` (heic2any throws).
+ *   - On true React Native (no DOM Canvas) `Platform.OS === 'ios' | 'android'`, heic2any
+ *     is not loaded and we return `conversionFailed: true` — the native picker should
+ *     have already converted to JPEG, but if not, callers must surface the failure.
  */
 export async function convertHeicToJpegWithStatus(file: File | Blob): Promise<HeicConvertResult> {
   if (!isHeicOrHeifFile(file)) {
     return { file, conversionFailed: false };
   }
 
-  if (Platform.OS === 'web') {
+  // True React Native (not the web shim) cannot run heic2any — bail without attempting.
+  if (Platform.OS === 'ios' || Platform.OS === 'android') {
+    return { file, conversionFailed: true };
+  }
+
+  // Web (and Capacitor WebView, which still reports OS='web' via react-native-web).
+  // Empty / zero-byte files cannot be converted — short-circuit so test doubles and
+  // adversarial inputs don't crash heic2any internally.
+  const sizeOk = (file as File).size === undefined ? true : (file as File).size > 0;
+  if (!sizeOk) {
+    return { file, conversionFailed: true };
+  }
+
+  let heic2any:
+    | ((opts: { blob: Blob; toType?: string; quality?: number }) => Promise<Blob | Blob[]>)
+    | null = null;
+  try {
+    const mod = (await import('heic2any')) as
+      | {
+          default?: (opts: {
+            blob: Blob;
+            toType?: string;
+            quality?: number;
+          }) => Promise<Blob | Blob[]>;
+        }
+      | ((opts: { blob: Blob; toType?: string; quality?: number }) => Promise<Blob | Blob[]>);
+    heic2any = (typeof mod === 'function' ? mod : mod.default) ?? null;
+  } catch (e) {
+    console.warn('convertHeicToJpegWithStatus: heic2any module failed to load', e);
+    return { file, conversionFailed: true };
+  }
+
+  if (!heic2any) {
     return { file, conversionFailed: true };
   }
 
   try {
-    const heic2any = (await import('heic2any')).default;
     const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
     const resultBlob = Array.isArray(converted) ? converted[0] : converted;
     const originalName = file instanceof File ? file.name : 'photo.heic';
