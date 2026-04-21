@@ -176,12 +176,35 @@ export type PreviewModel = {
   warnings: string[];
 };
 
+/**
+ * Single territory claim per (country, agency) — duplicated locally to avoid a
+ * cyclic import on `modelsImportSupabase` (which itself imports from this file
+ * indirectly via `packageImporter`). Same shape as `ModelMergeTerritoryInput`.
+ */
+export type CommitTerritoryClaim = {
+  country_code: string;
+  agency_id: string;
+};
+
 export type CommitOptions = {
   /**
    * Wenn true und das Model via mediaslide_sync_id matcht, werden Maße immer überschrieben.
    * Default: false → bestehende Werte bleiben, nur Lücken werden gefüllt.
    */
   forceUpdateMeasurements?: boolean;
+  /**
+   * Territory-Claims, die JEDEM importierten Model angeheftet werden. Pflicht für
+   * neu angelegte Models, weil unser Roster-Read (`getModelsForAgencyFromSupabase`)
+   * über `model_agency_territories` (MAT) gated ist. Models ohne MAT-Eintrag für
+   * die aktuelle Agency erscheinen NICHT in "My Models" und sind in der UI
+   * unsichtbar — das ist gewollt (fail-closed Roster-Sicherheit), erfordert aber,
+   * dass der Importer beim Anlegen mindestens einen Territory-Claim setzt.
+   *
+   * Wird `undefined` oder leer übergeben, läuft der Importer ohne Territory-
+   * Anlegung (Legacy-/Test-Verhalten); die UI verlangt aktiv mindestens einen
+   * Eintrag, um genau dieses Loch zu schließen.
+   */
+  territories?: CommitTerritoryClaim[];
   /**
    * Phase 2 — Bild-Mirror.
    *

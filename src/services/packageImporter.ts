@@ -257,6 +257,19 @@ export function previewToImportPayload(input: {
   const netwalkModelId: string | undefined =
     preview.externalProvider === 'netwalk' ? preview.externalId : undefined;
 
+  // Territory-Claims werden 1:1 weitergereicht; `agency_id` wird hier hart auf
+  // den `agencyId`-Parameter gesetzt, damit ein UI-Bug (oder ein älterer
+  // Caller, der eine fremde agency_id mitschickt) NIE in eine fremde
+  // Agency-Roster injizieren kann. Ohne diese Defense-in-Depth wäre `territories`
+  // ein Vehikel, das die Agency-Bindung des restlichen Payloads umgehen könnte.
+  const sanitizedTerritories = (options.territories ?? [])
+    .map((t) => {
+      const cc = (t.country_code ?? '').trim().toUpperCase();
+      if (!cc) return null;
+      return { country_code: cc, agency_id: agencyId };
+    })
+    .filter((t): t is { country_code: string; agency_id: string } => t !== null);
+
   return {
     mediaslide_sync_id: mediaslideSyncId,
     netwalk_model_id: netwalkModelId,
@@ -275,6 +288,7 @@ export function previewToImportPayload(input: {
     polaroids: preview.polaroid_image_urls,
     forceUpdateMeasurements: options.forceUpdateMeasurements ?? false,
     photo_source: photoSource,
+    ...(sanitizedTerritories.length > 0 ? { territories: sanitizedTerritories } : {}),
   };
 }
 

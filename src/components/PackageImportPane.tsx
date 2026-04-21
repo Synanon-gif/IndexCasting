@@ -1,23 +1,26 @@
 /**
- * PackageImportPane — Agency-facing UI für den MediaSlide Package Import (Phase 2).
+ * PackageImportPane — Agency-facing UI for the MediaSlide / Netwalk Package
+ * Import (Phase 2). All copy is English by design — the rest of the agency
+ * controller surface is English too, and the package import is a deeply
+ * agency-internal flow so we never localise it ad-hoc.
  *
- * Zustände (State Machine):
+ * State machine:
  *   idle → analyzing → previewing → committing → done
  *
- * Designprinzipien:
- *  - Ehrliche Statusanzeige: Fortschritt, Anzahl Models, Anzahl Bilder, Warnungen.
- *  - Phase 2: Bilder werden beim Commit kontrolliert heruntergeladen, validiert
- *    und in unseren Storage persistiert (`model_photos` + Mirror-Rebuild). Das
- *    Model bleibt damit unabhängig vom externen Provider, sobald der Import
- *    durch ist. Der Commit-Schritt dauert dadurch deutlich länger als die
- *    reine Modell-Anlage; die UI zeigt pro Bild Fortschritt, partielle
- *    Fehlertypen und persistierte Bildanzahl pro Model.
- *  - Vor dem Commit kann die Agency Models einzeln deselektieren.
- *  - Cancel-Button (AbortController) während Analyse + Commit. Cancel wirkt
- *    zwischen Bildern bzw. zwischen Models — kein Mid-Image-Rollback.
- *  - Pure Komponente: KEINE direkten DB-Zugriffe; orchestriert über `commitPreview`,
- *    das `importModelAndMerge` und anschließend `persistImagesForPackageImport`
- *    aufruft (RLS / Org-Scoping / GDPR-Audit bleiben erhalten).
+ * Design principles:
+ *  - Honest status display: progress, model count, image count, warnings.
+ *  - Phase 2: images are downloaded under control, validated, and persisted to
+ *    our storage (`model_photos` + mirror rebuild) during commit. The model
+ *    is independent of the external provider once the commit is done.
+ *  - Territory claim: every imported model MUST be claimed for at least one
+ *    territory (ISO-2 country code). Without a `model_agency_territories`
+ *    row the model is created but invisible in "My Models" because the roster
+ *    read is fail-closed on MAT (see `getModelsForAgencyFromSupabase`).
+ *  - Cancel button (AbortController) during analyze + commit. Cancel takes
+ *    effect between images / between models — no mid-image rollback.
+ *  - Pure component: NO direct DB access; all orchestration via
+ *    `commitPreview`, which calls `importModelAndMerge` and then
+ *    `persistImagesForPackageImport` (RLS / org scoping / GDPR audit kept).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -40,16 +43,26 @@ import {
   type CommitOutcome,
   type CommitProgress,
   type CommitSummary,
+  type CommitTerritoryClaim,
   type DriftResult,
   type PackageProvider,
   type PreviewModel,
 } from '../services/packageImportTypes';
 import { commitPreview, toPreviewModels } from '../services/packageImporter';
+import { deriveDefaultTerritoryInput, parseTerritoryInput } from './PackageImportPane.utils';
 
 type Props = {
   agencyId: string;
-  /** Wird aufgerufen, wenn min. 1 Model angelegt/aktualisiert wurde. */
+  /** Called when at least one model was created or updated. */
   onModelsChanged?: () => void;
+  /**
+   * Optional: default territory (free-form country string from `agencies.country`).
+   * Used to pre-fill the territory input. We normalise to ISO-2 by uppercase +
+   * truncating to 2 chars when the value already looks like an ISO-2 code; for
+   * a long country name we leave the input empty and let the user type the
+   * code explicitly (no incorrect auto-mapping).
+   */
+  defaultTerritory?: string | null;
 };
 
 type Phase =
@@ -61,7 +74,11 @@ type Phase =
   | 'drift_blocked'
   | 'drift_override_confirm';
 
-export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }) => {
+export const PackageImportPane: React.FC<Props> = ({
+  agencyId,
+  onModelsChanged,
+  defaultTerritory,
+}) => {
   const [phase, setPhase] = useState<Phase>('idle');
   const [url, setUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +87,9 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
   const [previews, setPreviews] = useState<PreviewModel[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [forceMeasurements, setForceMeasurements] = useState(false);
+  const [territoriesInput, setTerritoriesInput] = useState<string>(() =>
+    deriveDefaultTerritoryInput(defaultTerritory),
+  );
 
   const [commitProgress, setCommitProgress] = useState<CommitProgress | null>(null);
   const [summary, setSummary] = useState<CommitSummary | null>(null);
@@ -87,6 +107,10 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
 
   const totalReady = useMemo(() => previews.filter((p) => p.status === 'ready').length, [previews]);
   const totalSkipped = previews.length - totalReady;
+  const parsedTerritories = useMemo(
+    () => parseTerritoryInput(territoriesInput),
+    [territoriesInput],
+  );
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
@@ -100,6 +124,7 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
     setSummary(null);
     setDrift(null);
     setOverrideText('');
+    // Keep territoriesInput between runs — likely the same agency, same default.
   }, []);
 
   const runAnalyze = useCallback(
@@ -119,7 +144,7 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
         });
         if (payloads.length > PACKAGE_IMPORT_LIMITS.MAX_MODELS_PER_RUN) {
           throw new Error(
-            `Package enthält ${payloads.length} Models (Limit ${PACKAGE_IMPORT_LIMITS.MAX_MODELS_PER_RUN}).`,
+            `Package contains ${payloads.length} models (limit ${PACKAGE_IMPORT_LIMITS.MAX_MODELS_PER_RUN}).`,
           );
         }
         const built = toPreviewModels(payloads);
@@ -150,11 +175,11 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
     setError(null);
     setDrift(null);
     if (!url.trim()) {
-      setError('Bitte gib einen Package-Link ein (MediaSlide oder Netwalk).');
+      setError('Please enter a package link (MediaSlide or Netwalk).');
       return;
     }
     if (!agencyId) {
-      setError('Keine Agency-Zuordnung gefunden.');
+      setError('No agency context found.');
       return;
     }
 
@@ -185,11 +210,10 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
       setPhase('idle');
       return;
     }
-    // Drift-Override: Re-Analyse mit allowDriftBypass=true. Drift-Banner bleibt
-    // sichtbar (drift state wird nicht gelöscht). ABER: der Importer wendet
-    // weiterhin alle Pflichtfeld-Checks an (`missing_external_id`, `missing_name`,
-    // `missing_height`, `no_images`, `forceSkipReason`). Damit bleibt die DB
-    // selbst im Override-Pfad sicher.
+    // Drift override: re-analyze with allowDriftBypass=true. The drift banner stays
+    // visible (we don't clear `drift`). The importer still applies all required-field
+    // checks (`missing_external_id`, `missing_name`, `missing_height`, `no_images`,
+    // `forceSkipReason`) so the DB is safe even on the override path.
     setOverrideText('');
     await runAnalyze(provider, true);
   }, [overrideText, url, runAnalyze]);
@@ -198,7 +222,14 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
     if (phase !== 'previewing') return;
     const toCommit = previews.filter((p) => p.status === 'ready' && selected.has(p.externalId));
     if (toCommit.length === 0) {
-      setError('Bitte mindestens ein Model auswählen.');
+      setError('Please select at least one model.');
+      return;
+    }
+    if (parsedTerritories.length === 0) {
+      // Block commit when no territory is provided. Without a territory the
+      // model would be created but invisible in "My Models" (roster query is
+      // fail-closed on `model_agency_territories`).
+      setError('Please enter at least one territory (ISO-2 country code, e.g. "AT" or "AT, DE").');
       return;
     }
     setError(null);
@@ -208,20 +239,26 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
     setCommitProgress({ total: toCommit.length, done: 0 });
 
     try {
+      const territoryClaims: CommitTerritoryClaim[] = parsedTerritories.map((cc) => ({
+        country_code: cc,
+        agency_id: agencyId,
+      }));
+
       const result = await commitPreview({
         selected: toCommit,
         agencyId,
         options: {
           forceUpdateMeasurements: forceMeasurements,
-          // Phase 2: physische Bild-Persistenz aktiv. UI-Default → true.
-          // Tests können das via direktem Service-Aufruf umgehen.
+          // Phase 2: physical image persistence active. UI default → true.
+          // Tests can bypass this via the direct service call.
           persistImages: true,
+          territories: territoryClaims,
         },
         signal: ctrl.signal,
         onProgress: (p) => setCommitProgress(p),
-        // Auf Web routen wir Bild-Downloads über `package-image-proxy`,
-        // weil der MediaSlide-GCS-Bucket kein CORS sendet. Auf Native
-        // bleibt der Direkt-Fetch erhalten (kein CORS, weniger Hops).
+        // On Web, route image downloads through `package-image-proxy` because
+        // the MediaSlide GCS bucket sends no CORS header. On Native we keep
+        // the direct fetch (no CORS, fewer hops).
         ...(Platform.OS === 'web' ? { imageFetchImpl: createSupabasePackageImageFetchImpl() } : {}),
       });
       setSummary(result);
@@ -235,7 +272,7 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
     } finally {
       if (abortRef.current === ctrl) abortRef.current = null;
     }
-  }, [phase, previews, selected, agencyId, forceMeasurements, onModelsChanged]);
+  }, [phase, previews, selected, agencyId, forceMeasurements, onModelsChanged, parsedTerritories]);
 
   const handleCancel = useCallback(() => {
     abortRef.current?.abort();
@@ -252,18 +289,18 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>MediaSlide Package importieren</Text>
+      <Text style={styles.title}>Import MediaSlide Package</Text>
       <Text style={styles.description}>
-        Füge einen MediaSlide-Package-Link ein. Wir lesen Models, Maße und Bild-URLs aus und zeigen
-        sie dir vor dem Anlegen zur Bestätigung.
+        Paste a MediaSlide package link. We read models, measurements and image URLs and show them
+        for your confirmation before anything is created.
       </Text>
       <Text style={styles.hint}>
-        Hinweis (Phase 2 aktiv): Bilder werden beim Import kontrolliert in unseren Storage kopiert
-        (HEIC→JPEG, EXIF entfernt, MIME/Magic-Bytes geprüft). Das importierte Model bleibt damit
-        unabhängig vom Package — auch wenn der Link später deaktiviert wird. Der Commit dauert
-        dadurch länger; partielle Bild-Fehler werden pro Model gemeldet. Cap pro Model: max.{' '}
-        {PACKAGE_IMPORT_LIMITS.MAX_PORTFOLIO_IMAGES_PER_MODEL} Portfolio +{' '}
-        {PACKAGE_IMPORT_LIMITS.MAX_POLAROIDS_PER_MODEL} Polaroids.
+        Note (Phase 2 active): images are copied into our storage during import (HEIC→JPEG, EXIF
+        stripped, MIME / magic bytes verified). The imported model stays independent of the package
+        — even if the link is later deactivated. The commit takes longer because of this; partial
+        image errors are reported per model. Cap per model: max.{' '}
+        {PACKAGE_IMPORT_LIMITS.MAX_PORTFOLIO_IMAGES_PER_MODEL} portfolio +{' '}
+        {PACKAGE_IMPORT_LIMITS.MAX_POLAROIDS_PER_MODEL} polaroids.
       </Text>
 
       {phase === 'idle' && (
@@ -283,7 +320,7 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
             onPress={handleAnalyze}
             disabled={!url.trim() || !agencyId}
           >
-            <Text style={styles.primaryBtnLabel}>Package analysieren</Text>
+            <Text style={styles.primaryBtnLabel}>Analyze package</Text>
           </TouchableOpacity>
           {error && <Text style={styles.errorText}>{error}</Text>}
         </>
@@ -294,10 +331,10 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
           <ActivityIndicator size="small" color={colors.accentGreen} />
           <Text style={styles.progressText}>{renderAnalyzeLabel(analyzeProgress)}</Text>
           <Text style={styles.subtleNote}>
-            Bei vielen Models kann das mehrere Minuten dauern (1 HTTP pro Album).
+            With many models this can take several minutes (1 HTTP per album).
           </Text>
           <TouchableOpacity style={styles.secondaryBtn} onPress={handleCancel}>
-            <Text style={styles.secondaryBtnLabel}>Abbrechen</Text>
+            <Text style={styles.secondaryBtnLabel}>Cancel</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -306,21 +343,21 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
         <View style={{ marginTop: spacing.md }}>
           <DriftBanner drift={drift} severity="hard_block" />
           <Text style={styles.warnText}>
-            Aus Sicherheitsgründen wurde der Import blockiert. Es kann sein, dass{' '}
-            {drift.providerId === 'mediaslide' ? 'MediaSlide' : drift.providerId} sein Layout
-            geändert hat. Du kannst manuell überschreiben — der Importer schützt die DB weiterhin
-            durch Pflichtfeld-Checks (Höhe, Bilder, externalId).
+            Import was blocked for safety. It looks like{' '}
+            {drift.providerId === 'mediaslide' ? 'MediaSlide' : drift.providerId} may have changed
+            its layout. You can override manually — the importer still protects the DB through
+            required-field checks (height, images, externalId).
           </Text>
           <View style={[styles.row, { marginTop: spacing.md, gap: spacing.sm }]}>
             <TouchableOpacity style={styles.secondaryBtn} onPress={reset}>
-              <Text style={styles.secondaryBtnLabel}>Abbrechen</Text>
+              <Text style={styles.secondaryBtnLabel}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.secondaryBtn, { borderColor: colors.buttonSkipRed }]}
               onPress={handleOverrideRequest}
             >
               <Text style={[styles.secondaryBtnLabel, { color: colors.buttonSkipRed }]}>
-                Override anfordern…
+                Request override…
               </Text>
             </TouchableOpacity>
           </View>
@@ -331,9 +368,9 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
         <View style={{ marginTop: spacing.md }}>
           <DriftBanner drift={drift} severity="hard_block" />
           <Text style={styles.warnText}>
-            Du übersteuerst eine harte Drift-Warnung. Tippe das Wort{' '}
-            <Text style={{ fontWeight: '700' }}>OVERRIDE</Text> ein, um trotzdem zu analysieren. Der
-            Drift bleibt für diesen Lauf protokolliert.
+            You are overriding a hard drift warning. Type the word{' '}
+            <Text style={{ fontWeight: '700' }}>OVERRIDE</Text> to analyse anyway. The drift remains
+            logged for this run.
           </Text>
           <TextInput
             style={styles.input}
@@ -346,7 +383,7 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
           />
           <View style={[styles.row, { marginTop: spacing.sm, gap: spacing.sm }]}>
             <TouchableOpacity style={styles.secondaryBtn} onPress={handleOverrideCancel}>
-              <Text style={styles.secondaryBtnLabel}>Zurück</Text>
+              <Text style={styles.secondaryBtnLabel}>Back</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[
@@ -357,7 +394,7 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
               onPress={handleOverrideConfirm}
               disabled={overrideText.trim().toUpperCase() !== 'OVERRIDE'}
             >
-              <Text style={styles.primaryBtnLabel}>Override bestätigen</Text>
+              <Text style={styles.primaryBtnLabel}>Confirm override</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -369,13 +406,13 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
             <DriftBanner drift={drift} severity={drift.severity} />
           )}
           <Text style={styles.subtitle}>
-            Erkannt: {previews.length} Model(s) — bereit: {totalReady}
-            {totalSkipped > 0 ? `, übersprungen: ${totalSkipped}` : ''}
+            Detected: {previews.length} model(s) — ready: {totalReady}
+            {totalSkipped > 0 ? `, skipped: ${totalSkipped}` : ''}
           </Text>
           {previews.length > PACKAGE_IMPORT_LIMITS.SOFT_MODELS_PER_RUN && (
             <Text style={styles.warnText}>
-              Großer Import ({previews.length} Models). Der Vorgang läuft sequentiell und kann
-              mehrere Minuten dauern.
+              Large import ({previews.length} models). The run is sequential and can take several
+              minutes.
             </Text>
           )}
           {previews.map((p) => (
@@ -387,6 +424,26 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
             />
           ))}
 
+          <View style={{ marginTop: spacing.md }}>
+            <Text style={styles.fieldLabel}>
+              Territory (ISO-2 country codes, comma-separated)
+              {parsedTerritories.length > 0 ? ` — ${parsedTerritories.join(', ')}` : ''}
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. AT, DE"
+              placeholderTextColor={colors.textSecondary}
+              value={territoriesInput}
+              onChangeText={setTerritoriesInput}
+              autoCapitalize="characters"
+              autoCorrect={false}
+            />
+            <Text style={styles.subtleNote}>
+              Required. Each imported model is claimed for these territories so it appears in "My
+              Models". You can edit territories per model later.
+            </Text>
+          </View>
+
           <TouchableOpacity
             style={[styles.row, { marginTop: spacing.md }]}
             onPress={() => setForceMeasurements((v) => !v)}
@@ -395,20 +452,24 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
               {forceMeasurements && <Text style={styles.checkboxMark}>✓</Text>}
             </View>
             <Text style={styles.checkboxLabel}>
-              Bestehende Maße bei bekannten Models überschreiben (sonst werden nur Lücken gefüllt)
+              Overwrite existing measurements on known models (otherwise only fill gaps)
             </Text>
           </TouchableOpacity>
 
           <View style={[styles.row, { marginTop: spacing.md, gap: spacing.sm }]}>
             <TouchableOpacity
-              style={[styles.primaryBtn, { flex: 1 }, selected.size === 0 && styles.btnDisabled]}
+              style={[
+                styles.primaryBtn,
+                { flex: 1 },
+                (selected.size === 0 || parsedTerritories.length === 0) && styles.btnDisabled,
+              ]}
               onPress={handleCommit}
-              disabled={selected.size === 0}
+              disabled={selected.size === 0 || parsedTerritories.length === 0}
             >
-              <Text style={styles.primaryBtnLabel}>{selected.size} Model(s) importieren</Text>
+              <Text style={styles.primaryBtnLabel}>Import {selected.size} model(s)</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.secondaryBtn} onPress={reset}>
-              <Text style={styles.secondaryBtnLabel}>Verwerfen</Text>
+              <Text style={styles.secondaryBtnLabel}>Discard</Text>
             </TouchableOpacity>
           </View>
           {error && <Text style={styles.errorText}>{error}</Text>}
@@ -419,34 +480,32 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
         <View style={styles.progressBox}>
           <ActivityIndicator size="small" color={colors.accentGreen} />
           <Text style={styles.progressText}>
-            Importiere {commitProgress?.done ?? 0}/{commitProgress?.total ?? 0}
+            Importing {commitProgress?.done ?? 0}/{commitProgress?.total ?? 0}
             {commitProgress?.currentLabel ? ` – ${commitProgress.currentLabel}` : ''}
           </Text>
           <Text style={styles.subtleNote}>
-            Bilder werden geladen, validiert und in den Storage kopiert. Das kann pro Model mehrere
-            Sekunden dauern.
+            Images are downloaded, validated and copied into storage. This can take several seconds
+            per model.
           </Text>
           <TouchableOpacity style={styles.secondaryBtn} onPress={handleCancel}>
-            <Text style={styles.secondaryBtnLabel}>Nach aktuellem Model stoppen</Text>
+            <Text style={styles.secondaryBtnLabel}>Stop after current model</Text>
           </TouchableOpacity>
         </View>
       )}
 
       {phase === 'done' && summary && (
         <View style={{ marginTop: spacing.md }}>
-          <Text style={styles.subtitle}>Import abgeschlossen</Text>
-          <SummaryLine label="Neu angelegt" value={summary.createdCount} ok />
-          <SummaryLine label="Aktualisiert" value={summary.mergedCount} ok />
+          <Text style={styles.subtitle}>Import finished</Text>
+          <SummaryLine label="Created" value={summary.createdCount} ok />
+          <SummaryLine label="Updated" value={summary.mergedCount} ok />
           {summary.warningCount > 0 && (
-            <SummaryLine label="Warnungen" value={summary.warningCount} />
+            <SummaryLine label="Warnings" value={summary.warningCount} />
           )}
-          {summary.skippedCount > 0 && (
-            <SummaryLine label="Übersprungen" value={summary.skippedCount} />
-          )}
-          {summary.errorCount > 0 && <SummaryLine label="Fehler" value={summary.errorCount} bad />}
+          {summary.skippedCount > 0 && <SummaryLine label="Skipped" value={summary.skippedCount} />}
+          {summary.errorCount > 0 && <SummaryLine label="Errors" value={summary.errorCount} bad />}
           {(() => {
-            // Summenzeile für Bild-Persistenz (Phase 2): macht den
-            // tatsächlichen Mirror-Erfolg auf einen Blick sichtbar.
+            // Image-persistence summary (Phase 2): makes the actual mirror
+            // success visible at a glance.
             const persisted = summary.outcomes.reduce(
               (acc, o) => acc + (o.imagesPersisted ?? 0),
               0,
@@ -458,7 +517,7 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
             if (attempted === 0) return null;
             return (
               <SummaryLine
-                label="Bilder persistiert"
+                label="Images persisted"
                 value={persisted}
                 ok={persisted === attempted}
                 bad={persisted === 0}
@@ -476,7 +535,7 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
           </View>
           <View style={[styles.row, { marginTop: spacing.md, gap: spacing.sm }]}>
             <TouchableOpacity style={styles.primaryBtn} onPress={reset}>
-              <Text style={styles.primaryBtnLabel}>Neuer Import</Text>
+              <Text style={styles.primaryBtnLabel}>New import</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -502,19 +561,19 @@ const DriftBanner: React.FC<{
       }}
     >
       <Text style={[styles.subtitle, { color: accent, marginBottom: spacing.xs }]}>
-        {isHard ? 'Drift-Hard-Block' : 'Drift-Warnung'} · {drift.providerId} · {drift.parserVersion}
+        {isHard ? 'Drift hard-block' : 'Drift warning'} · {drift.providerId} · {drift.parserVersion}
       </Text>
-      <Text style={styles.previewMeta}>Quelle: {drift.maskedUrl}</Text>
+      <Text style={styles.previewMeta}>Source: {drift.maskedUrl}</Text>
       <Text style={styles.previewMeta}>
-        Anker-Coverage: {(drift.anchorCoverage * 100).toFixed(0)}% · Extraction:{' '}
-        {(drift.extractionRatio * 100).toFixed(0)}% · Books-OK:{' '}
+        Anchor coverage: {(drift.anchorCoverage * 100).toFixed(0)}% · Extraction:{' '}
+        {(drift.extractionRatio * 100).toFixed(0)}% · Books OK:{' '}
         {(drift.bookOkRatio * 100).toFixed(0)}%
       </Text>
       <Text style={styles.previewMeta}>
-        Karten erkannt: {drift.cardsDetected} · extrahiert: {drift.cardsExtracted}
+        Cards detected: {drift.cardsDetected} · extracted: {drift.cardsExtracted}
       </Text>
       {drift.missingAnchors.length > 0 && (
-        <Text style={styles.previewWarn}>Fehlende Anker: {drift.missingAnchors.join(', ')}</Text>
+        <Text style={styles.previewWarn}>Missing anchors: {drift.missingAnchors.join(', ')}</Text>
       )}
       {drift.reasonCodes.length > 0 && (
         <Text style={styles.previewWarn}>Codes: {drift.reasonCodes.join(', ')}</Text>
@@ -540,20 +599,20 @@ const PreviewRow: React.FC<{
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.previewName}>
-          {preview.name || '(ohne Namen)'}{' '}
+          {preview.name || '(no name)'}{' '}
           <Text style={styles.previewMeta}>· #{preview.externalId}</Text>
         </Text>
         {isReady ? (
           <Text style={styles.previewMeta}>
             {preview.measurements.height ? `${preview.measurements.height} cm · ` : ''}
-            {preview.portfolio_image_urls.length} Portfolio
-            {preview.discardedPortfolio > 0 ? ` (+${preview.discardedPortfolio} verworfen)` : ''}
+            {preview.portfolio_image_urls.length} portfolio
+            {preview.discardedPortfolio > 0 ? ` (+${preview.discardedPortfolio} discarded)` : ''}
             {' · '}
-            {preview.polaroid_image_urls.length} Polaroids
-            {preview.discardedPolaroids > 0 ? ` (+${preview.discardedPolaroids} verworfen)` : ''}
+            {preview.polaroid_image_urls.length} polaroids
+            {preview.discardedPolaroids > 0 ? ` (+${preview.discardedPolaroids} discarded)` : ''}
           </Text>
         ) : (
-          <Text style={styles.previewWarn}>Übersprungen: {preview.skipReason ?? 'unbekannt'}</Text>
+          <Text style={styles.previewWarn}>Skipped: {preview.skipReason ?? 'unknown'}</Text>
         )}
         {preview.warnings.length > 0 && (
           <Text style={styles.previewWarn}>{preview.warnings.join(' · ')}</Text>
@@ -565,10 +624,10 @@ const PreviewRow: React.FC<{
 
 const OutcomeRow: React.FC<{ outcome: CommitOutcome }> = ({ outcome }) => {
   const color = outcome.status === 'error' ? colors.buttonSkipRed : colors.textSecondary;
-  // Bild-Persistenz-Stats sichtbar machen, sodass die Agency unmittelbar
-  // sieht, wie viele Bilder pro Model wirklich in unseren Storage gewandert
-  // sind und welche Fehler-Codes aufgetreten sind. Failure-Codes werden
-  // gekürzt, um die Outcome-Liste lesbar zu halten.
+  // Surface image-persistence stats so the agency immediately sees how many
+  // images per model actually made it into our storage and which failure
+  // codes were hit. Failure codes are truncated to keep the outcome list
+  // readable.
   const hasImageInfo = (outcome.imagesAttempted ?? 0) > 0;
   const failureSnippets = (outcome.imageFailureReasons ?? []).slice(0, 3);
   const moreFailures =
@@ -583,9 +642,9 @@ const OutcomeRow: React.FC<{ outcome: CommitOutcome }> = ({ outcome }) => {
       </Text>
       {hasImageInfo && (
         <Text style={styles.previewMeta}>
-          Bilder: {outcome.imagesPersisted ?? 0}/{outcome.imagesAttempted ?? 0}
+          Images: {outcome.imagesPersisted ?? 0}/{outcome.imagesAttempted ?? 0}
           {failureSnippets.length > 0
-            ? ` · Fehler: ${failureSnippets.join(', ')}${moreFailures}`
+            ? ` · errors: ${failureSnippets.join(', ')}${moreFailures}`
             : ''}
         </Text>
       )}
@@ -611,31 +670,33 @@ const SummaryLine: React.FC<{
 );
 
 function renderAnalyzeLabel(p: AnalyzeProgress | null): string {
-  if (!p) return 'Starte Analyse…';
-  if (p.phase === 'fetch_list') return 'Lade Package-Liste…';
-  if (p.phase === 'parse') return `Parse ${p.modelsTotal} Model(s)…`;
-  return `Lade Books ${p.modelsDone}/${p.modelsTotal}${p.currentLabel ? ` – ${p.currentLabel}` : ''}`;
+  if (!p) return 'Starting analysis…';
+  if (p.phase === 'fetch_list') return 'Loading package list…';
+  if (p.phase === 'parse') return `Parsing ${p.modelsTotal} model(s)…`;
+  return `Loading books ${p.modelsDone}/${p.modelsTotal}${p.currentLabel ? ` – ${p.currentLabel}` : ''}`;
 }
 
 function humaniseError(code: string): string {
   switch (code) {
     case 'package_url_invalid':
-      return 'Der Link entspricht nicht dem MediaSlide-Package-Format.';
+      return 'The link does not match the MediaSlide package format.';
     case 'package_unreachable':
-      return 'Package-Server ist nicht erreichbar. Bitte später erneut versuchen.';
+      return 'Package server is unreachable. Please try again later.';
     case 'package_timeout':
-      return 'Zeitüberschreitung beim Laden des Packages.';
+      return 'Timed out while loading the package.';
     case 'package_no_models':
-      return 'Im Package wurden keine Models gefunden.';
+      return 'No models found in the package.';
     case 'parser_drift_detected':
-      return 'Das Package-Layout weicht vom erwarteten Format ab. Import wurde aus Sicherheitsgründen blockiert.';
+      return 'The package layout differs from the expected format. Import was blocked for safety.';
     case 'provider_not_supported':
-      return 'Diese URL gehört zu keinem unterstützten Provider (MediaSlide / Netwalk).';
+      return 'This URL does not belong to a supported provider (MediaSlide / Netwalk).';
     case 'netwalk_provider_not_implemented':
-      return 'Netwalk-Import ist noch nicht freigeschaltet (Phase 2).';
+      return 'Netwalk import is not enabled yet (Phase 2).';
+    case 'package_proxy_forbidden':
+      return 'You do not have permission to import packages (agency membership required).';
     default:
       if (code.startsWith('package_http_error:')) {
-        return `MediaSlide antwortet mit HTTP ${code.split(':')[1]}.`;
+        return `MediaSlide responded with HTTP ${code.split(':')[1]}.`;
       }
       return code;
   }
@@ -674,6 +735,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textPrimary,
     marginBottom: spacing.sm,
+  },
+  fieldLabel: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+    fontWeight: '600',
   },
   input: {
     borderWidth: 1,
