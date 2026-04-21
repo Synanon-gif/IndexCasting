@@ -330,4 +330,112 @@ describe('importModelAndMerge', () => {
     expect(res?.model_id).toBe('model-nw-sync-fail');
     expect(res?.externalSyncIdsPersistFailed).toBe(true);
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Territory-write robustness — the user-facing "I entered a territory but
+  // nothing was saved" bug. Before the fix, a thrown
+  // upsertTerritoriesForModelCountryAgencyPairs would be swallowed by the
+  // outer try/catch and the function returned null — the model row was
+  // already updated/created, leaving the agency in a confused state. After
+  // the fix, the result MUST contain `territoriesPersistFailed: true` so the
+  // UI can surface a warning, and the model_id MUST still be returned so the
+  // caller knows the row exists.
+  // ──────────────────────────────────────────────────────────────────────────
+  it('surfaces territoriesPersistFailed:true on the MERGE path when MAT write throws (model still returned)', async () => {
+    const existing = {
+      id: 'model-merge-terr',
+      mediaslide_sync_id: 'MS-TERR',
+      name: 'Merge w/ territory fail',
+      height: 180,
+      bust: null,
+      waist: null,
+      hips: null,
+      chest: null,
+      legs_inseam: null,
+      shoe_size: null,
+      city: null,
+      country_code: null,
+      hair_color: null,
+      eye_color: null,
+      ethnicity: null,
+      current_location: null,
+      sex: null,
+      categories: null,
+      portfolio_images: [] as string[],
+      polaroids: [] as string[],
+    };
+    fromMock.mockReturnValueOnce(makeLookupChain(existing));
+
+    const territoriesMod = await import('../territoriesSupabase');
+    (territoriesMod.upsertTerritoriesForModelCountryAgencyPairs as jest.Mock).mockRejectedValueOnce(
+      new Error('rls_denied_for_agency'),
+    );
+
+    const res = await importModelAndMerge({
+      mediaslide_sync_id: 'MS-TERR',
+      name: 'Merge w/ territory fail',
+      height: 180,
+      territories: [{ country_code: 'AT', agency_id: 'agency-1' }],
+    });
+
+    expect(res?.model_id).toBe('model-merge-terr');
+    expect(res?.created).toBe(false);
+    expect(res?.territoriesPersistFailed).toBe(true);
+    expect(res?.territoriesPersistFailureReason).toMatch(/rls_denied_for_agency/);
+  });
+
+  it('surfaces territoriesPersistFailed:true on the INSERT path when MAT write throws (model still created)', async () => {
+    fromMock
+      .mockReturnValueOnce(makeLookupChain(null)) // mediaslide lookup → null
+      .mockReturnValueOnce(makeInsertChain({ id: 'model-new-terr-fail' }));
+    rpcMock.mockReturnValueOnce({
+      maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+    });
+
+    const territoriesMod = await import('../territoriesSupabase');
+    (territoriesMod.upsertTerritoriesForModelCountryAgencyPairs as jest.Mock).mockRejectedValueOnce(
+      new Error('save_model_territories_returned_false'),
+    );
+
+    const res = await importModelAndMerge({
+      mediaslide_sync_id: 'MS-NEW-T',
+      email: 'new+territory@example.com',
+      name: 'Brand-new Model',
+      height: 175,
+      territories: [{ country_code: 'AT', agency_id: 'agency-1' }],
+    });
+
+    expect(res?.model_id).toBe('model-new-terr-fail');
+    expect(res?.created).toBe(true);
+    expect(res?.territoriesPersistFailed).toBe(true);
+    expect(res?.territoriesPersistFailureReason).toMatch(/save_model_territories_returned_false/);
+  });
+
+  it('does NOT set territoriesPersistFailed when MAT write succeeds', async () => {
+    const existing = {
+      id: 'model-ok-terr',
+      mediaslide_sync_id: 'MS-OK',
+      name: 'OK',
+      height: 180,
+      portfolio_images: [],
+      polaroids: [],
+    };
+    fromMock.mockReturnValueOnce(makeLookupChain(existing));
+
+    const territoriesMod = await import('../territoriesSupabase');
+    (territoriesMod.upsertTerritoriesForModelCountryAgencyPairs as jest.Mock).mockResolvedValueOnce(
+      [],
+    );
+
+    const res = await importModelAndMerge({
+      mediaslide_sync_id: 'MS-OK',
+      name: 'OK',
+      height: 180,
+      territories: [{ country_code: 'AT', agency_id: 'agency-1' }],
+    });
+
+    expect(res?.model_id).toBe('model-ok-terr');
+    expect(res?.territoriesPersistFailed).toBeUndefined();
+    expect(res?.territoriesPersistFailureReason).toBeUndefined();
+  });
 });
