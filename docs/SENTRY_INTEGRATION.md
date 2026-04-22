@@ -34,7 +34,23 @@ durchgereicht und in `src/observability/sentry.ts` gelesen.
 
 Fehlt der DSN, ist Sentry komplett aus — ohne Fehler, ohne Warnung.
 
-### 1.2 Lokale Verifikation
+### 1.2 Vercel (Preview-Build scheitert oft an **Namen** oder **Environment-Scope**)
+
+Der Web-Export (`npm run build` / `expo export --platform web`) liest **`app.config.js`** nur zur **Build-Zeit**. Auf Vercel gibt es **kein** `.env.local` — alles kommt aus dem Vercel-Dashboard.
+
+| Vercel-Variable | Pflicht? | Hinweis |
+|-----------------|----------|---------|
+| `EXPO_PUBLIC_SENTRY_DSN` | Optional (ohne DSN: Sentry aus) | **Exakt dieser Name** — nicht `SENTRY_DSN`, nicht `NEXT_PUBLIC_SENTRY_DSN` allein (wir lesen primär `EXPO_PUBLIC_*`). |
+| `EXPO_PUBLIC_APP_ENV` | Für aktives Sentry: `preview` oder `production` | Ohne Eintrag: Default `development` → **Sentry wird nicht initialisiert** (Absicht). |
+| `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Für laufende App | Oft schon gesetzt; Preview-Deploys brauchen dieselben **EXPO_PUBLIC_**-Keys wie Production, falls die App sie erwartet. |
+
+**Preview-Deployment:** Pro Variable im Vercel-Dashboard **Environment „Preview“** ankreuzen (nicht nur Production). Sonst fehlen die Werte beim Preview-Build.
+
+**DSN eintragen:** Ohne umschließende **Anführungszeichen**, **eine Zeile**, vollständige URL (`https://…@…ingest…/…`).
+
+**Sentry-Seite:** Für reines Error-Tracking ist **kein** Auth-Token (Build-Upload, Sourcemaps) nötig — nur der **öffentliche Client-DSN** unter *Settings → Client Keys (DSN)*. Alerts/Team/Projekt-Einstellungen sind optional.
+
+### 1.3 Lokale Verifikation
 
 ```bash
 npm run typecheck
@@ -45,7 +61,7 @@ npm test -- --passWithNoTests --ci
 Alle Sentry-Aufrufe sind im Test-Setup gegen einen No-Op-Stub gemockt
 (`jest/sentry-react-native-stub.cjs`), Tests laden also nie das echte SDK.
 
-### 1.3 Lokales Deaktivieren / Kontrolliertes Testen
+### 1.4 Lokales Deaktivieren / Kontrolliertes Testen
 
 * **Deaktivieren** (Default in dev): einfach `EXPO_PUBLIC_SENTRY_DSN` leer lassen
   oder `EXPO_PUBLIC_APP_ENV=development` (Sentry initialisiert nicht).
@@ -53,7 +69,7 @@ Alle Sentry-Aufrufe sind im Test-Setup gegen einen No-Op-Stub gemockt
   dann gehen Errors an das Sentry-Projekt. Vorsicht: **niemals**
   Production-DSN mit dev-Daten mischen.
 
-### 1.4 Test-Exception manuell auslösen
+### 1.5 Test-Exception manuell auslösen
 
 Im Preview-/Production-Build temporär einen Knopf einbauen:
 
