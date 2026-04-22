@@ -4,6 +4,7 @@
     "slug": "App",
     "version": "1.0.0",
     "orientation": "portrait",
+    "scheme": "indexcasting",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
@@ -13,11 +14,15 @@
     },
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.indexcasting.app",
+      "buildNumber": "1",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "IndexCasting needs access to your photo library to upload portfolio and polaroid images for models."
       }
     },
     "android": {
+      "package": "com.indexcasting.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -28,6 +33,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": ""
+      }
     }
   }
 }

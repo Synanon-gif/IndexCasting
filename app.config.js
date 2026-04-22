@@ -6,6 +6,9 @@ config({ path: path.resolve(__dirname, '.env.local') });
 
 const appJson = require('./app.json');
 
+const easProjectIdFromAppJson =
+  typeof appJson.expo?.extra?.eas?.projectId === 'string' ? appJson.expo.extra.eas.projectId : '';
+
 module.exports = {
   ...appJson.expo,
   name: appJson.expo.name,
@@ -32,7 +35,9 @@ module.exports = {
     // Steuert Sentry-Environment + dev-Skip (development|preview|production).
     appEnv: process.env.EXPO_PUBLIC_APP_ENV ?? 'development',
     eas: {
-      projectId: process.env.EAS_PROJECT_ID ?? '',
+      // EAS: nach `npx eas init` steht die UUID in app.json → extra.eas.projectId
+      // Alternativ: EAS_PROJECT_ID in .env.local (CI) oder EAS-Secrets.
+      projectId: (process.env.EAS_PROJECT_ID ?? easProjectIdFromAppJson).trim(),
     },
   },
   web: {
