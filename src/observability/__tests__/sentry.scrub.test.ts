@@ -478,6 +478,39 @@ describe('initSentry()', () => {
     expect(sentryMod.isSentryEnabled()).toBe(true);
   });
 
+  /**
+   * Verbindungs-„Contract“ ohne Netzwerk: gleiche Optionen wie in Produktion,
+   * damit DSN/Env-Zwang und Release-String nicht aus Versehen regressieren.
+   */
+  it('Sentry.init: release (slug@version), keine Client-Reports, kein Auto-Session-Tracking', () => {
+    process.env.EXPO_PUBLIC_APP_ENV = 'preview';
+    process.env.EXPO_PUBLIC_SENTRY_DSN = 'https://placeholderslug@o0.ingest.sentry.io/1';
+    let opts: Record<string, unknown> | undefined;
+    jest.resetModules();
+    jest.doMock('@sentry/react-native', () => ({
+      init: jest.fn((o) => {
+        opts = o;
+      }),
+      captureException: jest.fn(),
+      captureMessage: jest.fn(),
+      addBreadcrumb: jest.fn(),
+      setTag: jest.fn(),
+      setUser: jest.fn(),
+    }));
+    jest.doMock('expo-constants', () => ({
+      __esModule: true,
+      default: {
+        expoConfig: { slug: 'IndexCastingTest', version: '9.9.9', extra: {} },
+      },
+    }));
+    const sentryMod = require('../sentry') as typeof import('../sentry');
+    sentryMod.initSentry();
+    expect(opts?.release).toBe('IndexCastingTest@9.9.9');
+    expect(opts?.sendClientReports).toBe(false);
+    expect(opts?.enableAutoSessionTracking).toBe(false);
+    expect(opts?.environment).toBe('preview');
+  });
+
   it('Sentry.init wirft → fail-closed, App nicht betroffen', () => {
     process.env.EXPO_PUBLIC_APP_ENV = 'production';
     process.env.EXPO_PUBLIC_SENTRY_DSN = 'https://abc@o0.ingest.sentry.io/1';
