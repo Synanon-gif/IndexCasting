@@ -19,6 +19,7 @@
 
 import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Config
@@ -52,6 +53,22 @@ function readEnv(): AppEnv {
     (typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_APP_ENV : undefined);
   if (raw === 'production' || raw === 'preview') return raw;
   return 'development';
+}
+
+/**
+ * Einheitliches Release für Web (Metro `SENTRY_RELEASE`) + native Builds;
+ * gruppiert Issues in Sentry und passt zu Sourcemaps, sobald Upload aktiv ist.
+ */
+function readRelease(): string {
+  const c = Constants.expoConfig;
+  const version = c?.version ?? '0.0.0';
+  const slug = typeof c?.slug === 'string' ? c.slug : 'app';
+  return `${slug}@${version}`;
+}
+
+function readDist(): string | undefined {
+  if (Platform.OS === 'web') return 'web';
+  return undefined;
 }
 
 let initialized = false;
@@ -440,13 +457,19 @@ export function initSentry(): void {
     Sentry.init({
       dsn,
       environment,
+      release: readRelease(),
+      dist: readDist(),
       // DSGVO: keine Default-PII (IP, Cookies, User-Agent-Detail).
       sendDefaultPii: false,
+      // Keine Client-Metrik-Telemetrie an Sentry (Error-Capture reicht).
+      sendClientReports: false,
       // Konservative Sample-Rates: 100 % Errors, 0 % Performance.
       sampleRate: 1.0,
       tracesSampleRate: 0,
       // Kein Session Replay / Profiling im Minimal-Setup.
       attachStacktrace: true,
+      // Session-Health-Tracking: aus (Minimal-Setup; nur Fehler).
+      enableAutoSessionTracking: false,
       // Erst absichern, dann senden.
       beforeSend: sanitizeEvent,
       beforeBreadcrumb: sanitizeBreadcrumb,

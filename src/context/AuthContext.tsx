@@ -18,6 +18,7 @@ import {
   finalizePendingInviteOrClaim,
   type FinalizeInviteClaimResult,
 } from '../services/finalizePendingInviteOrClaim';
+import { setUserContext } from '../observability/sentry';
 
 const EMPTY_FINALIZE: FinalizeInviteClaimResult = {
   invite: { attempted: false, ok: false, state: 'idle' },
@@ -110,6 +111,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [orgDeactivated, setOrgDeactivated] = useState(false);
   const [orgBootstrapFailed, setOrgBootstrapFailed] = useState(false);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+
+  // Sentry: pseudonyme User-ID (auth.uid) — kein PII; no-op wenn Sentry aus.
+  useEffect(() => {
+    setUserContext(session?.user?.id ?? null);
+  }, [session?.user?.id]);
 
   const profileLoadInFlightRef = useRef(false);
   const profileRef = useRef<Profile | null>(null);

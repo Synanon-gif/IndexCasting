@@ -159,7 +159,8 @@ automatisch. Performance/Tracing/Replay/Profiling sind explizit `0` bzw.
 nicht installiert.
 
 ### User-Identität
-Nur pseudonyme `auth.uid()` (UUID), niemals E-Mail/Name/Telefon.
+Nur pseudonyme `auth.uid()` (UUID), niemals E-Mail/Name/Telefon. Die ID wird
+bei Login/Logout über `setUserContext` in `AuthContext` gesetzt (kein PII).
 
 ### Mother Agency / Netwalk
 Keine speziellen Tags, kein „live"-Marker:
@@ -199,11 +200,13 @@ eingeschaltet ist:
 Diese Erweiterungen sind **vorbereitet, aber nicht aktiv** — bewusst, um
 Build-Risiko und Datenmenge gering zu halten. Aktivierung jeweils ein PR:
 
-1. **Source-Map-/Debug-Symbol-Upload via Expo-Plugin**
-   `@sentry/react-native/expo` und `@sentry/react-native/metro` sind
-   **nicht** in `app.json` / `metro.config.js` eingetragen.
-   → Aktivieren: später per `npx @sentry/wizard@latest -i reactNative`
-   plus `SENTRY_AUTH_TOKEN` als Build-Secret. Kein App-Code-Change nötig.
+1. **Expo-Plugin + Metro (Debug-IDs, Release fürs Web-Bundle)** — **aktiv:**
+   `app.json` → `plugins` mit `@sentry/react-native` (Org `index-casting`,
+   Projekt `react-native`, EU-URL `https://de.sentry.io`), `metro.config.js`
+   → `getSentryExpoConfig` mit `includeWebReplay: false` (kein Replay).
+   **Sourcemap-Upload** zu Sentry (lesbare Stacks in der UI): weiterhin optional
+   — dafür `SENTRY_AUTH_TOKEN` in EAS/Vercel Build-Umgebung setzen und
+   Sentry-CLI-Upload beim Release-Build (siehe Sentry-Doku „Expo“).
 2. **Performance-Monitoring (`tracesSampleRate`)** — aktuell `0`.
 3. **Session Replay (`replaysSessionSampleRate`)** — nicht installiert.
 4. **OTA-Update-Kontext** (Expo Updates Integration) — nicht aktiviert.
@@ -213,9 +216,15 @@ Build-Risiko und Datenmenge gering zu halten. Aktivierung jeweils ein PR:
 ## 6. Architektur-Zusammenfassung
 
 ```
+app.json          — Expo-Config-Plugin @sentry/react-native (native Projekte + Build-Metadaten)
+metro.config.js   — getSentryExpoConfig (Debug-IDs, Web-Release-Injection, kein Replay)
+
 index.ts
-  └── initSentry()                       (no-op ohne DSN / dev)
-       └── Sentry.init({ beforeSend, beforeBreadcrumb, sendDefaultPii: false })
+  └── initSentry()     (no-op ohne DSN / dev)
+       └── Sentry.init({ release: slug@version, dist: web|…, beforeSend, sendClientReports: false, … })
+
+src/context/AuthContext.tsx
+  └── setUserContext(session.user.id)   — pseudonym, bei Session-Wechsel
 
 src/observability/sentry.ts
   ├── redactUrl()      — Query-Param-Maskierung + JWT/Email/Hex

@@ -18,6 +18,7 @@
       "bundleIdentifier": "com.indexcasting.app",
       "buildNumber": "1",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "IndexCasting needs access to your photo library to upload portfolio and polaroid images for models."
       }
     },
@@ -32,6 +33,16 @@
       },
       "predictiveBackGestureEnabled": false
     },
+    "plugins": [
+      [
+        "@sentry/react-native",
+        {
+          "organization": "index-casting",
+          "project": "react-native",
+          "url": "https://de.sentry.io"
+        }
+      ]
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     },
