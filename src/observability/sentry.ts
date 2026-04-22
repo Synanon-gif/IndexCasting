@@ -104,11 +104,20 @@ const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g;
 const BEARER_RE = /[Bb]earer\s+[A-Za-z0-9._-]{20,}/g;
 const LONG_HEX_RE = /\b[a-f0-9]{32,}\b/gi;
+/**
+ * Hardening 2026-04 (F-fix #4): Supabase Secret Keys. Bewusst konservativ —
+ * fängt explizit benamte Schlüssel-Formate (`sb_secret_…`, `sbp_…`,
+ * `service_role_…`). Anon/Publishable Keys sind JWTs und werden von JWT_RE
+ * abgedeckt.
+ */
+const SUPABASE_KEY_RE =
+  /\b(?:sb_(?:secret|publishable|service[_-]?role)_[A-Za-z0-9_-]{16,}|sbp_[A-Za-z0-9_-]{16,}|service_role_[A-Za-z0-9_-]{16,})\b/g;
 
 function redactString(value: string): string {
   if (!value) return value;
   return value
     .replace(JWT_RE, '[REDACTED_JWT]')
+    .replace(SUPABASE_KEY_RE, '[REDACTED_SUPABASE_KEY]')
     .replace(BEARER_RE, 'Bearer [REDACTED]')
     .replace(EMAIL_RE, '[REDACTED_EMAIL]')
     .replace(LONG_HEX_RE, '[REDACTED_HEX]');
@@ -136,6 +145,37 @@ export function redactUrl(rawUrl: string): string {
         mutated = true;
       }
     }
+    // Hardening F5 (2026-04): Supabase Magic-/Recovery-Links transportieren
+    // `access_token`, `refresh_token`, `type=recovery` etc. häufig im Hash-
+    // Fragment (`#access_token=...&refresh_token=...`). Das wird von
+    // `URL.searchParams` NICHT erfasst, daher hier separat behandeln.
+    if (u.hash && u.hash.length > 1) {
+      const fragment = u.hash.startsWith('#') ? u.hash.slice(1) : u.hash;
+      try {
+        const params = new URLSearchParams(fragment);
+        let hashMutated = false;
+        for (const key of Array.from(params.keys())) {
+          if (SENSITIVE_QUERY_PARAMS.has(key.toLowerCase())) {
+            params.set(key, '[REDACTED]');
+            hashMutated = true;
+          }
+        }
+        if (hashMutated) {
+          u.hash = `#${params.toString()}`;
+          mutated = true;
+        } else {
+          // Hash war kein urlencoded-Form → wenigstens String-redaktieren.
+          const cleaned = redactString(fragment);
+          if (cleaned !== fragment) {
+            u.hash = `#${cleaned}`;
+            mutated = true;
+          }
+        }
+      } catch {
+        u.hash = '#[REDACTED]';
+        mutated = true;
+      }
+    }
     const isPlaceholder = u.origin === 'https://placeholder.local';
     const out = isPlaceholder ? `${u.pathname}${u.search}${u.hash}` : u.toString();
     return mutated ? out : redactString(out);
@@ -159,6 +199,98 @@ function redactHeaders(headers: unknown): unknown {
   return out;
 }
 
+/**
+ * Object-Keys, deren Werte IMMER komplett durch `[REDACTED]` ersetzt werden.
+ *
+ * Hardening 2026-04 (F4): Erfasst alle Varianten (`claim_token`, `inviteToken`,
+ * `p_token`, `model_invite`, `recovery_token`, `magic_link`, `webhook_secret`, …)
+ * per case-insensitive Lookup auf normalisiertem Key (lower-snake_case).
+ *
+ * `url`, `link`, `href` sind hier BEWUSST NICHT enthalten — die werden in
+ * URL_LIKE_KEYS URL-redaktiert (Query-Param-Maskierung), damit Routing-Info
+ * für Debugging erhalten bleibt. Capability-/Package-URLs (URL selbst = Secret)
+ * sind dagegen hier gelistet.
+ */
+const SECRET_KEY_TOKENS: ReadonlySet<string> = new Set([
+  // Auth-Credentials
+  'password',
+  'pwd',
+  'pass',
+  'secret',
+  'service_role',
+  'service_role_key',
+  'api_key',
+  'apikey',
+  'authorization',
+  'auth_token',
+  'access_token',
+  'refresh_token',
+  'token',
+  'jwt',
+  'bearer',
+  'cookie',
+  'session_token',
+  'magic_link',
+  'magiclink',
+  'recovery_token',
+  'reset_token',
+  'verify_token',
+  'verification_token',
+  'webhook_secret',
+  'signing_secret',
+  'private_key',
+  // Supabase RPC parameter names (out of an abundance of caution)
+  'p_token',
+  'p_invite_token',
+  'p_claim_token',
+  // Invite / Claim flow tokens (Project-spezifisch)
+  'invite',
+  'invite_token',
+  'invitation_token',
+  'claim',
+  'claim_token',
+  'model_invite',
+  // Capability-URLs (URL selbst = Geheimnis → voll redaktieren)
+  'capability',
+  'capability_url',
+  'capability_token',
+  'package_url',
+  'package_capability_url',
+  'package_capability',
+]);
+
+/**
+ * Object-Keys, die als URL-Felder erkannt werden — Wert wird URL-redaktiert
+ * (Query-Param-Maskierung), nicht komplett ersetzt. Erhält Routing-Info für
+ * Debugging (z. B. `/agency/models` ohne Token).
+ */
+const URL_LIKE_KEYS: ReadonlySet<string> = new Set([
+  'url',
+  'href',
+  'link',
+  'from',
+  'to',
+  'origin',
+  'referrer',
+  'referer',
+  'redirect',
+  'redirect_url',
+  'callback',
+  'callback_url',
+  'next_url',
+  'request_url',
+  'response_url',
+  'webhook_url',
+]);
+
+/** Normalisiert einen Object-Key zu lower-snake_case für den Set-Lookup. */
+function normalizeKey(k: string): string {
+  return k
+    .replace(/([a-z])([A-Z])/g, '$1_$2')
+    .replace(/[-\s]+/g, '_')
+    .toLowerCase();
+}
+
 function redactDeep(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
   if (value == null) return value;
   if (typeof value === 'string') return redactString(value);
@@ -168,11 +300,16 @@ function redactDeep(value: unknown, seen: WeakSet<object> = new WeakSet()): unkn
   if (Array.isArray(value)) return value.map((v) => redactDeep(v, seen));
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    if (/^(password|access_token|refresh_token|api_key|secret|service_role|token)$/i.test(k)) {
+    const norm = normalizeKey(k);
+    if (SECRET_KEY_TOKENS.has(norm)) {
       out[k] = '[REDACTED]';
       continue;
     }
-    if (/url$/i.test(k) && typeof v === 'string') {
+    if (URL_LIKE_KEYS.has(norm) && typeof v === 'string') {
+      out[k] = redactUrl(v);
+      continue;
+    }
+    if (/(?:^|_)url$|(?:^|_)urls?$|link$/i.test(norm) && typeof v === 'string') {
       out[k] = redactUrl(v);
       continue;
     }
@@ -212,7 +349,34 @@ function sanitizeEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent | null {
     }
 
     if (event.message) {
-      event.message = redactString(event.message);
+      // event.message kann sowohl String als auch { message, params } sein.
+      if (typeof event.message === 'string') {
+        event.message = redactString(event.message);
+      } else if (event.message && typeof event.message === 'object') {
+        const msg = event.message as { message?: unknown };
+        if (typeof msg.message === 'string') msg.message = redactString(msg.message);
+      }
+    }
+
+    // Hardening F7 (2026-04): Transaction-Name (Screen-/Route-Bezeichner) kann
+    // versehentlich Tokens enthalten, falls eine Route mit Token-Param als
+    // Transaction-Name registriert wurde.
+    if (typeof event.transaction === 'string') {
+      event.transaction = redactUrl(event.transaction);
+    }
+
+    // Hardening F6 (2026-04): Stacktrace-Errors. Sentry stellt den Crash-Inhalt
+    // als event.exception.values[].value dar — DAS ist die User-sichtbare
+    // Hauptzeile im Dashboard. Wenn jemand z. B. `throw new Error(\`failed for token \${t}\`)`
+    // wirft, würde das ungefiltert publishen.
+    const exception = event.exception as
+      | { values?: Array<{ value?: string; type?: string }> }
+      | undefined;
+    if (exception && Array.isArray(exception.values)) {
+      for (const ex of exception.values) {
+        if (typeof ex.value === 'string') ex.value = redactString(ex.value);
+        if (typeof ex.type === 'string') ex.type = redactString(ex.type);
+      }
     }
 
     if (event.extra) event.extra = redactDeep(event.extra) as Record<string, unknown>;
@@ -262,20 +426,22 @@ export function isSentryEnabled(): boolean {
 
 export function initSentry(): void {
   if (initialized || initFailed) return;
+  const environment = readEnv();
+  // Hardening F1 (2026-04): In `development` GAR NICHT initialisieren — sauberer
+  // als `enabled:false`, weil das SDK sonst Hooks/Listener registriert und
+  // App-Start unnötig belastet. Auch in Tests greift dieser Pfad (NODE_ENV).
+  if (environment === 'development') return;
   const dsn = readDsn();
   if (!dsn) {
     // No DSN → silently disabled (dev/local). Do not warn: avoids log spam.
     return;
   }
-  const environment = readEnv();
   try {
     Sentry.init({
       dsn,
       environment,
       // DSGVO: keine Default-PII (IP, Cookies, User-Agent-Detail).
       sendDefaultPii: false,
-      // In dev nichts an Sentry schicken — nur Console-Warnung.
-      enabled: environment !== 'development',
       // Konservative Sample-Rates: 100 % Errors, 0 % Performance.
       sampleRate: 1.0,
       tracesSampleRate: 0,
@@ -301,6 +467,17 @@ export function initSentry(): void {
       console.warn('[sentry] init failed', (err as Error)?.message ?? err);
     }
   }
+}
+
+/**
+ * Test-only: Re-initialize SDK state. Production code MUST NOT use this.
+ * Wird ausschließlich von Smoke-Tests aufgerufen, um init/no-init-Pfade zu
+ * verifizieren. Setzt nur die internen Flags zurück; ein erneutes
+ * `Sentry.init` ist Aufgabe des Test-Setups.
+ */
+export function __resetSentryForTests(): void {
+  initialized = false;
+  initFailed = false;
 }
 
 /** Reine No-Op-Wrapper, damit Aufrufer keine Sentry-Imports benötigen. */

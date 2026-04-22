@@ -262,12 +262,16 @@ function shipToSentry(
         context && typeof context === 'object' && 'error' in context
           ? (context as { error?: unknown }).error
           : undefined;
+      // Hardening (2026-04, F10): den `error`-Key aus dem Extra-Context
+      // entfernen, damit das Error-Objekt nicht doppelt serialisiert wird
+      // (einmal als Sentry-Exception, einmal als JSON-Blob im Extra).
+      const extra = stripErrorFromContext(context);
       if (maybeError instanceof Error) {
-        sentryCaptureException(maybeError, { source, ...context });
+        sentryCaptureException(maybeError, { source, message, ...extra });
       } else {
         sentryCaptureMessage(`[${source}] ${message}`, level === 'fatal' ? 'fatal' : 'error', {
           source,
-          ...(context ?? {}),
+          ...extra,
         });
       }
     } else if (level === 'warn') {
@@ -275,12 +279,21 @@ function shipToSentry(
         category: source,
         level: 'warning',
         message,
-        data: context as Record<string, unknown> | undefined,
+        data: stripErrorFromContext(context) as Record<string, unknown> | undefined,
       });
     }
   } catch {
     // Sentry darf den Logger niemals brechen.
   }
+}
+
+function stripErrorFromContext(context?: LogContext): Record<string, unknown> | undefined {
+  if (!context || typeof context !== 'object') return context as undefined;
+  const obj = context as Record<string, unknown>;
+  if (!('error' in obj)) return obj;
+  const { error: _ignored, ...rest } = obj;
+  void _ignored;
+  return rest;
 }
 
 export const logger = {

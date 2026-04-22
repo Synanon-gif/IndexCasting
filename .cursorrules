@@ -857,6 +857,12 @@ Ergänzt Kalender-Farb-Disziplin (§28.2) und feste Domänen aus dem Release-Tag
 
 - Admin-UI und strukturierte Logger, die **`system_events`** (oder Nachfolge-Tabellen) lesen/schreiben, **müssen** zum **live deployten** Schema passen — Spalten-/Typ-Änderungen immer **Logger + UI + Typen** gemeinsam anpassen (kein „UI zeigt leere Spalten“ nach Migration).
 - **Health / CI:** `/trust`- und `/status`-Patterns nicht ohne Abgleich mit öffentlichen Route-Tests ändern.
+- **Sentry (External Crash Reporting, Minimal-Setup):** vollständige Spec in [docs/SENTRY_INTEGRATION.md](../../docs/SENTRY_INTEGRATION.md). Pflichten beim Erweitern:
+  - **Capability-URLs / Tokens** (Claim, Invite, Package-/Capability-URLs, Supabase-Keys) DÜRFEN niemals unredacted an Sentry oder einen anderen Observability-Sink gehen — neue Felder/Keys gehören in `SECRET_KEY_TOKENS` bzw. `SENSITIVE_QUERY_PARAMS` in `src/observability/sentry.ts`, mit Test in `sentry.scrub.test.ts`.
+  - **Mother Agency** bleibt rein informativ — keine speziellen Sentry-Tags, keine eigene Telemetrie. Versehentliche Kontexte werden über die generischen Scrubber abgefangen.
+  - **Netwalk** ist nicht live → Provider-Tag `netwalk` ist rein informativ. Keine Erfolgsmessungen, keine „live"-Marker in Doku/UI/Sentry.
+  - **Neue Observability-Hooks** müssen **fail-closed** sein: kein Crash, kein Block der Business-Logik, wenn der Sink fehlt/falsch konfiguriert ist (siehe Wrapper-Pattern in `src/observability/sentry.ts`).
+  - **Logger-Kontexte mit sensitiven Payloads** (`error`-Objekte, RPC-Parameter) werden vom Forwarder dedupliziert (kein doppeltes `extra.error`), aber neue Calls **dürfen keine Klartext-Tokens als Top-Level-Felder einschleusen** (`{ token: ... }`, `{ url: ... }` mit Capability-URL etc.).
 
 ### 29.4 Billing Hub (B2B)
 

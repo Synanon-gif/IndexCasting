@@ -2,7 +2,6 @@ import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { View, Text, ScrollView, Platform, TouchableOpacity, StyleSheet } from 'react-native';
 import { uiCopy } from '../constants/uiCopy';
 import { logger } from '../utils/logger';
-import { captureException as sentryCaptureException } from '../observability/sentry';
 
 type Props = { children: ReactNode };
 type State = { error: Error | null };
@@ -22,26 +21,19 @@ export class AppErrorBoundary extends Component<Props, State> {
       console.error('[AppErrorBoundary] render error caught');
     }
     // Ship to observability backend (fire-and-forget; PII-redacted; throttled).
-    // Crashes are always shipped — even in dev — so we get a true picture of
-    // production stability the moment we go live.
+    // Hardening (2026-04, F11): nur EIN Sentry-Event pro Render-Crash.
+    // Wir geben das echte Error-Objekt als `error` im Context mit — der
+    // Logger-Forwarder routet das in `Sentry.captureException`, was den
+    // Stacktrace sauber gruppiert. Ein zusätzlicher direkter
+    // `Sentry.captureException`-Call würde dasselbe Crash zweimal melden.
     try {
       logger.fatal('AppErrorBoundary', error.message || 'render-error', {
-        stack: error.stack ?? null,
+        error,
         componentStack: info.componentStack ?? null,
-        name: error.name,
-      });
-    } catch {
-      // Logger must never break the boundary itself.
-    }
-    // Sentry: zusätzlich das echte Error-Objekt schicken, damit der Stack
-    // sauber gegrouped wird (no-op wenn Sentry deaktiviert).
-    try {
-      sentryCaptureException(error, {
-        component_stack: info.componentStack ?? null,
         boundary: 'AppErrorBoundary',
       });
     } catch {
-      // Sentry must never break the boundary itself.
+      // Logger must never break the boundary itself.
     }
   }
 

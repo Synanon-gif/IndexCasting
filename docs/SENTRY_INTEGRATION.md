@@ -7,8 +7,10 @@ nur Crash-/Error-Reporting, **kein** Session Replay, **kein** Performance/Tracin
 **kein** Profiling, **kein** Auto-User-Tracking.
 
 Aktiv ab `EXPO_PUBLIC_APP_ENV=preview` oder `production`.
-In `development` (Default) ist Sentry **stumm** (`enabled: false`),
-auch wenn ein DSN gesetzt ist — kein Logspam beim lokalen Hacken.
+In `development` (Default) wird Sentry **gar nicht erst initialisiert** —
+auch wenn ein DSN gesetzt ist. Kein Logspam, keine Hooks, keine Listener
+beim lokalen Hacken. Unbekannte Werte (`staging`, `qa`, …) werden ebenfalls
+als „kein Sentry" behandelt (fail-closed by design).
 
 ---
 
@@ -51,6 +53,18 @@ Alle Sentry-Aufrufe sind im Test-Setup gegen einen No-Op-Stub gemockt
   dann gehen Errors an das Sentry-Projekt. Vorsicht: **niemals**
   Production-DSN mit dev-Daten mischen.
 
+### 1.4 Test-Exception manuell auslösen
+
+Im Preview-/Production-Build temporär einen Knopf einbauen:
+
+```ts
+import { captureException } from './observability/sentry';
+captureException(new Error('sentry smoke test ' + Date.now()), { source: 'manual-smoke' });
+```
+
+…und nach Verifikation im Sentry-Dashboard wieder entfernen. Niemals dauerhaft
+einbauen, kein Smoke-Trigger im UI lassen.
+
 ---
 
 ## 2. Was wird gemeldet
@@ -75,27 +89,74 @@ Tags, die wir setzen (für Sentry-Filter):
 
 ## 3. Was bewusst NICHT gemeldet wird (DSGVO/Datensicherheit)
 
-`beforeSend` und `redactDeep` in `src/observability/sentry.ts` filtern aktiv:
+`beforeSend`, `beforeBreadcrumb` und `redactDeep` in `src/observability/sentry.ts`
+filtern in **mehreren Schichten** vor dem Versand:
 
-* **Tokens / Capability-URLs** (jeweils im Query-Param **und** im Pfad):
-  `model_invite`, `invite_token`, `invite`, `token`, `code`,
-  `access_token`, `refresh_token`,
-  `package_url`, `package_capability_url`, `capability_url`, `capability`,
-  `apikey`, `api_key`, `key`, `secret`, `authorization`.
-* **Header**: `authorization`, `cookie`, `set-cookie`, `apikey`,
-  `x-supabase-auth`, `x-api-key`, `x-csrf-token`.
-* **JWTs** (`eyJ...`), **Bearer**-Tokens, **lange Hex-Blobs**, **E-Mail-Adressen**.
-* **Cookies** im Request-Body werden komplett auf `[REDACTED]` gesetzt.
-* **Object-Keys** mit Namen wie `password`, `access_token`, `refresh_token`,
-  `api_key`, `secret`, `service_role`, `token` werden als `[REDACTED]` ersetzt.
-* **Default-PII**: `sendDefaultPii: false` → keine IPs, keine Cookies,
-  keine User-Agent-Details automatisch.
-* **User-Identität**: nur pseudonyme `auth.uid()`, niemals E-Mail/Name.
-* **Mother Agency / Netwalk**: keine speziellen Tags / kein „live"-Marker
-  (Mother Agency ist rein informativ; Netwalk-Provider nicht implementiert
-  und wird auch in Sentry nur generisch als `provider:netwalk` getaggt).
+### Query-Parameter und URL-Hash-Fragmente
+Werden ersetzt durch `[REDACTED]`, sowohl in `?…` als auch in `#…`
+(Supabase Magic-Links transportieren `access_token`/`refresh_token` im Hash):
+`model_invite`, `invite_token`, `invite`, `token`, `code`,
+`access_token`, `refresh_token`,
+`package_url`, `package_capability_url`, `capability_url`, `capability`,
+`apikey`, `api_key`, `key`, `secret`, `authorization`.
 
-Tests dazu: `src/observability/__tests__/sentry.scrub.test.ts` (lauffähig in CI).
+### HTTP-Header (Request-Headers, automatisch von Sentry erfasst)
+`authorization`, `cookie`, `set-cookie`, `apikey`,
+`x-supabase-auth`, `x-api-key`, `x-csrf-token` → komplett `[REDACTED]`.
+
+### String-Pattern (in jedem freien Text — Error-Message, breadcrumb.message,
+exception.value, transaction-Name, Extras)
+* **JWTs** (`eyJ…` 3-teilig, mind. 10 Zeichen pro Segment) → `[REDACTED_JWT]`
+* **Supabase-Secret-Keys** (`sb_secret_…`, `sbp_…`, `service_role_…`) → `[REDACTED_SUPABASE_KEY]`
+* **Bearer-Tokens** (`Bearer abc…`, ≥ 20 Zeichen) → `Bearer [REDACTED]`
+* **E-Mail-Adressen** → `[REDACTED_EMAIL]`
+* **Lange Hex-Blobs** (≥ 32 Zeichen) → `[REDACTED_HEX]`
+
+### Object-Keys (rekursiv tief, case-insensitive, normalisiert auf
+lower-snake_case — fängt also `claimToken`, `claim_token`, `CLAIM-TOKEN`)
+**Vollständig durch `[REDACTED]` ersetzt** (Hardening 2026-04, F4):
+* Auth: `password`, `pwd`, `pass`, `secret`, `service_role`, `service_role_key`,
+  `api_key`, `apikey`, `authorization`, `auth_token`, `access_token`,
+  `refresh_token`, `token`, `jwt`, `bearer`, `cookie`, `session_token`,
+  `magic_link`, `recovery_token`, `reset_token`, `verify_token`,
+  `verification_token`, `webhook_secret`, `signing_secret`, `private_key`
+* Supabase RPC-Param-Namen: `p_token`, `p_invite_token`, `p_claim_token`
+* Invite/Claim: `invite`, `invite_token`, `invitation_token`, `claim`,
+  `claim_token`, `model_invite`
+* Capability-URLs: `capability`, `capability_url`, `capability_token`,
+  `package_url`, `package_capability_url`, `package_capability`
+
+**URL-redaktiert** (Routing-Info bleibt, Tokens raus):
+`url`, `href`, `link`, `from`, `to`, `origin`, `referrer`, `redirect`,
+`callback`, `next_url`, `request_url`, `response_url`, `webhook_url`.
+
+### Sentry-Event-Felder
+* `event.exception.values[].value` und `.type` durchlaufen `redactString`
+  (Hardening F6) — die Hauptzeile im Sentry-Dashboard ist immer geprüft.
+* `event.transaction` (Screen-/Route-Name) wird als URL behandelt (F7).
+* `event.user` wird auf `{ id }` (Pseudonym) reduziert.
+* `event.request.cookies` wird komplett auf `[REDACTED]` gesetzt.
+
+### Default-PII komplett aus
+`sendDefaultPii: false` → keine IPs, keine Cookies, keine User-Agent-Details
+automatisch. Performance/Tracing/Replay/Profiling sind explizit `0` bzw.
+nicht installiert.
+
+### User-Identität
+Nur pseudonyme `auth.uid()` (UUID), niemals E-Mail/Name/Telefon.
+
+### Mother Agency / Netwalk
+Keine speziellen Tags, kein „live"-Marker:
+* **Mother Agency** ist rein informativ (Anzeige), wird **nicht** an
+  Observability angebunden. Sollte ein Mother-Agency-Wert versehentlich
+  in einem Error-Context landen, greifen die generischen Scrubber.
+* **Netwalk** ist als Provider noch **nicht implementiert** und wird in
+  Sentry nur generisch als `provider:netwalk` getaggt — keine spezielle
+  Telemetrie, keine Erfolgsmeldungen, keine Marketing-Optik.
+
+Tests: `src/observability/__tests__/sentry.scrub.test.ts` (34 Cases, lauffähig in CI).
+Diese Tests sind die DSGVO-Sicherung der Integration und dürfen niemals
+stillschweigend rot werden.
 
 ---
 
@@ -152,7 +213,9 @@ src/utils/logger.ts
   └── shipToSentry()   — error/fatal → captureException/Message; warn → breadcrumb
 
 src/components/AppErrorBoundary.tsx
-  └── captureException(error, { component_stack })
+  └── logger.fatal('AppErrorBoundary', msg, { error, componentStack, boundary })
+       (genau EIN Sentry-Event pro Render-Crash; Logger-Forwarder routet
+        wegen `error: error` automatisch in captureException)
 
 src/components/PackageImportPane.tsx
   └── breadcrumbs: analyze_start | drift_block | drift_override | commit_start | commit_persist_image_issues | commit_fail
