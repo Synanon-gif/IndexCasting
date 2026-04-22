@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "App",
+    "owner": "rubenjohannes",
     "slug": "App",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -36,7 +37,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": ""
+        "projectId": "2db60278-50d3-4760-8cb9-5062b7ef30cc"
       }
     }
   }

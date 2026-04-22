@@ -17,9 +17,9 @@ npx eas login
 npx eas init
 ```
 
-`eas init` legt bzw. verknüpft das EAS-Projekt und trägt die **Project ID** in `app.json` unter `expo.extra.eas.projectId` ein. `app.config.js` liest dieselbe ID (bzw. `EAS_PROJECT_ID` aus der Umgebung) und reicht sie an die App weiter.
+`eas init` legt bzw. verknüpft das EAS-Projekt. Wenn die CLI die **Project ID** nicht automatisch schreiben kann (dynamische Konfiguration `app.config.js` — [Expo-Doku](https://docs.expo.dev/workflow/configuration/#dynamic-configuration-with-appconfigjs)), die im Terminal ausgegebene UUID **manuell** in `app.json` unter `expo.extra.eas.projectId` eintragen. `app.config.js` liest dieselbe ID (bzw. `EAS_PROJECT_ID` aus der Umgebung) und reicht sie an `Constants.expoConfig.extra` weiter.
 
-Falls `app.json` noch `projectId: ""` enthält, ist kein echter Build möglich — zuerst `eas init` ausführen.
+Optional `expo.owner` in `app.json` setzen (entspricht dem Account aus `eas init`, z. B. `@rubenjohannes/App` → `"owner": "rubenjohannes"`).
 
 ## Bundle-IDs (anpassen bei Bedarf)
 
