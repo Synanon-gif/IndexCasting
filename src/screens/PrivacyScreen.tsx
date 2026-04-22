@@ -87,9 +87,24 @@ export const PrivacyScreen: React.FC<Props> = ({ onClose }) => {
           <Text style={styles.body}>
             We do not sell your personal data. We may share data with:{'\n'}• Other platform users
             as necessary for the Service (e.g. your profile with Agencies).{'\n'}• Sub-processors:
-            Supabase (database & storage), Stripe (payment processing).{'\n'}• Law enforcement when
-            required by applicable law.{'\n'}
+            Supabase (database & storage), Stripe (payment processing), Sentry (error monitoring, EU
+            region — `*.de.sentry.io`).{'\n'}• Law enforcement when required by applicable law.
+            {'\n'}
             All sub-processors are bound by data processing agreements.
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.heading}>5a. Error Monitoring (Sentry)</Text>
+          <Text style={styles.body}>
+            We use Sentry to detect and diagnose technical errors. When an error occurs, we transmit
+            the error message, stack trace, device model, operating system, app version, and a
+            pseudonymous user identifier to Sentry (EU hosting, `*.de.sentry.io`).{'\n'}
+            We deliberately do <Text style={{ fontWeight: '600' }}>not</Text> transmit: email
+            addresses, plain-text tokens, claim or invite links, package import (capability) URLs,
+            or your full IP address (`sendDefaultPii: false`).{'\n'}
+            Legal basis: Art. 6(1)(f) GDPR (legitimate interest in application stability and
+            security).
           </Text>
         </View>
 

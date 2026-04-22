@@ -50,6 +50,10 @@ import {
 } from '../services/packageImportTypes';
 import { commitPreview, toPreviewModels } from '../services/packageImporter';
 import {
+  addBreadcrumb as sentryBreadcrumb,
+  setFlowContext as sentrySetFlowContext,
+} from '../observability/sentry';
+import {
   buildPerRowTerritoryClaims,
   classifyStoragePreflight,
   computeEffectiveTerritories,
@@ -164,6 +168,20 @@ export const PackageImportPane: React.FC<Props> = ({
       abortRef.current = ctrl;
       setPhase('analyzing');
       setAnalyzeProgress({ phase: 'fetch_list', modelsTotal: 0, modelsDone: 0 });
+      // Breadcrumb: liefert Kontext, wenn ein späterer Error kommt.
+      // Bewusst keine URL und kein Token im Payload — nur Provider-Tag.
+      sentrySetFlowContext({
+        area: 'agency',
+        screen: 'package-import',
+        provider: provider.id,
+        importPhase: 'analyze_start',
+      });
+      sentryBreadcrumb({
+        category: 'package-import',
+        level: 'info',
+        message: 'analyze_start',
+        data: { provider: provider.id, allowDriftBypass },
+      });
 
       try {
         const payloads = await provider.analyze({
@@ -189,10 +207,27 @@ export const PackageImportPane: React.FC<Props> = ({
         }
         if (isParserDriftError(e)) {
           console.warn('[package-import drift]', JSON.stringify(e.drift));
+          sentryBreadcrumb({
+            category: 'package-import',
+            level: 'warning',
+            message: 'drift_block',
+            data: {
+              provider: provider.id,
+              allowDriftBypass,
+              // Nur Drift-Marker, NIE die volle drift-Payload (kann modelnamen / urls enthalten).
+              has_drift: true,
+            },
+          });
           setDrift(e.drift);
           setPhase('drift_blocked');
           return;
         }
+        sentryBreadcrumb({
+          category: 'package-import',
+          level: 'error',
+          message: 'analyze_fail',
+          data: { provider: provider.id, error_code: (e as Error).message },
+        });
         setError(humaniseError((e as Error).message));
         setPhase('idle');
       } finally {
@@ -246,6 +281,12 @@ export const PackageImportPane: React.FC<Props> = ({
     // checks (`missing_external_id`, `missing_name`, `missing_height`, `no_images`,
     // `forceSkipReason`) so the DB is safe even on the override path.
     setOverrideText('');
+    sentryBreadcrumb({
+      category: 'package-import',
+      level: 'warning',
+      message: 'drift_override',
+      data: { provider: provider.id },
+    });
     await runAnalyze(provider, true);
   }, [overrideText, url, runAnalyze]);
 
@@ -327,6 +368,12 @@ export const PackageImportPane: React.FC<Props> = ({
     abortRef.current = ctrl;
     setPhase('committing');
     setCommitProgress({ total: toCommit.length, done: 0 });
+    sentryBreadcrumb({
+      category: 'package-import',
+      level: 'info',
+      message: 'commit_start',
+      data: { count: toCommit.length, has_global_territories: parsedTerritories.length > 0 },
+    });
 
     try {
       const globalTerritoryClaims: CommitTerritoryClaim[] = parsedTerritories.map((cc) => ({
@@ -358,10 +405,40 @@ export const PackageImportPane: React.FC<Props> = ({
       });
       setSummary(result);
       setPhase('done');
+      // Report image-persistence outcomes (no PII, only counters + verdict).
+      // The reason codes are produced in `packageImporter.ts` after persistImages.
+      const failedImages = result.outcomes.filter((o) =>
+        (o.reason ?? '').includes('all_images_persistence_failed'),
+      ).length;
+      const partialImages = result.outcomes.filter((o) =>
+        (o.reason ?? '').includes('images_partial:'),
+      ).length;
+      if (failedImages > 0 || partialImages > 0 || result.errorCount > 0) {
+        sentryBreadcrumb({
+          category: 'package-import',
+          level: 'warning',
+          message: 'commit_persist_image_issues',
+          data: {
+            committed: toCommit.length,
+            persist_all_failed: failedImages,
+            persist_partial: partialImages,
+            errors: result.errorCount,
+            warnings: result.warningCount,
+            created: result.createdCount,
+            merged: result.mergedCount,
+          },
+        });
+      }
       if (result.createdCount + result.mergedCount > 0) {
         onModelsChanged?.();
       }
     } catch (e) {
+      sentryBreadcrumb({
+        category: 'package-import',
+        level: 'error',
+        message: 'commit_fail',
+        data: { error_code: (e as Error).message, count: toCommit.length },
+      });
       setError(humaniseError((e as Error).message));
       setPhase('previewing');
     } finally {

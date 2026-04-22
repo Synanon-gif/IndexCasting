@@ -8,6 +8,8 @@ module.exports = {
   clearMocks: true,
   moduleNameMapper: {
     '^react-native$': '<rootDir>/jest/react-native-stub.cjs',
+    '^@sentry/react-native$': '<rootDir>/jest/sentry-react-native-stub.cjs',
+    '^expo-constants$': '<rootDir>/jest/expo-constants-stub.cjs',
   },
   transform: {
     '^.+\\.(ts|tsx|js|jsx)$': ['ts-jest', { diagnostics: true }],

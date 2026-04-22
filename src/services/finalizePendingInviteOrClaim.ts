@@ -11,6 +11,7 @@ import { readModelClaimToken, persistModelClaimToken } from '../storage/modelCla
 import { uiCopy } from '../constants/uiCopy';
 import { emitInviteClaimSuccess } from '../utils/inviteClaimSuccessBus';
 import { supabase } from '../../lib/supabase';
+import { captureMessage as sentryCaptureMessage } from '../observability/sentry';
 
 export type FinalizeInviteBranch = {
   attempted: boolean;
@@ -196,6 +197,12 @@ async function runClaimMutationOnly(
       flow: 'model_claim',
       error: out.claim.error,
     });
+    // Sentry: nur Fehlercode, KEIN Token. Hilft, "already_claimed_by_other_user"
+    // und Token-Lifecycle-Issues sofort sichtbar zu machen.
+    sentryCaptureMessage(`model_claim_fatal:${out.claim.error ?? 'unknown'}`, 'error', {
+      flow: 'model_claim',
+      error_code: out.claim.error ?? null,
+    });
   } else {
     out.claim.state = 'retryable';
     console.warn('[finalizePendingInviteOrClaim] claim non-fatal (token kept)', {
@@ -249,6 +256,11 @@ export function finalizePendingInviteOrClaim(
               flow: 'agency_client_invite',
               error: out.invite.error,
             });
+          // Sentry: Fehlercode (kein Token, keine PII).
+          sentryCaptureMessage(`invite_accept_fatal:${out.invite.error ?? 'unknown'}`, 'error', {
+            flow: 'agency_client_invite',
+            error_code: out.invite.error ?? null,
+          });
         } else {
           out.invite.state = 'retryable';
           console.warn('[finalizePendingInviteOrClaim] invite non-fatal (token kept)', {

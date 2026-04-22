@@ -21,6 +21,11 @@
 
 import { Platform } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import {
+  captureException as sentryCaptureException,
+  captureMessage as sentryCaptureMessage,
+  addBreadcrumb as sentryAddBreadcrumb,
+} from '../observability/sentry';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -232,8 +237,50 @@ function emit(
   const dedupeKey = opts.dedupeKey ?? `${level}:${source}:${message}`;
   if (!shouldShip(dedupeKey, Date.now())) return;
 
-  // 4) Ship.
+  // 4) Ship to Supabase (existing observability) AND Sentry (additive).
+  //    Sentry-Aufrufe sind no-ops wenn nicht initialisiert (kein DSN / dev).
   void shipEventToBackend(level, source, message, context, opts);
+  shipToSentry(level, source, message, context);
+}
+
+/**
+ * Forwarded zu Sentry — error/fatal als Exception, warn als breadcrumb+message.
+ * Scrubbing passiert in `src/observability/sentry.ts#beforeSend`/`redactDeep`,
+ * dieser Aufruf bleibt damit minimal.
+ */
+function shipToSentry(
+  level: LogLevel,
+  source: string,
+  message: string,
+  context?: LogContext,
+): void {
+  try {
+    if (level === 'error' || level === 'fatal') {
+      // Falls der Aufrufer ein echtes Error-Objekt im Context mitgibt,
+      // bevorzugen wir das (sauberer Stacktrace in Sentry).
+      const maybeError =
+        context && typeof context === 'object' && 'error' in context
+          ? (context as { error?: unknown }).error
+          : undefined;
+      if (maybeError instanceof Error) {
+        sentryCaptureException(maybeError, { source, ...context });
+      } else {
+        sentryCaptureMessage(`[${source}] ${message}`, level === 'fatal' ? 'fatal' : 'error', {
+          source,
+          ...(context ?? {}),
+        });
+      }
+    } else if (level === 'warn') {
+      sentryAddBreadcrumb({
+        category: source,
+        level: 'warning',
+        message,
+        data: context as Record<string, unknown> | undefined,
+      });
+    }
+  } catch {
+    // Sentry darf den Logger niemals brechen.
+  }
 }
 
 export const logger = {

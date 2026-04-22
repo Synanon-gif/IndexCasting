@@ -27,6 +27,10 @@ module.exports = {
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ??
       '',
     appUrl: process.env.EXPO_PUBLIC_APP_URL ?? 'https://index-casting.com',
+    // Sentry: nur Public-Client-DSN, kein Auth-Token. In dev leer lassen.
+    sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? '',
+    // Steuert Sentry-Environment + dev-Skip (development|preview|production).
+    appEnv: process.env.EXPO_PUBLIC_APP_ENV ?? 'development',
     eas: {
       projectId: process.env.EAS_PROJECT_ID ?? '',
     },

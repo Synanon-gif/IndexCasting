@@ -2,6 +2,7 @@ import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { View, Text, ScrollView, Platform, TouchableOpacity, StyleSheet } from 'react-native';
 import { uiCopy } from '../constants/uiCopy';
 import { logger } from '../utils/logger';
+import { captureException as sentryCaptureException } from '../observability/sentry';
 
 type Props = { children: ReactNode };
 type State = { error: Error | null };
@@ -31,6 +32,16 @@ export class AppErrorBoundary extends Component<Props, State> {
       });
     } catch {
       // Logger must never break the boundary itself.
+    }
+    // Sentry: zusätzlich das echte Error-Objekt schicken, damit der Stack
+    // sauber gegrouped wird (no-op wenn Sentry deaktiviert).
+    try {
+      sentryCaptureException(error, {
+        component_stack: info.componentStack ?? null,
+        boundary: 'AppErrorBoundary',
+      });
+    } catch {
+      // Sentry must never break the boundary itself.
     }
   }
 
