@@ -98,7 +98,9 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
     return m;
   }, [events, weekDates]);
 
-  const chipFontSize = denseWorkWeek ? (isMobile ? 8 : 8) : isMobile ? 8 : 9;
+  // Chip presence: bigger on desktop so week chips read at the same distance as month/day, slightly
+  // smaller on mobile to keep multi-event days legible without exceeding the 44px tap target.
+  const chipFontSize = denseWorkWeek ? (isMobile ? 10 : 11) : isMobile ? 10 : 11;
   const mobileMaxChips = isMobile ? (denseWorkWeek ? 3 : 2) : maxChipsPerDay;
 
   const renderChipsForDay = (list: CalendarScheduleBlock[], cap: number) => {
@@ -189,6 +191,7 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
           const cap = isMobile ? mobileMaxChips : maxChipsPerDay;
           const isSelected = selectedDate === date;
           const isToday = date === new Date().toISOString().slice(0, 10);
+          const hasEvents = list.length > 0;
           return (
             <TouchableOpacity
               key={date}
@@ -197,23 +200,36 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
                 styles.colFlex,
                 isMobile && denseWorkWeek && styles.colMobileDenseH,
                 isMobile && !denseWorkWeek && styles.colMobileStdH,
-                isSelected && styles.colSelected,
+                hasEvents && styles.colHasEvents,
                 isToday && !isSelected && styles.colToday,
+                isSelected && styles.colSelected,
               ]}
               onPress={() => onSelectDay(date)}
               activeOpacity={0.85}
             >
-              <Text style={styles.wd}>{WEEKDAY_SHORT[idx]}</Text>
-              <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>{dayNum}</Text>
-              <View style={styles.chips}>
-                {renderChipsForDay(list, cap)}
-                {list.length > cap ? (
-                  <View style={denseWorkWeek && isMobile ? styles.moreHit : undefined}>
-                    <Text style={styles.more}>+{list.length - cap}</Text>
-                  </View>
-                ) : null}
-                {showDayKindFooter && list.length > 0 ? <WeekKindFooterVisual list={list} /> : null}
+              <View style={styles.colHeader}>
+                <Text style={styles.wd}>{WEEKDAY_SHORT[idx]}</Text>
+                <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>{dayNum}</Text>
               </View>
+              <View style={styles.colBody}>
+                {hasEvents ? (
+                  <View style={styles.chips}>
+                    {renderChipsForDay(list, cap)}
+                    {list.length > cap ? (
+                      <View style={denseWorkWeek && isMobile ? styles.moreHit : undefined}>
+                        <Text style={styles.more}>+{list.length - cap}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : (
+                  // Empty days get a low-contrast hint so the week grid never reads as "broken /
+                  // empty cards"; a11y unchanged (touch target still opens the day view).
+                  <View style={styles.emptyHint} pointerEvents="none">
+                    <Text style={styles.emptyHintText}>—</Text>
+                  </View>
+                )}
+              </View>
+              {showDayKindFooter && hasEvents ? <WeekKindFooterVisual list={list} /> : null}
             </TouchableOpacity>
           );
         })}
@@ -250,73 +266,107 @@ const styles = StyleSheet.create({
   },
   columns: { flexDirection: 'row', width: '100%', alignSelf: 'stretch' },
   col: {
-    minHeight: 140,
+    // Taller columns reduce the visual gap between event chips and the cell border so the week
+    // surface no longer reads as "sparse cards"; matches the perceived density of Month and Day.
+    minHeight: 172,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 6,
+    padding: 8,
     backgroundColor: 'transparent',
+    flexDirection: 'column',
   },
   colFlex: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
-  colMobileDenseH: { minHeight: 128 },
-  colMobileStdH: { minHeight: 110 },
+  colMobileDenseH: { minHeight: 152 },
+  colMobileStdH: { minHeight: 132 },
+  colHasEvents: {
+    // Subtle warm tint when the day carries events, mirroring the premium MonthCalendarView surface.
+    backgroundColor: colors.surfaceWarm,
+  },
   colSelected: {
     borderColor: colors.textPrimary,
+    borderWidth: 2,
+    padding: 7,
     backgroundColor: colors.surface,
   },
   colToday: {
     borderColor: colors.accentGreen,
   },
-  wd: { fontSize: 10, color: colors.textSecondary, textAlign: 'center' },
+  colHeader: {
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  colBody: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  wd: { fontSize: 10, color: colors.textSecondary, textAlign: 'center', letterSpacing: 0.4 },
   dayNum: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
     color: colors.textPrimary,
     textAlign: 'center',
-    marginBottom: 4,
+    lineHeight: 20,
   },
-  dayNumSelected: { color: colors.textPrimary },
-  chips: { gap: 4 },
+  dayNumSelected: { fontWeight: '700' },
+  chips: { gap: 5 },
   bandDivider: {
-    marginTop: 2,
-    marginBottom: 2,
+    marginTop: 3,
+    marginBottom: 3,
     paddingBottom: 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
   bandLabel: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     color: colors.textSecondary,
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    letterSpacing: 0.6,
   },
   chip: {
-    borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 3,
+    // Stronger chip presence: bigger padding + radius so the colour blocks read as event tiles
+    // rather than tiny pills, matching Day-view block density on the same calendar surface.
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 5,
   },
   chipDense: {
-    paddingVertical: 2,
-    paddingHorizontal: 3,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 5,
   },
   chipMobileDenseTap: {
     minHeight: 44,
     justifyContent: 'center',
   },
-  chipText: { fontSize: 9, color: '#fff', fontWeight: '600' },
-  chipTextTitle: { fontSize: 9, color: '#fff', fontWeight: '500', opacity: 0.95 },
-  more: { fontSize: 9, color: colors.textSecondary, textAlign: 'center' },
+  chipText: { fontSize: 11, color: '#fff', fontWeight: '700', lineHeight: 13 },
+  chipTextTitle: { fontSize: 11, color: '#fff', fontWeight: '500', opacity: 0.95, lineHeight: 13 },
+  more: { fontSize: 10, color: colors.textSecondary, textAlign: 'center', fontWeight: '600' },
   moreHit: {
     minHeight: 40,
     justifyContent: 'center',
+  },
+  emptyHint: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyHintText: {
+    fontSize: 14,
+    color: colors.borderLight,
+    fontWeight: '500',
   },
   kindFooterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 6,
-    marginTop: 4,
+    marginTop: 6,
+    paddingTop: 5,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
   kindFooterItem: {
     flexDirection: 'row',
@@ -325,14 +375,14 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
   },
   kindFooterDot: {
-    width: 7,
-    height: 7,
+    width: 8,
+    height: 8,
     borderRadius: 4,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.12)',
   },
   kindFooterText: {
-    fontSize: 8,
+    fontSize: 9,
     color: colors.textSecondary,
     fontWeight: '600',
   },

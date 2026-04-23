@@ -7,8 +7,8 @@
  *    authoritative: `resolveProjectionBucket` → `projectionBucketColor` (via
  *    `getCalendarProjectionBadge` / `calendarGridColorForOptionItem`).
  * 2. **Entry-only fallback** — `getCalendarEntryBlockColor` / `getBookingEntryProjectionBadge` for
- *    standalone `calendar_entries` or when the model side has no cached `OptionRequest` (intentional
- *    B2B/model parity gap only in that case).
+ *    standalone `calendar_entries` (`booking_events`-derived rows) or when the model side has no
+ *    cached `OptionRequest` (intentional B2B/model parity gap only in that case).
  * 3. **Manual** — `resolveUserCalendarEventBlockColor` for `user_calendar_events` (custom colors
  *    preserved; job-title override unchanged).
  * 4. **Overviews** — Strips/footers must aggregate **rendered** event hex; they must not replace
@@ -19,6 +19,25 @@
  *
  * On model `calendar_entries`, the single color entry point is `resolveModelCalendarEntryColor` in
  * `modelCalendarSchedule.ts` (cached option → `calendarGridColorForOptionItem`; else `getCalendarEntryBlockColor`).
+ *
+ * ## TENTATIVE-JOB TITLE-OVERRIDE PARITY (LOCKED across both arms)
+ *
+ * Both the projection arm (`resolveProjectionBucket`) and the entry-only arm
+ * (`getBookingEntryProjectionBadge`) treat a canonical Job-shaped title (`displayTitleIndicatesCanonicalJob`,
+ * normalised dashes) as authoritative even when `status='tentative'` lags. This must stay symmetrical:
+ *
+ * - **Projection arm**: tentative + Job-shaped `unifiedB2BOptionLineForProjection` → `jobConfirmed` → green.
+ * - **Entry-only arm**: tentative + Job-shaped `entry.title` → `labels.job` → green.
+ *
+ * The legend footnote "Tentative job uses the Option color" intentionally survives for the genuine
+ * pre-promotion case (tentative booking with a still non-canonical title). Symmetry guarantees that
+ * a single semantic event renders the same HEX across:
+ *   B2B Month chip, B2B Month dense strip, B2B Week chip, B2B Week footer dot,
+ *   B2B Day timeline block, Model Month / Week / Day (with or without cached projection),
+ *   ICS export label (downstream colors derived from the same titles), Manual mirror.
+ *
+ * If you ever introduce a third surface that bypasses this hierarchy (e.g. a future model-side
+ * dense view), wire it into one of the four entry points above — never re-implement bucket rules.
  */
 import type { SupabaseOptionRequest } from '../services/optionRequestsSupabase';
 import type { CalendarEntry } from '../services/calendarSupabase';
@@ -284,7 +303,25 @@ export function getCalendarProjectionBadge(
   };
 }
 
-/** Standalone calendar row (e.g. booking_events) without option join. */
+/**
+ * Standalone calendar row (e.g. `booking_events`) without an option join — the
+ * **entry-only** fallback branch of the locked resolver hierarchy.
+ *
+ * **Title-canonical-Job override (parity with `resolveProjectionBucket`).** When a
+ * `booking` row is still `status='tentative'` but its `title` has already been promoted to
+ * the canonical Job shape by the DB trigger (`"Job – …"` / `"… – job"`, dash-normalised),
+ * the title is the source of truth and the block resolves to Job green — exactly the same
+ * upgrade the option-projection arm performs via `unifiedB2BOptionLineForProjection`.
+ *
+ * Without this override, an entry-only tentative `booking_events` row with a canonical Job
+ * title would render Option orange while the semantically equivalent option-projection row
+ * renders Job green — a view/role drift that violates the LOCKED RESOLVER POLICY in
+ * `system-invariants.mdc` and `.cursor/rules/calendar-colors-single-source.mdc`.
+ *
+ * The legend's "Tentative job uses the Option color" footnote still applies for the genuinely
+ * pre-promotion case (tentative booking with non-canonical title); only canonical-Job titles
+ * trump the lagging status — same trust model as the projection arm.
+ */
 export function getBookingEntryProjectionBadge(
   entry: Pick<CalendarEntry, 'entry_type' | 'status'> & { title?: string | null },
   labels: Pick<CalendarProjectionLabels, 'job' | 'jobTentative' | 'casting' | 'optionPending'>,
@@ -293,6 +330,12 @@ export function getBookingEntryProjectionBadge(
   const t = entry.entry_type;
   if (t === 'booking') {
     const tentative = entry.status === 'tentative';
+    // Title-canonical-Job override mirrors `resolveProjectionBucket`'s tentative-job arm:
+    // a Job-shaped title promoted by the DB trigger wins over a still-lagging tentative status,
+    // so entry-only and projection-based renderings agree on Job green for the same lifecycle.
+    if (tentative && displayTitleIndicatesCanonicalJob(entry.title)) {
+      return { label: labels.job, backgroundColor: CALENDAR_COLORS.job, textColor };
+    }
     return {
       label: tentative ? labels.jobTentative : labels.job,
       backgroundColor: tentative ? CALENDAR_COLORS.option : CALENDAR_COLORS.job,

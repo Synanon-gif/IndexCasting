@@ -271,6 +271,54 @@ describe('calendarProjectionLabel', () => {
     expect(b.label).toBe(L.job);
   });
 
+  // Locked entry-only parity with `resolveProjectionBucket`'s tentative-job arm:
+  // tentative `booking_events` whose title was already promoted by the DB trigger to
+  // the canonical Job shape must render Job green / Job label, not Option orange.
+  // Regression guard for the cross-view orange-Job leak fixed with
+  // `getBookingEntryProjectionBadge` title override.
+  it('getBookingEntryProjectionBadge: tentative booking + canonical Job title (suffix) → Job green', () => {
+    const b = getBookingEntryProjectionBadge(
+      { entry_type: 'booking', status: 'tentative', title: 'Client 3 – job' },
+      L,
+    );
+    expect(b.label).toBe(L.job);
+    expect(b.backgroundColor).toBe(CALENDAR_COLORS.job);
+  });
+
+  it('getBookingEntryProjectionBadge: tentative booking + canonical Job title (prefix) → Job green', () => {
+    const b = getBookingEntryProjectionBadge(
+      { entry_type: 'booking', status: 'tentative', title: 'Job – Acme' },
+      L,
+    );
+    expect(b.label).toBe(L.job);
+    expect(b.backgroundColor).toBe(CALENDAR_COLORS.job);
+  });
+
+  it('getBookingEntryProjectionBadge: tentative booking with non-canonical title stays Option orange (legend footnote)', () => {
+    const b = getBookingEntryProjectionBadge(
+      { entry_type: 'booking', status: 'tentative', title: 'Client 3' },
+      L,
+    );
+    expect(b.label).toBe(L.jobTentative);
+    expect(b.backgroundColor).toBe(CALENDAR_COLORS.option);
+  });
+
+  it('entry-only ↔ option-projection parity for tentative booking + canonical Job title (no view drift)', () => {
+    const title = 'Client 3 – job';
+    const entryOnly = getBookingEntryProjectionBadge(
+      { entry_type: 'booking', status: 'tentative', title },
+      L,
+    ).backgroundColor;
+    const optionProjection = getCalendarProjectionBadge(
+      baseOption({ status: 'confirmed', final_status: 'option_confirmed' }),
+      entry({ entry_type: 'booking', status: 'tentative', title }),
+      L,
+    ).backgroundColor;
+    expect(entryOnly).toBe(CALENDAR_COLORS.job);
+    expect(optionProjection).toBe(CALENDAR_COLORS.job);
+    expect(entryOnly).toBe(optionProjection);
+  });
+
   describe('color parity — month grid === week/day badge', () => {
     type Case = {
       name: string;

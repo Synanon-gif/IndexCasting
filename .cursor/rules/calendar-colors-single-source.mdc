@@ -41,7 +41,8 @@ alwaysApply: false
 ## Event-Typen (Semantik)
 
 - **Option / Casting / Job** über B2B-Merge: Farben ausschließlich über die Projektion oben, nicht `entry_type` pur.
-- **Tentative** bestätigtes Booking: Legende: Option-Farbe — absichtlich; nicht „auf grün faken“.
+- **Tentative** bestätigtes Booking: Legende: Option-Farbe — absichtlich für den **echten Pre-Promotion-Fall** (Titel noch nicht kanonisch); nicht „auf grün faken“.
+- **Tentative + kanonischer Job-Titel** (`Job – …` / `… – job`, dash-normalisiert via `displayTitleIndicatesCanonicalJob`): **muss in beiden Resolver-Armen Job-Grün ergeben** — Projection-Arm (`resolveProjectionBucket` → `unifiedB2BOptionLineForProjection`) **und** Entry-only-Arm (`getBookingEntryProjectionBadge`, Booking-Branch). Der Titel ist Trigger-Output und damit autoritativer als ein nachhinkendes `status='tentative'`. Diese Parität ist gesperrt durch `calendarProjectionLabel.test.ts` (Cases: tentative-booking + canonical-Job-title prefix/suffix → Grün; tentative-booking + non-canonical title bleibt Orange; entry-only ↔ option-projection Parity).
 - **Manuelles** `user_calendar` ohne Option-Bezug: `resolveUserCalendarEventBlockColor` bzw. personal; keine Hardcodes neben `CALENDAR_COLORS`.
 
 ## Modell-Profil (aktive `calendar_entries`)
