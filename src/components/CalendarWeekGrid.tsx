@@ -41,8 +41,8 @@ function WeekKindFooterVisual({ list }: { list: CalendarScheduleBlock[] }) {
       accessible
       accessibilityLabel={`${c.weekFooterA11yPrefix} ${a11ySummary}. ${c.weekFooterA11ySuffix}`}
     >
-      {segments.map((s) => (
-        <View key={s.bucket} style={styles.kindFooterItem} accessible={false}>
+      {segments.map((s, i) => (
+        <View key={`${s.bucket}|${s.color}|${i}`} style={styles.kindFooterItem} accessible={false}>
           <View style={[styles.kindFooterDot, { backgroundColor: s.color }]} />
           <Text style={styles.kindFooterText} numberOfLines={1}>
             {weekKindSegmentLabel(s)} {s.count}

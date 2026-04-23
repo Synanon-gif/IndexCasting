@@ -1,5 +1,10 @@
 /**
  * Pure helpers for B2B calendar overview density (month/week/day UI only).
+ *
+ * **Dense month strip + week counts:** aggregate by rendered event **hex** (`block.color` /
+ * `MonthOverviewEvent.color`), not by coarse kind buckets, so projection-specific colors (e.g.
+ * awaiting model / job confirmation pending) never collapse into generic “other” grey while the chip
+ * stays purple/brown.
  */
 import { uiCopy } from '../constants/uiCopy';
 import { CALENDAR_COLORS, CALENDAR_PROJECTION_COLORS } from './calendarColors';

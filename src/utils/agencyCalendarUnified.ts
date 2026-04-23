@@ -554,7 +554,10 @@ export function dedupeUnifiedRowsByOptionRequest(
   });
 }
 
-/** Month grid dots — must match list filtering (same ids as unified rows). */
+/**
+ * Month grid events for `MonthCalendarView`: `color` is the single semantic hex for chips **and**
+ * `denseOverview` strips (`monthDayKindSegments` — aggregates by this value, same as week footers).
+ */
 export function buildEventsByDateFromUnifiedRows(rows: UnifiedAgencyCalendarRow[]): Record<
   string,
   Array<{

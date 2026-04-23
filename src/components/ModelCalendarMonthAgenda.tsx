@@ -1,6 +1,10 @@
 /**
  * Mobile month view: scrollable list of model calendar entries grouped by day
  * (replaces dot grid).
+ *
+ * **Inactive in the app today** — if this surface becomes active again, it must use the same
+ * projection-first / entry-fallback color hierarchy as `resolveModelCalendarEntryColor` in
+ * `modelCalendarSchedule.ts` (not entry-only colors when a cached `OptionRequest` is available).
  */
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
@@ -123,6 +127,8 @@ export const ModelCalendarMonthAgenda: React.FC<ModelCalendarMonthAgendaProps> =
                 <Text style={styles.sectionYmd}>{date}</Text>
               </TouchableOpacity>
               {rows.map((entry) => {
+                // Entry-only; if this component is reactivated, wire `resolveModelCalendarEntryColor`
+                // + option lookup — see file header.
                 const bg = getCalendarEntryBlockColor(entry);
                 return (
                   <TouchableOpacity

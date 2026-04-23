@@ -1,9 +1,13 @@
 /**
- * Model calendar: canonical color hierarchy for `calendar_entries` on model surfaces.
+ * Model calendar: one canonical resolver hierarchy for `calendar_entries` on model surfaces.
+ * Do not add a parallel color path — follow this order only.
  *
- * 1. `option_request_id` + cached `OptionRequest` → B2B projection (`calendarGridColorForOptionItem`)
- * 2. Else → entry-only `getCalendarEntryBlockColor` (title/job heuristics, same as orphan rows)
- * Manual / user events are not built here; see `resolveUserCalendarEventBlockColor` in B2B.
+ * 1. **Projection (authoritative):** `option_request_id` is set and the caller supplies a cached
+ *    `OptionRequest` → `calendarGridColorForOptionItem` (same resolver as B2B chips/blocks).
+ * 2. **Entry-only (fallback):** no cached option for that id → `getCalendarEntryBlockColor` (orphan /
+ *    title–job heuristics; identical role to B2B standalone `calendar_entries`).
+ * 3. **Out of scope here:** manual / `user_calendar_events` are B2B-only; they use
+ *    `resolveUserCalendarEventBlockColor` and are unchanged by this module.
  */
 import type { CalendarEntry, CalendarEntryType } from '../services/calendarSupabase';
 import type { CalendarDayEvent } from '../components/MonthCalendarView';
@@ -22,8 +26,9 @@ import {
 import { logCalendarPreDedupeIfDuplicatesDev } from './invariantValidationDev';
 
 /**
- * Single path for model calendar month dots / week / day block colors. Prefer projection whenever
- * the caller can supply a cached option row; never duplicate projection rules in callers.
+ * Single entry point for model month dots / week / day block hex. Implements the hierarchy in the
+ * module header: projection-first, `getCalendarEntryBlockColor` only as fallback — never duplicate
+ * projection rules in callers.
  */
 export function resolveModelCalendarEntryColor(
   entry: CalendarEntry,
