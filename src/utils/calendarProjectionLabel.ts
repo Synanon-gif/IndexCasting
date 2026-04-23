@@ -1,6 +1,10 @@
 /**
  * Calendar projection labels/colors — approval-phase truth (Dimension 2), not raw price noise.
  * Commercial amounts stay on option rows; see `agencyCalendarUnified.ts` header.
+ *
+ * B2B uses these helpers for blocks/badges/dots. On model `calendar_entries`, the canonical
+ * projection-vs-entry order is `resolveModelCalendarEntryColor` in `modelCalendarSchedule.ts`
+ * (projection when a cached `OptionRequest` exists; else `getCalendarEntryBlockColor`).
  */
 import type { SupabaseOptionRequest } from '../services/optionRequestsSupabase';
 import type { CalendarEntry } from '../services/calendarSupabase';
@@ -279,6 +283,7 @@ export function getBookingEntryProjectionBadge(
       textColor,
     };
   }
+  // Gosee uses the same calendar blue as casting (not `CALENDAR_COLORS.gosee`) — legend + B2B parity.
   if (t === 'casting' || t === 'gosee') {
     return { label: labels.casting, backgroundColor: CALENDAR_COLORS.casting, textColor };
   }

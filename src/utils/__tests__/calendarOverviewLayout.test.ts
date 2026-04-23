@@ -1,3 +1,5 @@
+import { CALENDAR_COLORS, CALENDAR_PROJECTION_COLORS } from '../calendarColors';
+import type { CalendarScheduleBlock } from '../calendarUnifiedTimeline';
 import {
   cappedBlockLayout,
   formatWeekKindFooterShort,
@@ -5,6 +7,7 @@ import {
   monthEventKindBucket,
   sortCalendarDayEventsForOverview,
   startMinToDayTimeBand,
+  weekColumnKindSegments,
 } from '../calendarOverviewLayout';
 
 describe('calendarOverviewLayout', () => {
@@ -20,23 +23,53 @@ describe('calendarOverviewLayout', () => {
 
   it('sortCalendarDayEventsForOverview orders by bucket then title', () => {
     const sorted = sortCalendarDayEventsForOverview([
-      { id: '1', title: 'B', kind: 'option' },
-      { id: '2', title: 'A', kind: 'job' },
-      { id: '3', title: 'C', kind: 'casting' },
+      { id: '1', title: 'B', kind: 'option', color: CALENDAR_COLORS.option },
+      { id: '2', title: 'A', kind: 'job', color: CALENDAR_COLORS.job },
+      { id: '3', title: 'C', kind: 'casting', color: CALENDAR_COLORS.casting },
     ]);
     expect(sorted.map((e) => e.id)).toEqual(['2', '3', '1']);
   });
 
-  it('monthDayKindSegments aggregates counts', () => {
+  it('monthDayKindSegments aggregates by rendered event color (hex), same as weekColumnKindSegments', () => {
     const segs = monthDayKindSegments([
-      { id: '1', title: 'x', kind: 'option' },
-      { id: '2', title: 'y', kind: 'option' },
-      { id: '3', title: 'z', kind: 'job' },
+      { id: '1', title: 'x', kind: 'option', color: CALENDAR_COLORS.option },
+      { id: '2', title: 'y', kind: 'option', color: CALENDAR_COLORS.option },
+      { id: '3', title: 'z', kind: 'job', color: CALENDAR_COLORS.job },
     ]);
-    expect(segs.map((s) => [s.bucket, s.count])).toEqual([
-      ['job', 1],
-      ['option', 2],
+    expect(segs.map((s) => [s.bucket, s.count, s.color])).toEqual([
+      ['job', 1, CALENDAR_COLORS.job],
+      ['option', 2, CALENDAR_COLORS.option],
     ]);
+  });
+
+  it('monthDayKindSegments keeps projection purple, not reject grey, for awaiting-model', () => {
+    const segs = monthDayKindSegments([
+      {
+        id: '1',
+        title: 'a',
+        kind: 'other',
+        color: CALENDAR_PROJECTION_COLORS.awaitingModel,
+      },
+    ]);
+    expect(segs).toHaveLength(1);
+    expect(segs[0].color).toBe(CALENDAR_PROJECTION_COLORS.awaitingModel);
+  });
+
+  it('weekColumnKindSegments uses rendered block colors (e.g. awaiting model = purple, not grey “other”)', () => {
+    const blocks: CalendarScheduleBlock[] = [
+      {
+        id: '1',
+        date: '2026-04-15',
+        startMin: 480,
+        endMin: 600,
+        title: 'A',
+        color: CALENDAR_PROJECTION_COLORS.awaitingModel,
+      },
+    ];
+    const segs = weekColumnKindSegments(blocks);
+    expect(segs).toHaveLength(1);
+    expect(segs[0].color).toBe(CALENDAR_PROJECTION_COLORS.awaitingModel);
+    expect(segs[0].count).toBe(1);
   });
 
   it('formatWeekKindFooterShort builds compact legend', () => {

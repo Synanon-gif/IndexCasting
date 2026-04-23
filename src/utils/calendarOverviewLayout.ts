@@ -1,6 +1,7 @@
 /**
  * Pure helpers for B2B calendar overview density (month/week/day UI only).
  */
+import { uiCopy } from '../constants/uiCopy';
 import { CALENDAR_COLORS, CALENDAR_PROJECTION_COLORS } from './calendarColors';
 import {
   coarseOverviewKindForOptionItem,
@@ -12,8 +13,12 @@ import { formatMinutesAsHm } from './calendarTimelineLayout';
 
 export type OverviewKindBucket = 'job' | 'casting' | 'option' | 'manual' | 'other';
 
-/** Subset of month-cell events — compatible with `CalendarDayEvent`. */
-export type MonthOverviewEvent = { id: string; title: string; kind?: string };
+/**
+ * Subset of month-cell events — compatible with `CalendarDayEvent`.
+ * `color` is the rendered block/dot hex (single source: projection or entry-only fallback) and must
+ * match chips; the dense month strip aggregates by this value, not by lossy `kind` buckets.
+ */
+export type MonthOverviewEvent = { id: string; title: string; kind?: string; color: string };
 
 /** Maps raw `kind` strings from `buildEventsByDateFromUnifiedRows` to coarse buckets. */
 export function monthEventKindBucket(kind?: string): OverviewKindBucket {
@@ -48,34 +53,6 @@ export function sortCalendarDayEventsForOverview<T extends MonthOverviewEvent>(e
 
 export type KindCountSegment = { bucket: OverviewKindBucket; count: number; color: string };
 
-/** Ordered segments for a horizontal density strip (omit zero counts). */
-export function monthDayKindSegments(events: MonthOverviewEvent[]): KindCountSegment[] {
-  const counts: Record<OverviewKindBucket, number> = {
-    job: 0,
-    casting: 0,
-    option: 0,
-    manual: 0,
-    other: 0,
-  };
-  for (const e of events) {
-    counts[monthEventKindBucket(e.kind)] += 1;
-  }
-  const order: OverviewKindBucket[] = ['job', 'casting', 'option', 'manual', 'other'];
-  const colors: Record<OverviewKindBucket, string> = {
-    job: CALENDAR_COLORS.job,
-    casting: CALENDAR_COLORS.casting,
-    option: CALENDAR_COLORS.option,
-    manual: CALENDAR_COLORS.personal,
-    other: CALENDAR_PROJECTION_COLORS.rejected,
-  };
-  const out: KindCountSegment[] = [];
-  for (const b of order) {
-    const n = counts[b];
-    if (n > 0) out.push({ bucket: b, count: n, color: colors[b] });
-  }
-  return out;
-}
-
 export function weekBlockKindBucket(ev: CalendarScheduleBlock): OverviewKindBucket {
   const te = ev as CalendarTimelineEvent;
   const row = te?.row;
@@ -91,31 +68,83 @@ export function weekBlockKindBucket(ev: CalendarScheduleBlock): OverviewKindBuck
   }) as OverviewKindBucket;
 }
 
+/**
+ * Week column footer: counts by **rendered block color** (same hex as chips), not coarse buckets
+ * that collapsed purple/brown into “other + grey”.
+ */
 export function weekColumnKindSegments(blocks: CalendarScheduleBlock[]): KindCountSegment[] {
-  const counts: Record<OverviewKindBucket, number> = {
-    job: 0,
-    casting: 0,
-    option: 0,
-    manual: 0,
-    other: 0,
-  };
+  if (blocks.length === 0) return [];
+  const byHex = new Map<string, number>();
   for (const b of blocks) {
-    counts[weekBlockKindBucket(b)] += 1;
+    const c = b.color;
+    byHex.set(c, (byHex.get(c) ?? 0) + 1);
   }
-  const order: OverviewKindBucket[] = ['job', 'casting', 'option', 'manual', 'other'];
-  const colors: Record<OverviewKindBucket, string> = {
-    job: CALENDAR_COLORS.job,
-    casting: CALENDAR_COLORS.casting,
-    option: CALENDAR_COLORS.option,
-    manual: CALENDAR_COLORS.personal,
-    other: CALENDAR_PROJECTION_COLORS.rejected,
-  };
+  const priority: string[] = [
+    CALENDAR_COLORS.job,
+    CALENDAR_COLORS.casting,
+    CALENDAR_COLORS.option,
+    CALENDAR_PROJECTION_COLORS.awaitingModel,
+    CALENDAR_PROJECTION_COLORS.jobConfirmationPending,
+    CALENDAR_COLORS.personal,
+    CALENDAR_PROJECTION_COLORS.rejected,
+  ];
   const out: KindCountSegment[] = [];
-  for (const b of order) {
-    const n = counts[b];
-    if (n > 0) out.push({ bucket: b, count: n, color: colors[b] });
+  const placed = new Set<string>();
+  for (const h of priority) {
+    const n = byHex.get(h);
+    if (n) {
+      out.push({ bucket: weekHexToFooterBucket(h), count: n, color: h });
+      placed.add(h);
+    }
+  }
+  for (const [h, n] of byHex.entries()) {
+    if (!placed.has(h) && n > 0) {
+      out.push({ bucket: 'other', count: n, color: h });
+    }
   }
   return out;
+}
+
+/**
+ * B2B month `denseOverview` horizontal strip: count by the same **semantic hex** as chips
+ * (`event.color`), using the same ordering/priority as {@link weekColumnKindSegments}.
+ * Do not aggregate via coarse `kind` (which maps projection “other” to reject grey).
+ */
+export function monthDayKindSegments(events: MonthOverviewEvent[]): KindCountSegment[] {
+  if (events.length === 0) return [];
+  return weekColumnKindSegments(
+    events.map((e) => ({
+      id: e.id,
+      date: '',
+      startMin: 0,
+      endMin: 0,
+      title: e.title,
+      color: e.color,
+    })),
+  );
+}
+
+function weekHexToFooterBucket(h: string): OverviewKindBucket {
+  if (h === CALENDAR_COLORS.job) return 'job';
+  if (h === CALENDAR_COLORS.casting) return 'casting';
+  if (h === CALENDAR_COLORS.option) return 'option';
+  if (h === CALENDAR_COLORS.personal) return 'manual';
+  return 'other';
+}
+
+/** Human-readable line under week columns — must match the dot `color` (legend semantics). */
+export function weekKindSegmentLabel(seg: KindCountSegment): string {
+  const c = seg.color;
+  if (c === CALENDAR_COLORS.job) return uiCopy.calendar.overviewKindJob;
+  if (c === CALENDAR_COLORS.casting) return uiCopy.calendar.overviewKindCasting;
+  if (c === CALENDAR_COLORS.option) return uiCopy.calendar.overviewKindOption;
+  if (c === CALENDAR_COLORS.personal) return uiCopy.calendar.overviewKindPersonal;
+  if (c === CALENDAR_PROJECTION_COLORS.awaitingModel) return uiCopy.calendar.legendAwaitingModel;
+  if (c === CALENDAR_PROJECTION_COLORS.jobConfirmationPending) {
+    return uiCopy.calendar.legendJobConfirmationPending;
+  }
+  if (c === CALENDAR_PROJECTION_COLORS.rejected) return uiCopy.calendar.legendRejectedOrInactive;
+  return uiCopy.calendar.overviewKindOther;
 }
 
 const BUCKET_LETTER: Record<OverviewKindBucket, string> = {

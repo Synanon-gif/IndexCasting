@@ -774,6 +774,15 @@ export function getRequestByThreadId(threadId: string): OptionRequest | undefine
   return requestsCache.find((r) => r.threadId === threadId);
 }
 
+/**
+ * Resolves a cached `OptionRequest` by Supabase `option_requests.id` (local `id` and `threadId` both point here).
+ * Model calendar color projection uses this so `calendarGridColorForOptionItem` can run with the same
+ * in-memory state as the rest of the app when a row is present; no new network surface.
+ */
+export function getCachedOptionRequestById(optionRequestId: string): OptionRequest | undefined {
+  return requestsCache.find((r) => r.id === optionRequestId || r.threadId === optionRequestId);
+}
+
 export function getOptionRequestsByProjectId(projectId: string): OptionRequest[] {
   return requestsCache.filter((r) => r.projectId === projectId);
 }

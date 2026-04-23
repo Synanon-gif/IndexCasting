@@ -5,24 +5,12 @@ import { isMobileWidth } from '../theme/breakpoints';
 import { uiCopy } from '../constants/uiCopy';
 import type { CalendarScheduleBlock } from '../utils/calendarUnifiedTimeline';
 import { formatMinutesAsHm } from '../utils/calendarTimelineLayout';
-import type { DayTimeBand, OverviewKindBucket } from '../utils/calendarOverviewLayout';
-import { startMinToDayTimeBand, weekColumnKindSegments } from '../utils/calendarOverviewLayout';
-
-function overviewKindUiLabel(bucket: OverviewKindBucket): string {
-  const c = uiCopy.calendar;
-  switch (bucket) {
-    case 'job':
-      return c.overviewKindJob;
-    case 'casting':
-      return c.overviewKindCasting;
-    case 'option':
-      return c.overviewKindOption;
-    case 'manual':
-      return c.overviewKindPersonal;
-    default:
-      return c.overviewKindOther;
-  }
-}
+import type { DayTimeBand } from '../utils/calendarOverviewLayout';
+import {
+  startMinToDayTimeBand,
+  weekColumnKindSegments,
+  weekKindSegmentLabel,
+} from '../utils/calendarOverviewLayout';
 
 function timeBandUiLabel(band: DayTimeBand): string {
   const c = uiCopy.calendar;
@@ -46,7 +34,7 @@ function WeekKindFooterVisual({ list }: { list: CalendarScheduleBlock[] }) {
   const segments = weekColumnKindSegments(list);
   if (segments.length === 0) return null;
   const c = uiCopy.calendar;
-  const a11ySummary = segments.map((s) => `${overviewKindUiLabel(s.bucket)} ${s.count}`).join(', ');
+  const a11ySummary = segments.map((s) => `${weekKindSegmentLabel(s)} ${s.count}`).join(', ');
   return (
     <View
       style={styles.kindFooterRow}
@@ -57,7 +45,7 @@ function WeekKindFooterVisual({ list }: { list: CalendarScheduleBlock[] }) {
         <View key={s.bucket} style={styles.kindFooterItem} accessible={false}>
           <View style={[styles.kindFooterDot, { backgroundColor: s.color }]} />
           <Text style={styles.kindFooterText} numberOfLines={1}>
-            {overviewKindUiLabel(s.bucket)} {s.count}
+            {weekKindSegmentLabel(s)} {s.count}
           </Text>
         </View>
       ))}

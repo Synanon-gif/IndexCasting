@@ -48,6 +48,7 @@ import {
   getMessages,
   addMessage,
   getRequestByThreadId,
+  getCachedOptionRequestById,
   getOutstandingOptionsForModel,
   loadOptionsForModel,
   loadMessagesForThread,
@@ -1049,21 +1050,26 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openEntry?.id]);
 
+  const getOptionForModelCalendar = useCallback(
+    (optionRequestId: string) => getCachedOptionRequestById(optionRequestId),
+    [],
+  );
+
   const modelEventsByDate = useMemo(
-    () => buildEventsByDateFromModelEntries(calEntries),
-    [calEntries],
+    () => buildEventsByDateFromModelEntries(calEntries, getOptionForModelCalendar),
+    [calEntries, getOptionForModelCalendar, options],
   );
 
   const focusDateModel = selectedDate ?? todayYmd();
   const modelWeekStart = useMemo(() => startOfWeekMonday(focusDateModel), [focusDateModel]);
   const modelWeekDates = useMemo(() => weekDayDates(modelWeekStart), [modelWeekStart]);
   const modelWeekEvents = useMemo(
-    () => filterModelScheduleBlocksForWeek(calEntries, modelWeekDates),
-    [calEntries, modelWeekDates],
+    () => filterModelScheduleBlocksForWeek(calEntries, modelWeekDates, getOptionForModelCalendar),
+    [calEntries, modelWeekDates, getOptionForModelCalendar, options],
   );
   const modelDayEvents = useMemo(
-    () => filterModelScheduleBlocksForDate(calEntries, focusDateModel),
-    [calEntries, focusDateModel],
+    () => filterModelScheduleBlocksForDate(calEntries, focusDateModel, getOptionForModelCalendar),
+    [calEntries, focusDateModel, getOptionForModelCalendar, options],
   );
 
   const modelWeekRangeLabel = useMemo(() => {

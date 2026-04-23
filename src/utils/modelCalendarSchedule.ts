@@ -1,11 +1,19 @@
 /**
- * Model calendar: schedule blocks + month dots from `calendar_entries` only
- * (same colors as projection badges / getCalendarEntryBlockColor).
+ * Model calendar: canonical color hierarchy for `calendar_entries` on model surfaces.
+ *
+ * 1. `option_request_id` + cached `OptionRequest` → B2B projection (`calendarGridColorForOptionItem`)
+ * 2. Else → entry-only `getCalendarEntryBlockColor` (title/job heuristics, same as orphan rows)
+ * Manual / user events are not built here; see `resolveUserCalendarEventBlockColor` in B2B.
  */
 import type { CalendarEntry, CalendarEntryType } from '../services/calendarSupabase';
 import type { CalendarDayEvent } from '../components/MonthCalendarView';
+import type { OptionRequest } from '../store/optionRequests';
 import type { CalendarScheduleBlock } from './calendarUnifiedTimeline';
-import { getCalendarEntryBlockColor } from './calendarProjectionLabel';
+import {
+  calendarGridColorForOptionItem,
+  getCalendarEntryBlockColor,
+} from './calendarProjectionLabel';
+import { toSupabaseOptionForCalendarProjectionFromStore } from './optionRequestStoreProjectionAdapter';
 import {
   DEFAULT_BLOCK_END_MIN,
   DEFAULT_BLOCK_START_MIN,
@@ -13,8 +21,30 @@ import {
 } from './calendarTimelineLayout';
 import { logCalendarPreDedupeIfDuplicatesDev } from './invariantValidationDev';
 
+/**
+ * Single path for model calendar month dots / week / day block colors. Prefer projection whenever
+ * the caller can supply a cached option row; never duplicate projection rules in callers.
+ */
+export function resolveModelCalendarEntryColor(
+  entry: CalendarEntry,
+  getOptionForProjection?: (optionRequestId: string) => OptionRequest | undefined,
+): string {
+  const oid = entry.option_request_id;
+  if (oid && getOptionForProjection) {
+    const o = getOptionForProjection(oid);
+    if (o) {
+      return calendarGridColorForOptionItem({
+        option: toSupabaseOptionForCalendarProjectionFromStore(o),
+        calendar_entry: entry,
+      });
+    }
+  }
+  return getCalendarEntryBlockColor(entry);
+}
+
 export function buildEventsByDateFromModelEntries(
   entries: CalendarEntry[],
+  getOptionForProjection?: (optionRequestId: string) => OptionRequest | undefined,
 ): Record<string, CalendarDayEvent[]> {
   const map: Record<string, CalendarDayEvent[]> = {};
   // Track which option_request_ids we have already added per date so that multiple
@@ -39,7 +69,7 @@ export function buildEventsByDateFromModelEntries(
     if (!map[d]) map[d] = [];
     map[d].push({
       id: e.id,
-      color: getCalendarEntryBlockColor(e),
+      color: resolveModelCalendarEntryColor(e, getOptionForProjection),
       title: (e.title ?? e.entry_type ?? 'Event').trim() || 'Event',
       kind: e.entry_type ?? undefined,
     });
@@ -47,7 +77,10 @@ export function buildEventsByDateFromModelEntries(
   return map;
 }
 
-function blockFromEntry(e: CalendarEntry): CalendarScheduleBlock {
+function blockFromEntry(
+  e: CalendarEntry,
+  getOptionForProjection?: (optionRequestId: string) => OptionRequest | undefined,
+): CalendarScheduleBlock {
   const date = e.date ?? '';
   const start = parseTimeToMinutes(e.start_time ?? null) ?? DEFAULT_BLOCK_START_MIN;
   let end =
@@ -60,7 +93,7 @@ function blockFromEntry(e: CalendarEntry): CalendarScheduleBlock {
     startMin: start,
     endMin: end,
     title: (e.title ?? e.entry_type ?? 'Event').trim() || 'Event',
-    color: getCalendarEntryBlockColor(e),
+    color: resolveModelCalendarEntryColor(e, getOptionForProjection),
   };
 }
 
@@ -117,20 +150,22 @@ export function dedupeModelCalendarEntries(entries: CalendarEntry[]): CalendarEn
 export function filterModelScheduleBlocksForDate(
   entries: CalendarEntry[],
   date: string,
+  getOptionForProjection?: (optionRequestId: string) => OptionRequest | undefined,
 ): CalendarScheduleBlock[] {
   return dedupeModelCalendarEntries(entries)
     .filter((e) => e.date === date)
-    .map(blockFromEntry)
+    .map((e) => blockFromEntry(e, getOptionForProjection))
     .sort((a, b) => a.startMin - b.startMin || a.title.localeCompare(b.title));
 }
 
 export function filterModelScheduleBlocksForWeek(
   entries: CalendarEntry[],
   weekDates: string[],
+  getOptionForProjection?: (optionRequestId: string) => OptionRequest | undefined,
 ): CalendarScheduleBlock[] {
   const set = new Set(weekDates);
   return dedupeModelCalendarEntries(entries)
     .filter((e) => e.date && set.has(e.date))
-    .map(blockFromEntry)
+    .map((e) => blockFromEntry(e, getOptionForProjection))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startMin - b.startMin);
 }

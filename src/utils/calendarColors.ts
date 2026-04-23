@@ -7,6 +7,11 @@ import { colors } from '../theme/theme';
 
 export const CALENDAR_COLORS = {
   casting: '#1565C0', // blue
+  /**
+   * Light blue (reserved / legacy). **Calendar block rendering** (`getBookingEntryProjectionBadge`,
+   * B2B projection) maps `gosee` the same as **casting** — `#1565C0` — so the in-calendar legend
+   * stays a single “Casting” color; use this token only if a surface explicitly differentiates gosee.
+   */
   gosee: '#0288D1', // light blue
   option: '#E65100', // deep orange
   // `booking` and `job` MUST stay the same hex.
