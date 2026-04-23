@@ -104,7 +104,12 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
     return uiCopy.calendar.viewModeHintMonth;
   }, [viewMode]);
 
-  const handleMonthDayClick = (d: string) => {
+  const openWeekForDate = (d: string) => {
+    shiftFocus(d);
+    onViewModeChange('week');
+  };
+
+  const openDayForDate = (d: string) => {
     shiftFocus(d);
     onViewModeChange('day');
   };
@@ -131,7 +136,8 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
           compact={false}
           denseOverview
           denseOverviewMaxVisibleChips={1}
-          onSelectDay={handleMonthDayClick}
+          onSelectDay={openWeekForDate}
+          onDenseOverflowPress={openWeekForDate}
           onPrevMonth={() =>
             setCalendarMonth((m) =>
               m.month === 0
@@ -154,7 +160,7 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
           weekDates={weekDates}
           events={weekEvents}
           selectedDate={selectedDate}
-          onSelectDay={(d) => shiftFocus(d)}
+          onSelectDay={openDayForDate}
           onEventPress={(ev) => onOpenUnifiedRow((ev as CalendarTimelineEvent).row)}
           onPrevWeek={() => shiftFocus(addDaysYmd(focusDate, -7))}
           onNextWeek={() => shiftFocus(addDaysYmd(focusDate, 7))}
@@ -175,6 +181,7 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
           longEventCapMinDuration={120}
           cappedBlockMaxHeightPx={132}
           minLaneWidthPx={72}
+          maxVisibleParallelLanes={7}
         />
       )}
 

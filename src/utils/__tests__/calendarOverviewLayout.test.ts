@@ -1,9 +1,11 @@
 import {
   cappedBlockLayout,
+  formatWeekKindFooterLabeled,
   formatWeekKindFooterShort,
   monthDayKindSegments,
   monthEventKindBucket,
   sortCalendarDayEventsForOverview,
+  startMinToDayTimeBand,
 } from '../calendarOverviewLayout';
 
 describe('calendarOverviewLayout', () => {
@@ -43,6 +45,22 @@ describe('calendarOverviewLayout', () => {
         { bucket: 'option', count: 5, color: '#111' },
       ]),
     ).toBe('J2 O5');
+  });
+
+  it('formatWeekKindFooterLabeled uses word labels', () => {
+    expect(
+      formatWeekKindFooterLabeled([
+        { bucket: 'job', count: 2, color: '#000' },
+        { bucket: 'casting', count: 1, color: '#00f' },
+      ]),
+    ).toBe('Jobs 2 · Castings 1');
+  });
+
+  it('startMinToDayTimeBand buckets by clock', () => {
+    expect(startMinToDayTimeBand(5 * 60)).toBe('early');
+    expect(startMinToDayTimeBand(9 * 60)).toBe('morning');
+    expect(startMinToDayTimeBand(14 * 60)).toBe('afternoon');
+    expect(startMinToDayTimeBand(20 * 60)).toBe('evening');
   });
 
   it('cappedBlockLayout caps long blocks only when threshold exceeded', () => {

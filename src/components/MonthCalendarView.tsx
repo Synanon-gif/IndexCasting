@@ -37,6 +37,11 @@ export type MonthCalendarViewProps = {
   denseOverview?: boolean;
   /** Visible title chips in dense month (default 1). Ignored when `denseOverview` is false. */
   denseOverviewMaxVisibleChips?: number;
+  /**
+   * Separate tap target for the dense "+N" overflow (e.g. open week for that date).
+   * When unset, "+N" is only part of the main day `onSelectDay` target.
+   */
+  onDenseOverflowPress?: (date: string) => void;
 };
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -73,6 +78,7 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
   compact = false,
   denseOverview = false,
   denseOverviewMaxVisibleChips = 1,
+  onDenseOverflowPress,
 }) => {
   const grid = React.useMemo(() => getMonthGrid(year, month), [year, month]);
   const monthLabel = new Date(year, month).toLocaleString('en-US', {
@@ -115,66 +121,101 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
             .map((e) => e.title);
           const a11yMore =
             events.length > a11yTitles.length ? `, +${events.length - a11yTitles.length} more` : '';
+          const cellA11yBase =
+            events.length > 0
+              ? `${cell.dayNum}: ${events.length} events. ${a11yTitles.join(', ')}${a11yMore}`
+              : `Day ${cell.dayNum}`;
           const cellA11y =
-            events.length === 0
-              ? undefined
-              : `${cell.dayNum}: ${events.length} events. ${a11yTitles.join(', ')}${a11yMore}. Open day for full list.`;
+            events.length > 0 && denseOverview && !compact
+              ? `${cellA11yBase}. Opens week view.`
+              : events.length > 0
+                ? `${cellA11yBase}.`
+                : cellA11yBase;
+
+          const splitOverflow =
+            denseOverview && !compact && onDenseOverflowPress != null && denseMore > 0;
+
+          const denseBody = (
+            <View style={s.denseOverviewCol}>
+              {segments.length > 0 ? (
+                <View style={s.kindStripRow}>
+                  {segments.map((seg, si) => (
+                    <View
+                      key={`${seg.bucket}-${si}`}
+                      style={[s.kindStripSeg, { flex: seg.count, backgroundColor: seg.color }]}
+                    />
+                  ))}
+                </View>
+              ) : null}
+              <View style={s.eventsCol}>
+                {denseShown.map((ev) => (
+                  <View
+                    key={ev.id}
+                    style={[s.eventChip, { backgroundColor: ev.color }]}
+                    accessibilityLabel={ev.title}
+                  >
+                    <Text style={s.eventChipText} numberOfLines={1}>
+                      {ev.title}
+                    </Text>
+                  </View>
+                ))}
+                {!splitOverflow && denseMore > 0 ? (
+                  <Text style={s.moreText}>+{denseMore}</Text>
+                ) : null}
+              </View>
+            </View>
+          );
 
           return (
-            <TouchableOpacity
+            <View
               key={cell.date}
               style={[
                 s.dayCell,
                 s.dayCellActive,
                 compact && s.dayCellCompact,
                 denseOverview && !compact && s.dayCellDenseOverview,
+                splitOverflow && s.dayCellSplitOverflow,
                 isSelected && s.dayCellSelected,
               ]}
-              onPress={() => onSelectDay(cell.date!)}
-              activeOpacity={0.7}
-              accessibilityLabel={cellA11y}
             >
-              <Text
-                style={[
-                  s.dayNum,
-                  !cell.isCurrentMonth && s.dayNumMuted,
-                  compact && s.dayNumCompact,
-                  isSelected && s.dayNumSelected,
-                ]}
+              <TouchableOpacity
+                style={splitOverflow ? s.dayCellMainTap : s.dayCellFillTap}
+                onPress={() => onSelectDay(cell.date!)}
+                activeOpacity={0.7}
+                accessibilityLabel={cellA11y}
               >
-                {cell.dayNum}
-              </Text>
-              {events.length > 0 &&
-                (compact ? (
-                  // Compact (week+month combined): keep dot-row to save vertical
-                  // space — titles are visible in the adjacent week/day surface.
-                  <View style={[s.dotsRow, s.dotsRowCompact]}>
-                    {events.slice(0, 2).map((ev) => (
-                      <View
-                        key={ev.id}
-                        style={[s.dot, s.dotCompact, { backgroundColor: ev.color }]}
-                        accessibilityLabel={ev.title}
-                      />
-                    ))}
-                    {events.length > 2 && <Text style={s.moreText}>+{events.length - 2}</Text>}
-                  </View>
-                ) : denseOverview ? (
-                  <View style={s.denseOverviewCol}>
-                    {segments.length > 0 ? (
-                      <View style={s.kindStripRow}>
-                        {segments.map((seg, si) => (
-                          <View
-                            key={`${seg.bucket}-${si}`}
-                            style={[
-                              s.kindStripSeg,
-                              { flex: seg.count, backgroundColor: seg.color },
-                            ]}
-                          />
-                        ))}
-                      </View>
-                    ) : null}
+                <Text
+                  style={[
+                    s.dayNum,
+                    !cell.isCurrentMonth && s.dayNumMuted,
+                    compact && s.dayNumCompact,
+                    isSelected && s.dayNumSelected,
+                  ]}
+                >
+                  {cell.dayNum}
+                </Text>
+                {events.length > 0 &&
+                  (compact ? (
+                    // Compact (week+month combined): keep dot-row to save vertical
+                    // space — titles are visible in the adjacent week/day surface.
+                    <View style={[s.dotsRow, s.dotsRowCompact]}>
+                      {events.slice(0, 2).map((ev) => (
+                        <View
+                          key={ev.id}
+                          style={[s.dot, s.dotCompact, { backgroundColor: ev.color }]}
+                          accessibilityLabel={ev.title}
+                        />
+                      ))}
+                      {events.length > 2 && <Text style={s.moreText}>+{events.length - 2}</Text>}
+                    </View>
+                  ) : denseOverview ? (
+                    denseBody
+                  ) : (
+                    // Standalone month grid: ALWAYS render the event title for
+                    // every party (per product invariant — see calendar legend).
+                    // Titles are truncated; full title is on the day-detail tap.
                     <View style={s.eventsCol}>
-                      {denseShown.map((ev) => (
+                      {events.slice(0, 2).map((ev) => (
                         <View
                           key={ev.id}
                           style={[s.eventChip, { backgroundColor: ev.color }]}
@@ -185,29 +226,22 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
                           </Text>
                         </View>
                       ))}
-                      {denseMore > 0 ? <Text style={s.moreText}>+{denseMore}</Text> : null}
+                      {events.length > 2 && <Text style={s.moreText}>+{events.length - 2}</Text>}
                     </View>
-                  </View>
-                ) : (
-                  // Standalone month grid: ALWAYS render the event title for
-                  // every party (per product invariant — see calendar legend).
-                  // Titles are truncated; full title is on the day-detail tap.
-                  <View style={s.eventsCol}>
-                    {events.slice(0, 2).map((ev) => (
-                      <View
-                        key={ev.id}
-                        style={[s.eventChip, { backgroundColor: ev.color }]}
-                        accessibilityLabel={ev.title}
-                      >
-                        <Text style={s.eventChipText} numberOfLines={1}>
-                          {ev.title}
-                        </Text>
-                      </View>
-                    ))}
-                    {events.length > 2 && <Text style={s.moreText}>+{events.length - 2}</Text>}
-                  </View>
-                ))}
-            </TouchableOpacity>
+                  ))}
+              </TouchableOpacity>
+              {splitOverflow ? (
+                <TouchableOpacity
+                  style={s.denseMoreHit}
+                  onPress={() => onDenseOverflowPress!(cell.date!)}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${denseMore} more events, open week view`}
+                >
+                  <Text style={s.moreText}>+{denseMore}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           );
         })}
       </View>
@@ -288,14 +322,36 @@ const s = StyleSheet.create({
   denseOverviewCol: { marginTop: 2, gap: 3 },
   kindStripRow: {
     flexDirection: 'row',
-    height: 3,
-    borderRadius: 2,
+    height: 5,
+    borderRadius: 3,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.14)',
     gap: 1,
   },
   kindStripSeg: {
-    height: 3,
+    height: 5,
     borderRadius: 1,
-    minWidth: 2,
+    minWidth: 4,
+  },
+  dayCellSplitOverflow: {
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+  },
+  dayCellMainTap: {
+    flex: 1,
+    minHeight: 0,
+    width: '100%',
+  },
+  dayCellFillTap: {
+    flex: 1,
+    width: '100%',
+  },
+  denseMoreHit: {
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 2,
+    width: '100%',
   },
 });

@@ -31,6 +31,11 @@ export type CalendarDayTimelineProps = {
   cappedBlockMaxHeightPx?: number;
   /** When set, overlapping lanes get at least this width and the grid scrolls horizontally if needed. */
   minLaneWidthPx?: number;
+  /**
+   * Max parallel lanes to render; additional overlapping events are counted only
+   * (“+N more”) to keep the grid readable. Requires `minLaneWidthPx` for layout width.
+   */
+  maxVisibleParallelLanes?: number;
 };
 
 export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
@@ -42,15 +47,14 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
   longEventCapMinDuration,
   cappedBlockMaxHeightPx,
   minLaneWidthPx,
+  maxVisibleParallelLanes,
 }) => {
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const [viewportW, setViewportW] = useState(0);
-  // Timeline scrollable area: fill available height (window minus header/tabs/controls estimate)
-  // nestedScrollEnabled allows this inner scroll to work inside a parent page-level ScrollView
   const timelineMaxHeight = Math.max(300, Math.round(windowHeight * 0.55));
   const pxPerMin = HOUR_HEIGHT / 60;
 
-  const { lanes, displayStartMin, totalHeight, startHour, endHour } = useMemo(() => {
+  const { lanesAll, displayStartMin, totalHeight, startHour, endHour } = useMemo(() => {
     let evMin = MIN_HOUR * 60;
     let evMax = MAX_HOUR * 60;
     for (const e of events) {
@@ -65,7 +69,7 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
     const totalMin = Math.max(60, displayEnd - displayStart);
     const totalHeightInner = totalMin * pxPerMin;
     return {
-      lanes: lanesInner,
+      lanesAll: lanesInner,
       displayStartMin: displayStart,
       totalHeight: totalHeightInner,
       startHour: startHourInner,
@@ -73,16 +77,33 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
     };
   }, [events, pxPerMin]);
 
+  const laneCap =
+    maxVisibleParallelLanes != null && maxVisibleParallelLanes > 0
+      ? maxVisibleParallelLanes
+      : Number.POSITIVE_INFINITY;
+
+  const lanes = useMemo(() => {
+    if (!Number.isFinite(laneCap)) return lanesAll;
+    return lanesAll.filter((e) => e.lane < laneCap);
+  }, [lanesAll, laneCap]);
+
+  const hiddenParallelCount = lanesAll.length - lanes.length;
+
   const maxLaneCount = useMemo(
-    () => (lanes.length ? Math.max(...lanes.map((l) => l.laneCount)) : 1),
-    [lanes],
+    () => (lanesAll.length ? Math.max(...lanesAll.map((l) => l.laneCount)) : 1),
+    [lanesAll],
+  );
+
+  const effectiveLaneColumns = useMemo(
+    () => (Number.isFinite(laneCap) ? Math.min(maxLaneCount, laneCap) : maxLaneCount),
+    [laneCap, maxLaneCount],
   );
 
   const useLanePixels = minLaneWidthPx != null && minLaneWidthPx > 0;
   const fallbackViewportW = Math.max(160, windowWidth - 44 - spacing.sm * 4);
   const measuredW = viewportW > 0 ? viewportW : fallbackViewportW;
   const innerCanvasW = useLanePixels
-    ? Math.max(measuredW, maxLaneCount * minLaneWidthPx!)
+    ? Math.max(measuredW, effectiveLaneColumns * minLaneWidthPx!)
     : undefined;
 
   const hours = useMemo(() => {
@@ -111,6 +132,8 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
           longEventCapMinDuration,
         );
         const timeLabel = blockTimeRangeLabel(ev.startMin, ev.endMin, isCapped);
+        const capCue = isCapped ? <View style={styles.blockCapCue} pointerEvents="none" /> : null;
+
         if (laneLayout === 'pixels' && minLaneWidthPx) {
           const w = minLaneWidthPx - 2;
           const left = ev.lane * minLaneWidthPx + 1;
@@ -136,10 +159,14 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
               <Text style={styles.blockTitle} numberOfLines={isCapped ? 2 : 4}>
                 {ev.title}
               </Text>
+              {capCue}
             </TouchableOpacity>
           );
         }
-        const wPct = 100 / ev.laneCount;
+        const laneCountForPct = Number.isFinite(laneCap)
+          ? Math.min(ev.laneCount, laneCap)
+          : ev.laneCount;
+        const wPct = 100 / laneCountForPct;
         const leftPct = wPct * ev.lane;
         return (
           <TouchableOpacity
@@ -163,9 +190,15 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
             <Text style={styles.blockTitle} numberOfLines={isCapped ? 2 : 4}>
               {ev.title}
             </Text>
+            {capCue}
           </TouchableOpacity>
         );
       })}
+      {hiddenParallelCount > 0 ? (
+        <View style={styles.hiddenLanesBadge} pointerEvents="none">
+          <Text style={styles.hiddenLanesText}>+{hiddenParallelCount} more</Text>
+        </View>
+      ) : null}
     </>
   );
 
@@ -198,6 +231,7 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
         style={{ maxHeight: timelineMaxHeight }}
         showsVerticalScrollIndicator
         nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.bodyRow}>
           <View style={{ width: 44 }}>
@@ -212,7 +246,8 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
               <ScrollView
                 horizontal
                 nestedScrollEnabled
-                showsHorizontalScrollIndicator={maxLaneCount > 1}
+                keyboardShouldPersistTaps="handled"
+                showsHorizontalScrollIndicator={effectiveLaneColumns > 2}
               >
                 <View style={[styles.gridArea, { height: totalHeight, width: innerCanvasW }]}>
                   {renderGridContents('pixels')}
@@ -283,4 +318,33 @@ const styles = StyleSheet.create({
   },
   blockTime: { fontSize: 9, color: '#fff', fontWeight: '700' },
   blockTitle: { fontSize: 10, color: '#fff', fontWeight: '600' },
+  blockCapCue: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 20,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    borderBottomLeftRadius: 5,
+    borderBottomRightRadius: 5,
+  },
+  hiddenLanesBadge: {
+    position: 'absolute',
+    right: 6,
+    left: 6,
+    bottom: 8,
+    alignItems: 'center',
+  },
+  hiddenLanesText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
 });

@@ -11,12 +11,34 @@ import { colors, spacing, typography } from '../theme/theme';
 import { isMobileWidth } from '../theme/breakpoints';
 import type { CalendarScheduleBlock } from '../utils/calendarUnifiedTimeline';
 import { formatMinutesAsHm } from '../utils/calendarTimelineLayout';
-import { formatWeekKindFooterShort, weekColumnKindSegments } from '../utils/calendarOverviewLayout';
+import {
+  DAY_TIME_BAND_LABEL_EN,
+  OVERVIEW_KIND_LABEL_EN,
+  startMinToDayTimeBand,
+  weekColumnKindSegments,
+} from '../utils/calendarOverviewLayout';
 
 const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const COL_GAP = 4;
 const GRID_PADDING = spacing.sm;
 const COL_WIDTH_DESKTOP = 112;
+
+function WeekKindFooterVisual({ list }: { list: CalendarScheduleBlock[] }) {
+  const segments = weekColumnKindSegments(list);
+  if (segments.length === 0) return null;
+  return (
+    <View style={styles.kindFooterRow}>
+      {segments.map((s) => (
+        <View key={s.bucket} style={styles.kindFooterItem}>
+          <View style={[styles.kindFooterDot, { backgroundColor: s.color }]} />
+          <Text style={styles.kindFooterText} numberOfLines={1}>
+            {OVERVIEW_KIND_LABEL_EN[s.bucket]} {s.count}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 export type CalendarWeekGridProps = {
   weekDates: string[];
@@ -69,8 +91,64 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
     return m;
   }, [events, weekDates]);
 
-  const chipFontSize = denseWorkWeek ? (isMobile ? 7 : 8) : isMobile ? 8 : 9;
+  const chipFontSize = denseWorkWeek ? (isMobile ? 8 : 8) : isMobile ? 8 : 9;
   const mobileMaxChips = isMobile ? (denseWorkWeek ? 3 : 2) : maxChipsPerDay;
+
+  const renderChipsForDay = (date: string, list: CalendarScheduleBlock[], cap: number) => {
+    const slice = list.slice(0, cap);
+    const nodes: React.ReactNode[] = [];
+    let prevBand: ReturnType<typeof startMinToDayTimeBand> | null = null;
+
+    for (let i = 0; i < slice.length; i++) {
+      const ev = slice[i];
+      if (denseWorkWeek) {
+        const band = startMinToDayTimeBand(ev.startMin);
+        if (prevBand !== band) {
+          prevBand = band;
+          nodes.push(
+            <View key={`${date}-band-${band}-${i}`} style={styles.bandDivider}>
+              <Text style={styles.bandLabel}>{DAY_TIME_BAND_LABEL_EN[band]}</Text>
+            </View>,
+          );
+        }
+      }
+
+      const chipHitStyle = [
+        styles.chip,
+        denseWorkWeek && styles.chipDense,
+        denseWorkWeek && isMobile && styles.chipMobileDenseTap,
+        { backgroundColor: ev.color },
+      ];
+
+      nodes.push(
+        <TouchableOpacity
+          key={ev.id + ev.startMin}
+          onPress={(e) => {
+            e.stopPropagation?.();
+            onEventPress(ev);
+          }}
+          style={chipHitStyle}
+          accessibilityLabel={`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
+        >
+          {denseWorkWeek ? (
+            <Text style={[styles.chipText, { fontSize: chipFontSize }]} numberOfLines={1}>
+              {`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
+            </Text>
+          ) : (
+            <>
+              <Text style={[styles.chipText, { fontSize: chipFontSize }]} numberOfLines={1}>
+                {formatMinutesAsHm(ev.startMin)}
+              </Text>
+              <Text style={[styles.chipTextTitle, { fontSize: chipFontSize }]} numberOfLines={1}>
+                {ev.title}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>,
+      );
+    }
+    return nodes;
+  };
 
   return (
     <View style={styles.wrap}>
@@ -109,7 +187,7 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
                 key={date}
                 style={[
                   styles.col,
-                  { width: colWidth, minHeight: 110 },
+                  { width: colWidth, minHeight: denseWorkWeek ? 128 : 110 },
                   isSelected && styles.colSelected,
                   isToday && !isSelected && styles.colToday,
                 ]}
@@ -119,52 +197,14 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
                 <Text style={styles.wd}>{WEEKDAY_SHORT[idx]}</Text>
                 <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>{dayNum}</Text>
                 <View style={styles.chips}>
-                  {list.slice(0, mobileMaxChips).map((ev) => (
-                    <TouchableOpacity
-                      key={ev.id + ev.startMin}
-                      onPress={(e) => {
-                        e.stopPropagation?.();
-                        onEventPress(ev);
-                      }}
-                      style={[
-                        styles.chip,
-                        denseWorkWeek && styles.chipDense,
-                        { backgroundColor: ev.color },
-                      ]}
-                      accessibilityLabel={`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
-                    >
-                      {denseWorkWeek ? (
-                        <Text
-                          style={[styles.chipText, { fontSize: chipFontSize }]}
-                          numberOfLines={1}
-                        >
-                          {`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
-                        </Text>
-                      ) : (
-                        <>
-                          <Text
-                            style={[styles.chipText, { fontSize: chipFontSize }]}
-                            numberOfLines={1}
-                          >
-                            {formatMinutesAsHm(ev.startMin)}
-                          </Text>
-                          <Text
-                            style={[styles.chipTextTitle, { fontSize: chipFontSize }]}
-                            numberOfLines={1}
-                          >
-                            {ev.title}
-                          </Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  ))}
+                  {renderChipsForDay(date, list, mobileMaxChips)}
                   {list.length > mobileMaxChips ? (
-                    <Text style={styles.more}>+{list.length - mobileMaxChips}</Text>
+                    <View style={denseWorkWeek ? styles.moreHit : undefined}>
+                      <Text style={styles.more}>+{list.length - mobileMaxChips}</Text>
+                    </View>
                   ) : null}
                   {showDayKindFooter && list.length > 0 ? (
-                    <Text style={styles.kindFooter} numberOfLines={1}>
-                      {formatWeekKindFooterShort(weekColumnKindSegments(list))}
-                    </Text>
+                    <WeekKindFooterVisual list={list} />
                   ) : null}
                 </View>
               </TouchableOpacity>
@@ -172,7 +212,12 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
           })}
         </View>
       ) : (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={[styles.columns, { gap: COL_GAP }]}>
             {weekDates.map((date, idx) => {
               const dayNum = Number(date.slice(8, 10));
@@ -194,35 +239,12 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
                   <Text style={styles.wd}>{WEEKDAY_SHORT[idx]}</Text>
                   <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>{dayNum}</Text>
                   <View style={styles.chips}>
-                    {list.slice(0, maxChipsPerDay).map((ev) => (
-                      <TouchableOpacity
-                        key={ev.id + ev.startMin}
-                        onPress={(e) => {
-                          e.stopPropagation?.();
-                          onEventPress(ev);
-                        }}
-                        style={[
-                          styles.chip,
-                          denseWorkWeek && styles.chipDense,
-                          { backgroundColor: ev.color },
-                        ]}
-                        accessibilityLabel={`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
-                      >
-                        <Text
-                          style={[styles.chipText, denseWorkWeek && styles.chipTextDense]}
-                          numberOfLines={1}
-                        >
-                          {formatMinutesAsHm(ev.startMin)} {ev.title}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                    {renderChipsForDay(date, list, maxChipsPerDay)}
                     {list.length > maxChipsPerDay ? (
                       <Text style={styles.more}>+{list.length - maxChipsPerDay}</Text>
                     ) : null}
                     {showDayKindFooter && list.length > 0 ? (
-                      <Text style={styles.kindFooter} numberOfLines={1}>
-                        {formatWeekKindFooterShort(weekColumnKindSegments(list))}
-                      </Text>
+                      <WeekKindFooterVisual list={list} />
                     ) : null}
                   </View>
                 </TouchableOpacity>
@@ -285,6 +307,20 @@ const styles = StyleSheet.create({
   },
   dayNumSelected: { color: colors.textPrimary },
   chips: { gap: 4 },
+  bandDivider: {
+    marginTop: 2,
+    marginBottom: 2,
+    paddingBottom: 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  bandLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
   chip: {
     borderRadius: 4,
     paddingHorizontal: 4,
@@ -294,15 +330,40 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     paddingHorizontal: 3,
   },
+  chipMobileDenseTap: {
+    minHeight: 44,
+    justifyContent: 'center',
+  },
   chipText: { fontSize: 9, color: '#fff', fontWeight: '600' },
-  chipTextDense: { fontSize: 8 },
   chipTextTitle: { fontSize: 9, color: '#fff', fontWeight: '500', opacity: 0.95 },
   more: { fontSize: 9, color: colors.textSecondary, textAlign: 'center' },
-  kindFooter: {
+  moreHit: {
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  kindFooterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  kindFooterItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    maxWidth: '100%',
+  },
+  kindFooterDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.12)',
+  },
+  kindFooterText: {
     fontSize: 8,
     color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 2,
-    fontWeight: '500',
+    fontWeight: '600',
   },
 });

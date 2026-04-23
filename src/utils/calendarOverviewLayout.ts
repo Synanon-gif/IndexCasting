@@ -120,9 +120,39 @@ const BUCKET_LETTER: Record<OverviewKindBucket, string> = {
   other: '·',
 };
 
+/** English labels for week/month footers (calendar UI; matches existing en-US copy in views). */
+export const OVERVIEW_KIND_LABEL_EN: Record<OverviewKindBucket, string> = {
+  job: 'Jobs',
+  casting: 'Castings',
+  option: 'Options',
+  manual: 'Personal',
+  other: 'Other',
+};
+
 export function formatWeekKindFooterShort(segments: KindCountSegment[]): string {
   return segments.map((s) => `${BUCKET_LETTER[s.bucket]}${s.count}`).join(' ');
 }
+
+export function formatWeekKindFooterLabeled(segments: KindCountSegment[]): string {
+  return segments.map((s) => `${OVERVIEW_KIND_LABEL_EN[s.bucket]} ${s.count}`).join(' · ');
+}
+
+/** Time-of-day band for week chip grouping (visual only). */
+export type DayTimeBand = 'early' | 'morning' | 'afternoon' | 'evening';
+
+export function startMinToDayTimeBand(startMin: number): DayTimeBand {
+  if (startMin < 6 * 60) return 'early';
+  if (startMin < 12 * 60) return 'morning';
+  if (startMin < 18 * 60) return 'afternoon';
+  return 'evening';
+}
+
+export const DAY_TIME_BAND_LABEL_EN: Record<DayTimeBand, string> = {
+  early: 'Early',
+  morning: 'Morning',
+  afternoon: 'Afternoon',
+  evening: 'Evening',
+};
 
 /** Visual height cap for long blocks; duration used for label only. */
 export function cappedBlockLayout(
