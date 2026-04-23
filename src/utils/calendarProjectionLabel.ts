@@ -123,7 +123,16 @@ function resolveProjectionBucket(
   if (option.status === 'rejected') return 'rejected';
 
   if (isJobProjection(option, calendar_entry)) {
-    return calendar_entry?.status === 'tentative' ? 'jobTentative' : 'jobConfirmed';
+    const tentative = calendar_entry?.status === 'tentative';
+    if (tentative) {
+      // Title already matches canonical Job shapes (e.g. "Client 3 – job") — use Job green like
+      // the legend; status can still be tentative until DB flips.
+      if (displayTitleIndicatesCanonicalJob(calendar_entry?.title)) {
+        return 'jobConfirmed';
+      }
+      return 'jobTentative';
+    }
+    return 'jobConfirmed';
   }
 
   if (isCastingProjection(option, calendar_entry)) return 'casting';
@@ -165,7 +174,7 @@ function projectionBucketColor(bucket: CalendarProjectionBucket): string {
   //   Option lifecycle (pending / negotiating / awaiting agency / confirmed)  → option orange
   //   Casting lifecycle                                                       → casting blue
   //   Job confirmed                                                           → job green
-  //   Tentative job (per legend footnote `legendTentativeJobNote`)            → option orange
+  //   Tentative job without Job-shaped title yet (footnote `legendTentativeJobNote`) → option orange
   //   Awaiting model approval (special projection)                            → awaitingModel purple
   //   Awaiting client/agency to finalize job (special projection)             → jobConfirmationPending brown
   //   Rejected / inactive                                                     → rejected grey
@@ -296,6 +305,26 @@ export function calendarGridColorForOptionItem(item: {
 }): string {
   const bucket = resolveProjectionBucket(item.option, item.calendar_entry);
   return projectionBucketColor(bucket);
+}
+
+/**
+ * Coarse month/week kind strip — same projection color family as the chip (legend), not raw `entry_type`.
+ */
+export type CoarseCalendarOverviewKind = 'job' | 'casting' | 'option' | 'other';
+
+export function coarseOverviewKindFromProjectionColor(color: string): CoarseCalendarOverviewKind {
+  if (color === CALENDAR_COLORS.job) return 'job';
+  if (color === CALENDAR_COLORS.casting) return 'casting';
+  if (color === CALENDAR_COLORS.option) return 'option';
+  return 'other';
+}
+
+export function coarseOverviewKindForOptionItem(item: {
+  option: SupabaseOptionRequest;
+  calendar_entry: CalendarEntry | null;
+}): CoarseCalendarOverviewKind {
+  const b = resolveProjectionBucket(item.option, item.calendar_entry);
+  return coarseOverviewKindFromProjectionColor(projectionBucketColor(b));
 }
 
 /**

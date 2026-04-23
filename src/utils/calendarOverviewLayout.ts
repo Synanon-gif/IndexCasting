@@ -2,6 +2,11 @@
  * Pure helpers for B2B calendar overview density (month/week/day UI only).
  */
 import { CALENDAR_COLORS } from './calendarColors';
+import {
+  coarseOverviewKindForOptionItem,
+  coarseOverviewKindFromProjectionColor,
+  getCalendarEntryBlockColor,
+} from './calendarProjectionLabel';
 import type { CalendarScheduleBlock, CalendarTimelineEvent } from './calendarUnifiedTimeline';
 import { formatMinutesAsHm } from './calendarTimelineLayout';
 
@@ -14,9 +19,12 @@ export type MonthOverviewEvent = { id: string; title: string; kind?: string };
 export function monthEventKindBucket(kind?: string): OverviewKindBucket {
   const k = (kind ?? '').toLowerCase();
   if (k === 'manual') return 'manual';
+  if (k === 'other') return 'other';
   if (k === 'job' || k.includes('job')) return 'job';
   if (k === 'casting' || k.includes('cast')) return 'casting';
-  if (k === 'option' || k === 'booking' || k.includes('option')) return 'option';
+  /** B2B: `calendar_entries.entry_type='booking'` is a Job row, not the Option (orange) lane. */
+  if (k === 'booking') return 'job';
+  if (k === 'option' || k.includes('option')) return 'option';
   return 'other';
 }
 
@@ -74,15 +82,13 @@ export function weekBlockKindBucket(ev: CalendarScheduleBlock): OverviewKindBuck
   if (!row) return 'other';
   if (row.kind === 'manual') return 'manual';
   if (row.kind === 'booking') {
-    const t = (row.entry.entry_type ?? '').toLowerCase();
-    if (t === 'job' || t.includes('job')) return 'job';
-    if (t === 'casting' || t.includes('cast')) return 'casting';
-    return 'option';
+    const c = getCalendarEntryBlockColor(row.entry);
+    return coarseOverviewKindFromProjectionColor(c) as OverviewKindBucket;
   }
-  const et = (row.item.calendar_entry?.entry_type ?? '').toLowerCase();
-  if (et === 'job' || et.includes('job')) return 'job';
-  if (et === 'casting' || et.includes('cast')) return 'casting';
-  return 'option';
+  return coarseOverviewKindForOptionItem({
+    option: row.item.option,
+    calendar_entry: row.item.calendar_entry,
+  }) as OverviewKindBucket;
 }
 
 export function weekColumnKindSegments(blocks: CalendarScheduleBlock[]): KindCountSegment[] {

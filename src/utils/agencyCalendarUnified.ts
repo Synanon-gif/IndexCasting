@@ -23,10 +23,10 @@ import type { UserCalendarEvent } from '../services/userCalendarEventsSupabase';
 import type { ClientAssignmentFlag } from '../services/clientAssignmentsSupabase';
 import {
   calendarGridColorForOptionItem,
+  coarseOverviewKindForOptionItem,
   getCalendarEntryBlockColor,
   resolveUserCalendarEventBlockColor,
 } from './calendarProjectionLabel';
-import { CALENDAR_COLORS } from './calendarColors';
 import { attentionSignalsFromOptionRequestLike } from './optionRequestAttention';
 import { attentionHeaderLabelFromSignals } from './negotiationAttentionLabels';
 import { uiCopy } from '../constants/uiCopy';
@@ -589,8 +589,11 @@ export function buildEventsByDateFromUnifiedRows(rows: UnifiedAgencyCalendarRow[
       continue;
     }
     if (row.kind === 'option') {
-      const et = row.item.calendar_entry?.entry_type;
       const color = calendarGridColorForOptionItem({
+        option: row.item.option,
+        calendar_entry: row.item.calendar_entry,
+      });
+      const kind = coarseOverviewKindForOptionItem({
         option: row.item.option,
         calendar_entry: row.item.calendar_entry,
       });
@@ -598,7 +601,7 @@ export function buildEventsByDateFromUnifiedRows(rows: UnifiedAgencyCalendarRow[
         id: row.id,
         color,
         title: row.title,
-        kind: et ?? 'option',
+        kind,
         optionRequestId: row.item.option.id,
       });
       continue;

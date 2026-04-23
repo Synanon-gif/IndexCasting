@@ -12,6 +12,8 @@ describe('calendarOverviewLayout', () => {
     expect(monthEventKindBucket('job')).toBe('job');
     expect(monthEventKindBucket('casting')).toBe('casting');
     expect(monthEventKindBucket('option')).toBe('option');
+    expect(monthEventKindBucket('booking')).toBe('job');
+    expect(monthEventKindBucket('other')).toBe('other');
     expect(monthEventKindBucket('manual')).toBe('manual');
     expect(monthEventKindBucket(undefined)).toBe('other');
   });

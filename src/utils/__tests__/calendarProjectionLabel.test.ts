@@ -157,6 +157,16 @@ describe('calendarProjectionLabel', () => {
     expect(b.label).toBe(L.jobTentative);
   });
 
+  it('tentative + canonical Job title still uses Job green to match legend (title ahead of status)', () => {
+    const b = getCalendarProjectionBadge(
+      baseOption({ status: 'confirmed', final_status: 'option_confirmed' }),
+      entry({ entry_type: 'booking', status: 'tentative', title: 'Client 3 – job' }),
+      L,
+    );
+    expect(b.label).toBe(L.job);
+    expect(b.backgroundColor).toBe(CALENDAR_COLORS.job);
+  });
+
   it('maps casting entry_type', () => {
     const b = getCalendarProjectionBadge(baseOption(), entry({ entry_type: 'casting' }), L);
     expect(b.label).toBe(L.casting);
