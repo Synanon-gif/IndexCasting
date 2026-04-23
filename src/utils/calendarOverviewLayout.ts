@@ -1,10 +1,12 @@
 /**
  * Pure helpers for B2B calendar overview density (month/week/day UI only).
  *
- * **Dense month strip + week counts:** aggregate by rendered event **hex** (`block.color` /
+ * **Dense month strip + week footers:** aggregate by rendered event **hex** (`block.color` /
  * `MonthOverviewEvent.color`), not by coarse kind buckets, so projection-specific colors (e.g.
- * awaiting model / job confirmation pending) never collapse into generic “other” grey while the chip
- * stays purple/brown.
+ * awaiting model / job confirmation pending) never collapse into generic “other”/reject greys while
+ * the chips or blocks use the true semantic color. Strips/footers are **auxiliary**; they must not
+ * contradict the underlying per-event `color` (Rule A: multi-event days may show a strip richer than
+ * a single max-visible chip).
  */
 import { uiCopy } from '../constants/uiCopy';
 import { CALENDAR_COLORS, CALENDAR_PROJECTION_COLORS } from './calendarColors';

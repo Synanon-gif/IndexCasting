@@ -2,9 +2,17 @@
  * Calendar projection labels/colors — approval-phase truth (Dimension 2), not raw price noise.
  * Commercial amounts stay on option rows; see `agencyCalendarUnified.ts` header.
  *
- * B2B uses these helpers for blocks/badges/dots. On model `calendar_entries`, the canonical
- * projection-vs-entry order is `resolveModelCalendarEntryColor` in `modelCalendarSchedule.ts`
- * (projection when a cached `OptionRequest` exists; else `getCalendarEntryBlockColor`).
+ * **Canonical B2B / option-join color hierarchy (no second semantic palette):**
+ * - **Projection** (`resolveProjectionBucket` → `projectionBucketColor`) is authoritative whenever
+ *   equivalent option + `calendar_entry` context exists — used by badges, `calendarGridColorForOptionItem`,
+ *   and B2B month/week/day built from the same unified rows.
+ * - **Entry-only** (`getCalendarEntryBlockColor` / `getBookingEntryProjectionBadge`) is **fallback** for
+ *   standalone `calendar_entries` without a separate projection path, or when model has no cached option.
+ * - **Overview strips/footers** must aggregate the **rendered** semantic hex; they must not replace
+ *   distinct projection colors with a generic “other”/reject grey (`calendarOverviewLayout` helpers).
+ *
+ * On model `calendar_entries`, the single entry point is `resolveModelCalendarEntryColor` in
+ * `modelCalendarSchedule.ts` (cached `OptionRequest` → same projection as B2B; else `getCalendarEntryBlockColor`).
  */
 import type { SupabaseOptionRequest } from '../services/optionRequestsSupabase';
 import type { CalendarEntry } from '../services/calendarSupabase';
@@ -97,8 +105,10 @@ function isJobProjection(
 }
 
 /**
- * `user_calendar_events` row: DB may still carry a stale orange swatch after job confirm
- * while `title` was updated by trigger — align block color with title/legend.
+ * B2B manual `user_calendar_events`: not part of the option projection pipeline. Preserves the user
+ * or DB `color` for custom/personal swatches; only forces job green when the **title** already matches
+ * canonical job shapes (stale swatch / trigger ordering). Unchanged contract — do not route through
+ * `resolveProjectionBucket`.
  */
 export function resolveUserCalendarEventBlockColor(ev: { title: string; color: string }): string {
   if (displayTitleIndicatesCanonicalJob(ev.title)) return CALENDAR_COLORS.job;
@@ -253,6 +263,7 @@ function projectionBucketLabel(
 /**
  * Badge for an option row + optional calendar_entry (client & agency lists).
  * Uses {@link deriveApprovalAttention} — not `client_price_status` alone.
+ * **Semantic `backgroundColor` is always `projectionBucketColor` — `viewerRole` affects copy only.**
  */
 export function getCalendarProjectionBadge(
   option: SupabaseOptionRequest,
@@ -303,7 +314,11 @@ const COLOR_ONLY_LABELS: Pick<
   optionPending: '',
 };
 
-/** Standalone `calendar_entries` row (month dot, model agenda) — same colors as booking badges. */
+/**
+ * **Entry-only fallback** for standalone `calendar_entries` (and model when no cached option):
+ * same hex as {@link getBookingEntryProjectionBadge}. Not used when
+ * `calendarGridColorForOptionItem` applies — do not duplicate projection rules in callers.
+ */
 export function getCalendarEntryBlockColor(
   entry: Pick<CalendarEntry, 'entry_type' | 'status'> & { title?: string | null },
 ): string {
@@ -311,12 +326,10 @@ export function getCalendarEntryBlockColor(
 }
 
 /**
- * Month grid dot color for an option+calendar item.
- *
- * Canonical: identical color logic to {@link getCalendarProjectionBadge} — both
- * resolve via {@link resolveProjectionBucket} / {@link projectionBucketColor}.
- * Month dot, week chip and day block MUST never diverge for the same row;
- * see system-invariants §28.2 (calendar colors single source) and `.cursorrules` §28.2.
+ * **Authoritative** semantic hex for an option-linked row when B2B (or model) has full projection
+ * context. Identical to {@link getCalendarProjectionBadge}’s `backgroundColor` (same
+ * `resolveProjectionBucket` / `projectionBucketColor`). New calendar surfaces with option joins must
+ * use this (or the badge) — not ad‑hoc `entry_type` colors.
  */
 export function calendarGridColorForOptionItem(item: {
   option: SupabaseOptionRequest;

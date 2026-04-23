@@ -142,7 +142,7 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
                 <View style={s.kindStripRow}>
                   {segments.map((seg, si) => (
                     <View
-                      key={`${seg.bucket}-${si}`}
+                      key={`${seg.bucket}|${seg.color}|${si}`}
                       style={[s.kindStripSeg, { flex: seg.count, backgroundColor: seg.color }]}
                     />
                   ))}

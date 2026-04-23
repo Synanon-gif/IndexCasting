@@ -1,13 +1,14 @@
 /**
- * Model calendar: one canonical resolver hierarchy for `calendar_entries` on model surfaces.
- * Do not add a parallel color path — follow this order only.
+ * Model calendar: **one** canonical color hierarchy for `calendar_entries` on model surfaces
+ * (month dots, week, day). No new fetches, no store rewrites, no duplicated projection rules.
  *
- * 1. **Projection (authoritative):** `option_request_id` is set and the caller supplies a cached
- *    `OptionRequest` → `calendarGridColorForOptionItem` (same resolver as B2B chips/blocks).
- * 2. **Entry-only (fallback):** no cached option for that id → `getCalendarEntryBlockColor` (orphan /
- *    title–job heuristics; identical role to B2B standalone `calendar_entries`).
- * 3. **Out of scope here:** manual / `user_calendar_events` are B2B-only; they use
- *    `resolveUserCalendarEventBlockColor` and are unchanged by this module.
+ * 1. **Cached projection (authoritative when present):** `option_request_id` and
+ *    `getOptionForProjection(oid)` returns an `OptionRequest` →
+ *    `calendarGridColorForOptionItem` (identical to B2B for equivalent context).
+ * 2. **Entry-only (fallback only):** no cached option → `getCalendarEntryBlockColor` (orphan /
+ *    title–job heuristics; same as B2B standalone entry rows). Intentional B2B/model mismatch
+ *    only if projection context is genuinely missing on the model side (Rule B).
+ * 3. **B2B-only:** manual / `user_calendar_events` use `resolveUserCalendarEventBlockColor` elsewhere.
  */
 import type { CalendarEntry, CalendarEntryType } from '../services/calendarSupabase';
 import type { CalendarDayEvent } from '../components/MonthCalendarView';
