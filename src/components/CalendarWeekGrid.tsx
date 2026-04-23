@@ -9,14 +9,41 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { isMobileWidth } from '../theme/breakpoints';
+import { uiCopy } from '../constants/uiCopy';
 import type { CalendarScheduleBlock } from '../utils/calendarUnifiedTimeline';
 import { formatMinutesAsHm } from '../utils/calendarTimelineLayout';
-import {
-  DAY_TIME_BAND_LABEL_EN,
-  OVERVIEW_KIND_LABEL_EN,
-  startMinToDayTimeBand,
-  weekColumnKindSegments,
-} from '../utils/calendarOverviewLayout';
+import type { DayTimeBand, OverviewKindBucket } from '../utils/calendarOverviewLayout';
+import { startMinToDayTimeBand, weekColumnKindSegments } from '../utils/calendarOverviewLayout';
+
+function overviewKindUiLabel(bucket: OverviewKindBucket): string {
+  const c = uiCopy.calendar;
+  switch (bucket) {
+    case 'job':
+      return c.overviewKindJob;
+    case 'casting':
+      return c.overviewKindCasting;
+    case 'option':
+      return c.overviewKindOption;
+    case 'manual':
+      return c.overviewKindPersonal;
+    default:
+      return c.overviewKindOther;
+  }
+}
+
+function timeBandUiLabel(band: DayTimeBand): string {
+  const c = uiCopy.calendar;
+  switch (band) {
+    case 'early':
+      return c.timeBandEarly;
+    case 'morning':
+      return c.timeBandMorning;
+    case 'afternoon':
+      return c.timeBandAfternoon;
+    case 'evening':
+      return c.timeBandEvening;
+  }
+}
 
 const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const COL_GAP = 4;
@@ -26,20 +53,19 @@ const COL_WIDTH_DESKTOP = 112;
 function WeekKindFooterVisual({ list }: { list: CalendarScheduleBlock[] }) {
   const segments = weekColumnKindSegments(list);
   if (segments.length === 0) return null;
-  const a11ySummary = segments
-    .map((s) => `${OVERVIEW_KIND_LABEL_EN[s.bucket]} ${s.count}`)
-    .join(', ');
+  const c = uiCopy.calendar;
+  const a11ySummary = segments.map((s) => `${overviewKindUiLabel(s.bucket)} ${s.count}`).join(', ');
   return (
     <View
       style={styles.kindFooterRow}
       accessible
-      accessibilityLabel={`Event types this day: ${a11ySummary}. Dot colors match category; labels state counts.`}
+      accessibilityLabel={`${c.weekFooterA11yPrefix} ${a11ySummary}. ${c.weekFooterA11ySuffix}`}
     >
       {segments.map((s) => (
         <View key={s.bucket} style={styles.kindFooterItem} accessible={false}>
           <View style={[styles.kindFooterDot, { backgroundColor: s.color }]} />
           <Text style={styles.kindFooterText} numberOfLines={1}>
-            {OVERVIEW_KIND_LABEL_EN[s.bucket]} {s.count}
+            {overviewKindUiLabel(s.bucket)} {s.count}
           </Text>
         </View>
       ))}
@@ -114,7 +140,7 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
           prevBand = band;
           nodes.push(
             <View key={`${date}-band-${band}-${i}`} style={styles.bandDivider}>
-              <Text style={styles.bandLabel}>{DAY_TIME_BAND_LABEL_EN[band]}</Text>
+              <Text style={styles.bandLabel}>{timeBandUiLabel(band)}</Text>
             </View>,
           );
         }

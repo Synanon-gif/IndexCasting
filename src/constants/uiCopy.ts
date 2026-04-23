@@ -351,14 +351,41 @@ export const uiCopy = {
     viewModeHeading: 'Calendar view',
     /** Shown under the view switch when Month is selected. */
     viewModeHintMonth:
-      'Month shows the full grid. Use Week or Day for more detail on bookings and options.',
+      'Month shows the full grid. Tap a day to open that week; switch to Day for hourly detail.',
     /** Narrow screens: month view is a scrollable agenda list instead of a dot grid. */
     viewModeHintMonthAgenda: 'Scroll the list for this month. Use Week or Day for hourly detail.',
     agendaEmptyMonth: 'No entries in this month.',
     /** Shown under “Day:” on mobile when the scrollable agenda already lists that day’s entries. */
     agendaDayHint: 'Entries for this day are listed in the month agenda above.',
-    viewModeHintWeek: 'Week shows seven days and timed events. Tap a day or an event to open it.',
-    viewModeHintDay: 'Day lists everything scheduled on the selected day.',
+    viewModeHintWeek:
+      'Week shows seven days with timed entries. Tap a day for the day view, or tap an event to open it.',
+    viewModeHintDay:
+      'Day shows the timeline for the selected day. If many events overlap, use “more” below the grid to open the rest.',
+    /** Dense month cell — appended when opening week from month (B2B). */
+    monthDenseA11yOpensWeek: 'Opens week view.',
+    /** Week grid — time-of-day group labels (visual only). */
+    timeBandEarly: 'Early',
+    timeBandMorning: 'Morning',
+    timeBandAfternoon: 'Afternoon',
+    timeBandEvening: 'Evening',
+    /** Week/month overview footers — count labels by bucket. */
+    overviewKindJob: 'Jobs',
+    overviewKindCasting: 'Castings',
+    overviewKindOption: 'Options',
+    overviewKindPersonal: 'Personal',
+    overviewKindOther: 'Other',
+    weekFooterA11yPrefix: 'Event types this day:',
+    weekFooterA11ySuffix: 'Dot colors match the legend; text shows counts per type.',
+    /** Day timeline — events hidden behind parallel lane cap. */
+    dayTimelineOverflowShow: (n: number) => `+${n} more overlapping — tap for list`,
+    dayTimelineOverflowHide: (n: number) => `Hide ${n} extra…`,
+    dayTimelineOverflowA11yHint: 'Lists events that do not fit in the parallel columns above.',
+    dayTimelineOverflowA11yShow: (n: number) =>
+      `${n} overlapping events are not shown in the time grid. Open list to select one.`,
+    dayTimelineOverflowA11yHide: (n: number) =>
+      `Hide list of ${n} overlapping events not shown in the grid`,
+    dayTimelineOverflowRowA11y: (start: string, end: string, title: string) =>
+      `${start} to ${end}, ${title}`,
     /** Prefix before a YYYY-MM-DD in the selected-day panel. */
     selectedDayPrefix: 'Day:',
     /** No events on the picked day (quick list). */

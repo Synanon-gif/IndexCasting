@@ -9,6 +9,7 @@ import {
   LayoutChangeEvent,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import { uiCopy } from '../constants/uiCopy';
 import type { CalendarScheduleBlock } from '../utils/calendarUnifiedTimeline';
 import { assignOverlapLanes, formatMinutesAsHm } from '../utils/calendarTimelineLayout';
 import { blockTimeRangeLabel, cappedBlockLayout } from '../utils/calendarOverviewLayout';
@@ -273,17 +274,17 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
               onPress={() => setExpandedHidden((v) => !v)}
               accessibilityRole="button"
               accessibilityState={{ expanded: expandedHidden }}
-              accessibilityHint="Lists events that do not fit in the parallel columns above."
+              accessibilityHint={uiCopy.calendar.dayTimelineOverflowA11yHint}
               accessibilityLabel={
                 expandedHidden
-                  ? `Hide list of ${hiddenParallelCount} overlapping events not shown in the grid`
-                  : `${hiddenParallelCount} overlapping events are not shown in the time grid. Open list to select one.`
+                  ? uiCopy.calendar.dayTimelineOverflowA11yHide(hiddenParallelCount)
+                  : uiCopy.calendar.dayTimelineOverflowA11yShow(hiddenParallelCount)
               }
             >
               <Text style={styles.hiddenOverflowToggleText}>
                 {expandedHidden
-                  ? `Hide ${hiddenParallelCount} extra…`
-                  : `+${hiddenParallelCount} more overlapping — tap for list`}
+                  ? uiCopy.calendar.dayTimelineOverflowHide(hiddenParallelCount)
+                  : uiCopy.calendar.dayTimelineOverflowShow(hiddenParallelCount)}
               </Text>
             </TouchableOpacity>
             {expandedHidden ? (
@@ -297,7 +298,11 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
                     key={`${ev.id}-${ev.startMin}-h-${ev.lane}`}
                     style={styles.hiddenListRow}
                     onPress={() => onEventPress(ev)}
-                    accessibilityLabel={`${formatMinutesAsHm(ev.startMin)} to ${formatMinutesAsHm(ev.endMin)}, ${ev.title}`}
+                    accessibilityLabel={uiCopy.calendar.dayTimelineOverflowRowA11y(
+                      formatMinutesAsHm(ev.startMin),
+                      formatMinutesAsHm(ev.endMin),
+                      ev.title,
+                    )}
                   >
                     <View style={[styles.hiddenListSwatch, { backgroundColor: ev.color }]} />
                     <View style={styles.hiddenListTextCol}>

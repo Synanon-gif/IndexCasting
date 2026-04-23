@@ -5,6 +5,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import { uiCopy } from '../constants/uiCopy';
 import {
   monthDayKindSegments,
   sortCalendarDayEventsForOverview,
@@ -127,7 +128,7 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
               : `Day ${cell.dayNum}`;
           const cellA11y =
             events.length > 0 && denseOverview && !compact
-              ? `${cellA11yBase}. Opens week view.`
+              ? `${cellA11yBase}. ${uiCopy.calendar.monthDenseA11yOpensWeek}`
               : events.length > 0
                 ? `${cellA11yBase}.`
                 : cellA11yBase;
@@ -236,7 +237,7 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
                   onPress={() => onDenseOverflowPress!(cell.date!)}
                   activeOpacity={0.75}
                   accessibilityRole="button"
-                  accessibilityLabel={`${denseMore} more events, open week view`}
+                  accessibilityLabel={`${denseMore} more events. ${uiCopy.calendar.monthDenseA11yOpensWeek}`}
                 >
                   <Text style={s.moreText}>+{denseMore}</Text>
                 </TouchableOpacity>
