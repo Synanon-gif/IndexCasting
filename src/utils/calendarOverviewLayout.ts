@@ -1,7 +1,7 @@
 /**
  * Pure helpers for B2B calendar overview density (month/week/day UI only).
  */
-import { CALENDAR_COLORS } from './calendarColors';
+import { CALENDAR_COLORS, CALENDAR_PROJECTION_COLORS } from './calendarColors';
 import {
   coarseOverviewKindForOptionItem,
   coarseOverviewKindFromProjectionColor,
@@ -66,7 +66,7 @@ export function monthDayKindSegments(events: MonthOverviewEvent[]): KindCountSeg
     casting: CALENDAR_COLORS.casting,
     option: CALENDAR_COLORS.option,
     manual: CALENDAR_COLORS.personal,
-    other: CALENDAR_COLORS.option,
+    other: CALENDAR_PROJECTION_COLORS.rejected,
   };
   const out: KindCountSegment[] = [];
   for (const b of order) {
@@ -108,7 +108,7 @@ export function weekColumnKindSegments(blocks: CalendarScheduleBlock[]): KindCou
     casting: CALENDAR_COLORS.casting,
     option: CALENDAR_COLORS.option,
     manual: CALENDAR_COLORS.personal,
-    other: CALENDAR_COLORS.option,
+    other: CALENDAR_PROJECTION_COLORS.rejected,
   };
   const out: KindCountSegment[] = [];
   for (const b of order) {

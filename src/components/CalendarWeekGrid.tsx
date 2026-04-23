@@ -1,12 +1,5 @@
 import React, { useMemo } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  useWindowDimensions,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { isMobileWidth } from '../theme/breakpoints';
 import { uiCopy } from '../constants/uiCopy';
@@ -48,7 +41,6 @@ function timeBandUiLabel(band: DayTimeBand): string {
 const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const COL_GAP = 4;
 const GRID_PADDING = spacing.sm;
-const COL_WIDTH_DESKTOP = 112;
 
 function WeekKindFooterVisual({ list }: { list: CalendarScheduleBlock[] }) {
   const segments = weekColumnKindSegments(list);
@@ -103,14 +95,8 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
   denseWorkWeek = false,
   showDayKindFooter = false,
 }) => {
-  const { width: windowWidth } = useWindowDimensions();
-  const isMobile = isMobileWidth(windowWidth);
-
-  const colWidth = useMemo(() => {
-    if (!isMobile) return COL_WIDTH_DESKTOP;
-    const available = windowWidth - 2 * GRID_PADDING - 6 * COL_GAP - 2;
-    return Math.max(36, Math.floor(available / 7));
-  }, [windowWidth, isMobile]);
+  const { width: layoutWidth } = useWindowDimensions();
+  const isMobile = isMobileWidth(layoutWidth);
 
   const byDate = useMemo(() => {
     const m: Record<string, CalendarScheduleBlock[]> = {};
@@ -127,7 +113,7 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
   const chipFontSize = denseWorkWeek ? (isMobile ? 8 : 8) : isMobile ? 8 : 9;
   const mobileMaxChips = isMobile ? (denseWorkWeek ? 3 : 2) : maxChipsPerDay;
 
-  const renderChipsForDay = (date: string, list: CalendarScheduleBlock[], cap: number) => {
+  const renderChipsForDay = (list: CalendarScheduleBlock[], cap: number) => {
     const slice = list.slice(0, cap);
     const nodes: React.ReactNode[] = [];
     let prevBand: ReturnType<typeof startMinToDayTimeBand> | null = null;
@@ -139,7 +125,7 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
         if (prevBand !== band) {
           prevBand = band;
           nodes.push(
-            <View key={`${date}-band-${band}-${i}`} style={styles.bandDivider}>
+            <View key={`band-${band}-${i}`} style={styles.bandDivider}>
               <Text style={styles.bandLabel}>{timeBandUiLabel(band)}</Text>
             </View>,
           );
@@ -208,90 +194,50 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
           <Text style={styles.navChevron}>›</Text>
         </TouchableOpacity>
       </View>
-      {isMobile ? (
-        <View style={[styles.columns, { gap: COL_GAP }]}>
-          {weekDates.map((date, idx) => {
-            const dayNum = Number(date.slice(8, 10));
-            const list = byDate[date] ?? [];
-            const isSelected = selectedDate === date;
-            const isToday = date === new Date().toISOString().slice(0, 10);
-            return (
-              <TouchableOpacity
-                key={date}
-                style={[
-                  styles.col,
-                  { width: colWidth, minHeight: denseWorkWeek ? 128 : 110 },
-                  isSelected && styles.colSelected,
-                  isToday && !isSelected && styles.colToday,
-                ]}
-                onPress={() => onSelectDay(date)}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.wd}>{WEEKDAY_SHORT[idx]}</Text>
-                <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>{dayNum}</Text>
-                <View style={styles.chips}>
-                  {renderChipsForDay(date, list, mobileMaxChips)}
-                  {list.length > mobileMaxChips ? (
-                    <View style={denseWorkWeek ? styles.moreHit : undefined}>
-                      <Text style={styles.more}>+{list.length - mobileMaxChips}</Text>
-                    </View>
-                  ) : null}
-                  {showDayKindFooter && list.length > 0 ? (
-                    <WeekKindFooterVisual list={list} />
-                  ) : null}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      ) : (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          nestedScrollEnabled
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={[styles.columns, { gap: COL_GAP }]}>
-            {weekDates.map((date, idx) => {
-              const dayNum = Number(date.slice(8, 10));
-              const list = byDate[date] ?? [];
-              const isSelected = selectedDate === date;
-              const isToday = date === new Date().toISOString().slice(0, 10);
-              return (
-                <TouchableOpacity
-                  key={date}
-                  style={[
-                    styles.col,
-                    { width: colWidth },
-                    isSelected && styles.colSelected,
-                    isToday && !isSelected && styles.colToday,
-                  ]}
-                  onPress={() => onSelectDay(date)}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.wd}>{WEEKDAY_SHORT[idx]}</Text>
-                  <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>{dayNum}</Text>
-                  <View style={styles.chips}>
-                    {renderChipsForDay(date, list, maxChipsPerDay)}
-                    {list.length > maxChipsPerDay ? (
-                      <Text style={styles.more}>+{list.length - maxChipsPerDay}</Text>
-                    ) : null}
-                    {showDayKindFooter && list.length > 0 ? (
-                      <WeekKindFooterVisual list={list} />
-                    ) : null}
+      <View style={[styles.columns, { gap: COL_GAP }]}>
+        {weekDates.map((date, idx) => {
+          const dayNum = Number(date.slice(8, 10));
+          const list = byDate[date] ?? [];
+          const cap = isMobile ? mobileMaxChips : maxChipsPerDay;
+          const isSelected = selectedDate === date;
+          const isToday = date === new Date().toISOString().slice(0, 10);
+          return (
+            <TouchableOpacity
+              key={date}
+              style={[
+                styles.col,
+                styles.colFlex,
+                isMobile && denseWorkWeek && styles.colMobileDenseH,
+                isMobile && !denseWorkWeek && styles.colMobileStdH,
+                isSelected && styles.colSelected,
+                isToday && !isSelected && styles.colToday,
+              ]}
+              onPress={() => onSelectDay(date)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.wd}>{WEEKDAY_SHORT[idx]}</Text>
+              <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>{dayNum}</Text>
+              <View style={styles.chips}>
+                {renderChipsForDay(list, cap)}
+                {list.length > cap ? (
+                  <View style={denseWorkWeek && isMobile ? styles.moreHit : undefined}>
+                    <Text style={styles.more}>+{list.length - cap}</Text>
                   </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </ScrollView>
-      )}
+                ) : null}
+                {showDayKindFooter && list.length > 0 ? <WeekKindFooterVisual list={list} /> : null}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   wrap: {
+    alignSelf: 'stretch',
+    width: '100%',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
@@ -314,7 +260,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
   },
-  columns: { flexDirection: 'row' },
+  columns: { flexDirection: 'row', width: '100%', alignSelf: 'stretch' },
   col: {
     minHeight: 140,
     borderRadius: 10,
@@ -323,6 +269,9 @@ const styles = StyleSheet.create({
     padding: 6,
     backgroundColor: 'transparent',
   },
+  colFlex: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
+  colMobileDenseH: { minHeight: 128 },
+  colMobileStdH: { minHeight: 110 },
   colSelected: {
     borderColor: colors.textPrimary,
     backgroundColor: colors.surface,

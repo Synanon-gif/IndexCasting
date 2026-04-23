@@ -66,6 +66,19 @@ export function displayTitleIndicatesCanonicalJob(title: string | null | undefin
   return false;
 }
 
+/**
+ * First line of text used on B2B chips/month (`agencyCalendarUnified.unifiedOptionRowDisplayTitle`).
+ * Tentative → Job color must use this string so it cannot diverge from `isJobProjection` signals.
+ */
+function unifiedB2BOptionLineForProjection(
+  option: SupabaseOptionRequest,
+  calendar_entry: CalendarEntry | null,
+): string {
+  const ce = calendar_entry?.title?.trim();
+  if (ce) return ce;
+  return (option.model_name ?? '').trim();
+}
+
 function isJobProjection(
   option: SupabaseOptionRequest,
   calendar_entry: CalendarEntry | null,
@@ -125,9 +138,10 @@ function resolveProjectionBucket(
   if (isJobProjection(option, calendar_entry)) {
     const tentative = calendar_entry?.status === 'tentative';
     if (tentative) {
-      // Title already matches canonical Job shapes (e.g. "Client 3 – job") — use Job green like
-      // the legend; status can still be tentative until DB flips.
-      if (displayTitleIndicatesCanonicalJob(calendar_entry?.title)) {
+      // Visible B2B line (calendar title or `model_name`) already Job-shaped — Job green; status may lag.
+      if (
+        displayTitleIndicatesCanonicalJob(unifiedB2BOptionLineForProjection(option, calendar_entry))
+      ) {
         return 'jobConfirmed';
       }
       return 'jobTentative';

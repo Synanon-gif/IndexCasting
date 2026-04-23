@@ -167,6 +167,20 @@ describe('calendarProjectionLabel', () => {
     expect(b.backgroundColor).toBe(CALENDAR_COLORS.job);
   });
 
+  it('tentative: Job-shaped model_name when calendar title empty — same B2B line as chip, Job green', () => {
+    const b = getCalendarProjectionBadge(
+      baseOption({
+        status: 'confirmed',
+        final_status: 'option_confirmed',
+        model_name: 'Client 3 – job',
+      }),
+      entry({ entry_type: 'option', status: 'tentative', title: null }),
+      L,
+    );
+    expect(b.label).toBe(L.job);
+    expect(b.backgroundColor).toBe(CALENDAR_COLORS.job);
+  });
+
   it('maps casting entry_type', () => {
     const b = getCalendarProjectionBadge(baseOption(), entry({ entry_type: 'casting' }), L);
     expect(b.label).toBe(L.casting);
