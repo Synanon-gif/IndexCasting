@@ -26,10 +26,17 @@ const COL_WIDTH_DESKTOP = 112;
 function WeekKindFooterVisual({ list }: { list: CalendarScheduleBlock[] }) {
   const segments = weekColumnKindSegments(list);
   if (segments.length === 0) return null;
+  const a11ySummary = segments
+    .map((s) => `${OVERVIEW_KIND_LABEL_EN[s.bucket]} ${s.count}`)
+    .join(', ');
   return (
-    <View style={styles.kindFooterRow}>
+    <View
+      style={styles.kindFooterRow}
+      accessible
+      accessibilityLabel={`Event types this day: ${a11ySummary}. Dot colors match category; labels state counts.`}
+    >
       {segments.map((s) => (
-        <View key={s.bucket} style={styles.kindFooterItem}>
+        <View key={s.bucket} style={styles.kindFooterItem} accessible={false}>
           <View style={[styles.kindFooterDot, { backgroundColor: s.color }]} />
           <Text style={styles.kindFooterText} numberOfLines={1}>
             {OVERVIEW_KIND_LABEL_EN[s.bucket]} {s.count}

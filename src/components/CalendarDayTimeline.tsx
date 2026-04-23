@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -51,6 +51,7 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
 }) => {
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const [viewportW, setViewportW] = useState(0);
+  const [expandedHidden, setExpandedHidden] = useState(false);
   const timelineMaxHeight = Math.max(300, Math.round(windowHeight * 0.55));
   const pxPerMin = HOUR_HEIGHT / 60;
 
@@ -88,6 +89,16 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
   }, [lanesAll, laneCap]);
 
   const hiddenParallelCount = lanesAll.length - lanes.length;
+
+  const hiddenEvents = useMemo(() => {
+    if (!Number.isFinite(laneCap)) return [];
+    const h = lanesAll.filter((e) => e.lane >= laneCap);
+    return [...h].sort((a, b) => a.startMin - b.startMin || a.title.localeCompare(b.title));
+  }, [lanesAll, laneCap]);
+
+  useEffect(() => {
+    setExpandedHidden(false);
+  }, [events, dateLabel]);
 
   const maxLaneCount = useMemo(
     () => (lanesAll.length ? Math.max(...lanesAll.map((l) => l.laneCount)) : 1),
@@ -194,11 +205,6 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
           </TouchableOpacity>
         );
       })}
-      {hiddenParallelCount > 0 ? (
-        <View style={styles.hiddenLanesBadge} pointerEvents="none">
-          <Text style={styles.hiddenLanesText}>+{hiddenParallelCount} more</Text>
-        </View>
-      ) : null}
     </>
   );
 
@@ -260,6 +266,54 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
             </View>
           )}
         </View>
+        {hiddenParallelCount > 0 ? (
+          <View style={styles.hiddenOverflowSection}>
+            <TouchableOpacity
+              style={styles.hiddenOverflowToggle}
+              onPress={() => setExpandedHidden((v) => !v)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: expandedHidden }}
+              accessibilityHint="Lists events that do not fit in the parallel columns above."
+              accessibilityLabel={
+                expandedHidden
+                  ? `Hide list of ${hiddenParallelCount} overlapping events not shown in the grid`
+                  : `${hiddenParallelCount} overlapping events are not shown in the time grid. Open list to select one.`
+              }
+            >
+              <Text style={styles.hiddenOverflowToggleText}>
+                {expandedHidden
+                  ? `Hide ${hiddenParallelCount} extra…`
+                  : `+${hiddenParallelCount} more overlapping — tap for list`}
+              </Text>
+            </TouchableOpacity>
+            {expandedHidden ? (
+              <ScrollView
+                style={styles.hiddenListScroll}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+              >
+                {hiddenEvents.map((ev) => (
+                  <TouchableOpacity
+                    key={`${ev.id}-${ev.startMin}-h-${ev.lane}`}
+                    style={styles.hiddenListRow}
+                    onPress={() => onEventPress(ev)}
+                    accessibilityLabel={`${formatMinutesAsHm(ev.startMin)} to ${formatMinutesAsHm(ev.endMin)}, ${ev.title}`}
+                  >
+                    <View style={[styles.hiddenListSwatch, { backgroundColor: ev.color }]} />
+                    <View style={styles.hiddenListTextCol}>
+                      <Text style={styles.hiddenListTime} numberOfLines={1}>
+                        {formatMinutesAsHm(ev.startMin)}–{formatMinutesAsHm(ev.endMin)}
+                      </Text>
+                      <Text style={styles.hiddenListTitle} numberOfLines={2}>
+                        {ev.title}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : null}
+          </View>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -328,23 +382,60 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 5,
     borderBottomRightRadius: 5,
   },
-  hiddenLanesBadge: {
-    position: 'absolute',
-    right: 6,
-    left: 6,
-    bottom: 8,
-    alignItems: 'center',
+  hiddenOverflowSection: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
-  hiddenLanesText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.textSecondary,
-    backgroundColor: colors.surface,
-    overflow: 'hidden',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+  hiddenOverflowToggle: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.xs,
+  },
+  hiddenOverflowToggleText: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  hiddenListScroll: {
+    maxHeight: 220,
+    marginTop: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+  },
+  hiddenListRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  hiddenListSwatch: {
+    width: 10,
+    height: 10,
+    borderRadius: 3,
+    marginTop: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.12)',
+  },
+  hiddenListTextCol: { flex: 1, minWidth: 0 },
+  hiddenListTime: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  hiddenListTitle: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textPrimary,
+    fontWeight: '600',
   },
 });
