@@ -1,4 +1,6 @@
 import { Platform } from 'react-native';
+import { validateUrl } from '../../lib/validation';
+import { openLinkWithFeedback } from './openLinkWithFeedback';
 
 /** Custom event so App.tsx re-reads `window.location.pathname` after client-side navigation. */
 export const INDEXCASTING_LOCATION_EVENT = 'indexcasting-location';
@@ -73,6 +75,22 @@ export function replaceWebPathToHome(): void {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
   window.history.replaceState({}, '', '/');
   bumpWebLocation();
+}
+
+/** Public Trust / System Status: web uses client-side route; native opens the hosted canonical URL. */
+export type AuthAreaPublicPageSpec = {
+  webPath: string;
+  publicUrl: string;
+};
+
+export function openAuthAreaPublicPage(spec: AuthAreaPublicPageSpec): void {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    navigatePublicPath(spec.webPath);
+    return;
+  }
+  if (validateUrl(spec.publicUrl).ok) {
+    openLinkWithFeedback(spec.publicUrl);
+  }
 }
 
 /**

@@ -1,9 +1,11 @@
+import { Platform } from 'react-native';
 import {
   normalizePublicLegalPath,
   normalizeTrustPath,
   isStatusPath,
   getPublicAgencySlugFromPath,
   getPublicClientSlugFromPath,
+  openAuthAreaPublicPage,
 } from '../publicLegalRoutes';
 
 /**
@@ -91,5 +93,37 @@ describe('publicLegalRoutes — Status page', () => {
   test('does not collide with agency/client slug routes', () => {
     expect(getPublicAgencySlugFromPath('/status')).toBeNull();
     expect(getPublicClientSlugFromPath('/status')).toBeNull();
+  });
+});
+
+describe('openAuthAreaPublicPage', () => {
+  const origPlatform = Platform.OS;
+  const pushState = jest.fn();
+  const dispatch = jest.fn();
+
+  afterEach(() => {
+    (Platform as { OS: typeof Platform.OS }).OS = origPlatform;
+    delete (global as unknown as { window?: unknown }).window;
+    jest.resetAllMocks();
+  });
+
+  test('on web, updates history to the public path and bumps location', () => {
+    (Platform as { OS: string }).OS = 'web';
+    (
+      global as unknown as {
+        window: { history: { pushState: typeof pushState }; dispatchEvent: typeof dispatch };
+      }
+    ).window = {
+      history: { pushState: pushState },
+      dispatchEvent: dispatch,
+    };
+
+    openAuthAreaPublicPage({
+      webPath: '/trust',
+      publicUrl: 'https://indexcasting.com/trust',
+    });
+
+    expect(pushState).toHaveBeenCalledWith({}, '', '/trust');
+    expect(dispatch).toHaveBeenCalled();
   });
 });

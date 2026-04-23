@@ -2072,6 +2072,8 @@ export const uiCopy = {
     tosLabel: 'Terms of Service',
     tosCheckLabel: 'I accept the',
     privacyLabel: 'Privacy Policy',
+    trustLabel: 'Trust',
+    statusLabel: 'Status',
     privacyCheckLabel: 'I accept the',
     privacySuffix: '(GDPR compliant)',
     agencyRightsLabel:
@@ -2081,6 +2083,10 @@ export const uiCopy = {
     // URLs — update these to point to your hosted legal pages
     tosUrl: 'https://indexcasting.com/terms',
     privacyUrl: 'https://indexcasting.com/privacy',
+    /** Canonical public Trust Center (same path as in-app /trust on web). */
+    trustUrl: 'https://indexcasting.com/trust',
+    /** Canonical public system status (same path as in-app /status on web). */
+    statusUrl: 'https://indexcasting.com/status',
     // In-app screens
     termsScreenTitle: 'Terms of Service',
     privacyScreenTitle: 'Privacy Policy',

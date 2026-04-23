@@ -14,7 +14,7 @@ import { useAuth } from '../context/AuthContext';
 import { uiCopy } from '../constants/uiCopy';
 import { TermsScreen } from './TermsScreen';
 import { PrivacyScreen } from './PrivacyScreen';
-import { navigatePublicLegal } from '../utils/publicLegalRoutes';
+import { navigatePublicLegal, openAuthAreaPublicPage } from '../utils/publicLegalRoutes';
 import { supabase } from '../../lib/supabase';
 
 type AuthScreenProps = {
@@ -395,6 +395,22 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           >
             <Text style={styles.legalLink}>{uiCopy.legal.privacyLabel}</Text>
           </TouchableOpacity>
+          <Text style={styles.legalSep}>·</Text>
+          <TouchableOpacity
+            onPress={() =>
+              openAuthAreaPublicPage({ webPath: '/trust', publicUrl: uiCopy.legal.trustUrl })
+            }
+          >
+            <Text style={styles.legalLink}>{uiCopy.legal.trustLabel}</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalSep}>·</Text>
+          <TouchableOpacity
+            onPress={() =>
+              openAuthAreaPublicPage({ webPath: '/status', publicUrl: uiCopy.legal.statusUrl })
+            }
+          >
+            <Text style={styles.legalLink}>{uiCopy.legal.statusLabel}</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -510,9 +526,12 @@ const styles = StyleSheet.create({
   submitLabel: { ...typography.label, color: colors.surface },
   legalFooter: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
+    alignContent: 'center',
+    rowGap: spacing.xs,
+    columnGap: spacing.xs,
     marginTop: spacing.md,
   },
   legalLink: {

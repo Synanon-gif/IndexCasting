@@ -13,7 +13,7 @@ import type { InvitationPreview } from '../services/organizationsInvitationsSupa
 import { uiCopy } from '../constants/uiCopy';
 import { TermsScreen } from './TermsScreen';
 import { PrivacyScreen } from './PrivacyScreen';
-import { navigatePublicLegal } from '../utils/publicLegalRoutes';
+import { navigatePublicLegal, openAuthAreaPublicPage } from '../utils/publicLegalRoutes';
 
 type Props = {
   preview: InvitationPreview | null;
@@ -170,6 +170,22 @@ export function InviteAcceptanceScreen({
         >
           <Text style={styles.legalLink}>{uiCopy.legal.privacyLabel}</Text>
         </TouchableOpacity>
+        <Text style={styles.legalSep}>·</Text>
+        <TouchableOpacity
+          onPress={() =>
+            openAuthAreaPublicPage({ webPath: '/trust', publicUrl: uiCopy.legal.trustUrl })
+          }
+        >
+          <Text style={styles.legalLink}>{uiCopy.legal.trustLabel}</Text>
+        </TouchableOpacity>
+        <Text style={styles.legalSep}>·</Text>
+        <TouchableOpacity
+          onPress={() =>
+            openAuthAreaPublicPage({ webPath: '/status', publicUrl: uiCopy.legal.statusUrl })
+          }
+        >
+          <Text style={styles.legalLink}>{uiCopy.legal.statusLabel}</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -258,9 +274,12 @@ const styles = StyleSheet.create({
   linkLabel: { ...typography.label, fontSize: 11, color: colors.textSecondary },
   legalFooter: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
+    alignContent: 'center',
+    rowGap: spacing.xs,
+    columnGap: spacing.xs,
     marginTop: spacing.lg,
     paddingBottom: spacing.md,
   },

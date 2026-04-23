@@ -122,4 +122,40 @@ test.describe('Legal links from public auth UI (not a marketing landing footer)'
       url.includes('/privacy') || body.toLowerCase().includes('privacy policy');
     expect(showsPrivacy).toBe(true);
   });
+
+  test('Trust is visible on the auth screen and opens /trust on web', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForTimeout(3000);
+
+    const trustControl = page.getByText('Trust', { exact: true });
+    await expect(trustControl).toBeVisible();
+
+    await trustControl.click();
+    await page.waitForTimeout(800);
+
+    const url = page.url();
+    const body = (await page.locator('body').textContent()) ?? '';
+    const showsTrust =
+      url.includes('/trust') || body.toLowerCase().includes('trust center') || /trust/i.test(body);
+    expect(showsTrust).toBe(true);
+  });
+
+  test('Status is visible on the auth screen and opens /status on web', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForTimeout(3000);
+
+    const statusControl = page.getByText('Status', { exact: true });
+    await expect(statusControl).toBeVisible();
+
+    await statusControl.click();
+    await page.waitForTimeout(800);
+
+    const url = page.url();
+    const body = (await page.locator('body').textContent()) ?? '';
+    const showsStatus =
+      url.includes('/status') ||
+      body.toLowerCase().includes('system status') ||
+      body.toLowerCase().includes('operational');
+    expect(showsStatus).toBe(true);
+  });
 });
