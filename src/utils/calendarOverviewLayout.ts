@@ -5,8 +5,8 @@
  * `MonthOverviewEvent.color`), not by coarse kind buckets, so projection-specific colors (e.g.
  * awaiting model / job confirmation pending) never collapse into generic “other”/reject greys while
  * the chips or blocks use the true semantic color. Strips/footers are **auxiliary**; they must not
- * contradict the underlying per-event `color` (Rule A: multi-event days may show a strip richer than
- * a single max-visible chip).
+ * contradict the underlying per-event `color` (strip vs chip: multi-event days may show a strip
+ * richer than one visible chip — product Rule B).
  */
 import { uiCopy } from '../constants/uiCopy';
 import { CALENDAR_COLORS, CALENDAR_PROJECTION_COLORS } from './calendarColors';
@@ -49,6 +49,10 @@ const BUCKET_PRIORITY: Record<OverviewKindBucket, number> = {
   other: 0,
 };
 
+/**
+ * Chip **order** only (coarse `kind` buckets). Does not define color semantics; rendered `color` on
+ * each event remains the canonical hex from B2B/model resolvers (Rule D: sorting ≠ color).
+ */
 export function sortCalendarDayEventsForOverview<T extends MonthOverviewEvent>(events: T[]): T[] {
   return [...events].sort((a, b) => {
     const pa = BUCKET_PRIORITY[monthEventKindBucket(a.kind)];
@@ -76,8 +80,9 @@ export function weekBlockKindBucket(ev: CalendarScheduleBlock): OverviewKindBuck
 }
 
 /**
- * Week column footer: counts by **rendered block color** (same hex as chips), not coarse buckets
- * that collapsed purple/brown into “other + grey”.
+ * Week column footer: counts by **rendered block color** (same hex as chips). React keys in UI must
+ * be stable when two segments share a bucket — use bucket + color + index (see `CalendarWeekGrid`).
+ * Does not collapse purple/brown into reject grey.
  */
 export function weekColumnKindSegments(blocks: CalendarScheduleBlock[]): KindCountSegment[] {
   if (blocks.length === 0) return [];

@@ -1,8 +1,8 @@
 /**
- * Timeline segments for B2B week & day: **same semantic hex** as month chips from
- * `buildEventsByDateFromUnifiedRows` for the same `UnifiedAgencyCalendarRow[]` (badges re-use
- * `getCalendarProjectionBadge` / `getBookingEntryProjectionBadge`; no duplicate color rules).
- * This module does not modify row selection, navigation, or business payloads — it maps times + color only.
+ * Timeline segments for B2B week & day — **same semantic hex** as month chips from
+ * `buildEventsByDateFromUnifiedRows` for the same `UnifiedAgencyCalendarRow[]`. Uses the locked
+ * hierarchy in `calendarProjectionLabel.ts` (projection → entry-only → manual); no duplicate color
+ * rules. This module maps times + color only — it does not change row selection, navigation, or payloads.
  */
 import type { UnifiedAgencyCalendarRow } from './agencyCalendarUnified';
 import type {
@@ -77,8 +77,8 @@ function resolveManualTimes(row: UnifiedAgencyCalendarRow & { kind: 'manual' }):
 }
 
 /**
- * Week/day `block.color` is derived from the same projection/entry helpers as the month grid
- * (see `buildEventsByDateFromUnifiedRows`) so cross-view color parity holds for a given row id.
+ * B2B week/day `block.color`: same resolver chain as `buildEventsByDateFromUnifiedRows` / month grid
+ * for each `UnifiedAgencyCalendarRow` id — keeps month / week / day semantically aligned.
  */
 export function buildTimelineEventsFromUnifiedRows(
   rows: UnifiedAgencyCalendarRow[],

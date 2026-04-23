@@ -1,11 +1,11 @@
 /**
- * Mobile month view: scrollable list of model calendar entries grouped by day
- * (replaces dot grid).
+ * Mobile month view: scrollable list of model calendar entries grouped by day (replaces dot grid).
  *
- * **Inactive in the app today** — on reactivation, wire colors **only** through
- * `resolveModelCalendarEntryColor` (`modelCalendarSchedule.ts`); do not use `getCalendarEntryBlockColor`
- * alone when a cached `OptionRequest` exists (same projection-first / entry-fallback contract as
- * active model month/week views).
+ * **INACTIVE — not wired in the app.** Do not refactor for color in this file until the surface is
+ * productized. **Before any activation:** replace entry-only coloring with the canonical hierarchy
+ * (`resolveModelCalendarEntryColor` from `modelCalendarSchedule.ts` + option lookup) so option-linked
+ * rows match B2B when projection context exists. Until then, `getCalendarEntryBlockColor` here is
+ * legacy-only and must not be copied as a pattern for new active UI.
  */
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';

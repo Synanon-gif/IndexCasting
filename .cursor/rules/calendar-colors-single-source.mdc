@@ -1,33 +1,54 @@
 ---
-description: Kalenderfarben — einheitliche Quellen, kein calendarEntryColor in App, B2B/Job-Titel-Parität
+description: Kalenderfarben — gesperrte Semantik, Single Source, Resolver-Hierarchie, Smoke-Tests
 globs: "src/**/*calendar*,src/**/B2BUnified*,src/**/ModelCalendar*,src/**/ModelProfile*,src/**/Agency*Calendar*,src/utils/calendar*,src/utils/agencyCalendar*"
 alwaysApply: false
 ---
 
-# Kalenderfarben — Single Source of Truth
+# Kalenderfarben — Single Source of Truth (gesperrt)
+
+**Normative Kurzform (nicht ohne Review + Tests brechen):**
+
+1. **Projection-based color** is authoritative whenever **equivalent** context exists (B2B: `option` + `calendar_entry`; model: cached `OptionRequest` + entry via `resolveModelCalendarEntryColor` → `calendarGridColorForOptionItem`).
+2. **Entry-only** color (`getCalendarEntryBlockColor` / `getBookingEntryProjectionBadge`) is **fallback only** when projection context is **genuinely** unavailable — not a parallel palette.
+3. **Dense strips, footers, overview segments** must aggregate **actual semantic HEX** from underlying events (`calendarOverviewLayout`); **never** collapse distinct projection colors (e.g. purple/brown) into generic reject grey.
+4. **Auxiliary indicators** must not **contradict** the semantic colors present in the underlying events.
+5. **Manual / custom** event colors stay unchanged (`resolveUserCalendarEventBlockColor`).
+6. **Active** calendar surfaces must use the **canonical resolver hierarchy** only (see entry points below).
+7. **Inactive** surfaces that still use entry-only coloring must be **documented before reactivation** (e.g. `ModelCalendarMonthAgenda` file header). No broad refactor until productized.
+8. **No calendar color change** without targeted regression coverage — at minimum run/extend: `src/utils/__tests__/calendarOverviewLayout.test.ts`, `calendarProjectionLabel.test.ts`, `modelCalendarSchedule.test.ts`, `calendarColorImportPolicy.test.ts` (maps to B2B month dense/strip, cross-view parity, model parity with context, model fallback, manual/custom/orphan, footer/overview).
+
+**Authoritative product rules:** `.cursorrules` **§28.2(12)**; **system invariants** — `CALENDAR COLOR SEMANTICS (FRONTEND — LOCKED)` in `system-invariants.mdc`.
 
 ## Konstanten
 
 - `CALENDAR_COLORS` / `CALENDAR_PROJECTION_COLORS` in `src/utils/calendarColors.ts` (kein zweites Hex pro Semantik).
 
-## B2B (Client + Agency) — Monat / Woche / Tag
+## Resolver-Einstiegspunkte (kanonisch)
 
-- Farbe: `calendarProjectionLabel.ts` — `getCalendarProjectionBadge`, `getCalendarEntryBlockColor` (Orphan-`calendar_entries`), `calendarGridColorForOptionItem` für Option+Join.
+- **B2B** — `src/utils/calendarProjectionLabel.ts`: `getCalendarProjectionBadge`, `calendarGridColorForOptionItem`, `getCalendarEntryBlockColor`, `resolveUserCalendarEventBlockColor`, `getBookingEntryProjectionBadge`.
+- **B2B Monat** — `buildEventsByDateFromUnifiedRows` in `agencyCalendarUnified.ts` (Chips + `event.color` für Strips).
+- **B2B Woche/Tag** — `buildTimelineEventsFromUnifiedRows` in `calendarUnifiedTimeline.ts` (gleiche Semantik pro Row).
+- **Overview-Aggregation** — `monthDayKindSegments` / `weekColumnKindSegments` in `calendarOverviewLayout.ts` (nach **rendered** Hex, nicht lossy `kind`→grau).
+- **Modell (aktiv)** — `resolveModelCalendarEntryColor` / `buildEventsByDateFromModelEntries` in `modelCalendarSchedule.ts` (mit Cache → wie B2B; ohne → Entry-only).
 - **Kein** `import { calendarEntryColor }` aus `calendarColors` in App-`src` — `calendarColorImportPolicy.test.ts` bremst das.
-- **Titel-Zeile** für Option-Rows: `unifiedOptionRowDisplayTitle` in `agencyCalendarUnified.ts` (erst `calendar_entries.title`, sonst `model_name`), damit sichtbarer Text und `isJobProjection`/`displayTitleIndicatesCanonicalJob` zu denselben DB-Feldern passen.
+
+## B2B — Titel / Option-Rows
+
+- **Titel-Zeile** für Option-Rows: `unifiedOptionRowDisplayTitle` in `agencyCalendarUnified.ts` (erst `calendar_entries.title`, sonst `model_name`), damit sichtbarer Text und `isJobProjection` / `displayTitleIndicatesCanonicalJob` zu denselben DB-Feldern passen.
 - **Gespiegelte / manuelle** `user_calendar_events`: `resolveUserCalendarEventBlockColor` — Job-förmiger Titel erzwingt **Job-Grün** auch bei veraltetem `color`-Swatch.
 - **Rolle** (`viewerRole`): ändert Badge-**Copy**, **nicht** die Bucket-Hintergrundfarbe.
 
-## Event-Typen
+## Event-Typen (Semantik)
 
 - **Option / Casting / Job** über B2B-Merge: Farben ausschließlich über die Projektion oben, nicht `entry_type` pur.
 - **Tentative** bestätigtes Booking: Legende: Option-Farbe — absichtlich; nicht „auf grün faken“.
-- **Manuelles** user_calendar ohne Option-Bezug: `resolveUserCalendarEventBlockColor` bzw. personal/grüne Wahl; keine Hardcodes neben `CALENDAR_COLORS`.
+- **Manuelles** `user_calendar` ohne Option-Bezug: `resolveUserCalendarEventBlockColor` bzw. personal; keine Hardcodes neben `CALENDAR_COLORS`.
 
-## Model-Profil (reine `calendar_entries`)
+## Modell-Profil (aktive `calendar_entries`)
 
-- `getCalendarEntryBlockColor` in `modelCalendarSchedule` / `ModelCalendarMonthAgenda` — **nicht** die volle B2B-Attention-Matrix. Kein `calendarEntryColor` für Blöcke nachziehen.
+- **Eine** Hierarchie: `resolveModelCalendarEntryColor` → Projektion oder `getCalendarEntryBlockColor`. Nicht `calendarEntryColor` für Blöcke nachziehen.
+- **Inaktive** `ModelCalendarMonthAgenda` (nirgends importiert): vor Reaktivierung auf `resolveModelCalendarEntryColor` + Option-Lookup umstellen; Kommentar im File.
 
 ## Änderungen (nie „nur schnell“)
 
-- Jede Anpassung: Legende, `calendarProjectionLabel`, ggf. `agencyCalendarUnified` (Titel), Tests (`calendarProjectionLabel.test`, `calendarColorImportPolicy`), `.cursorrules` §28.2#12.
+- Jede Anpassung: Legende, `calendarProjectionLabel`, ggf. `agencyCalendarUnified` (Titel), `calendarOverviewLayout` (Strip/Footer), Tests oben, `.cursorrules` §28.2(12), dieses Regelwerk.

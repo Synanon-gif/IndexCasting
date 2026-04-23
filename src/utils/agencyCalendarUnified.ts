@@ -555,14 +555,14 @@ export function dedupeUnifiedRowsByOptionRequest(
 }
 
 /**
- * Month grid events for `MonthCalendarView`. Each row’s `color` is the **single** semantic hex for
- * month chips, dense strips, and must stay aligned with
- * `buildTimelineEventsFromUnifiedRows` (week/day) for the same `filteredUnified` source.
+ * **Active B2B month** event list for `MonthCalendarView` (`eventsByDate`). Each row’s `color` is the
+ * single semantic hex for chips **and** dense strip input (`event.color` → `monthDayKindSegments`); must
+ * stay aligned with `buildTimelineEventsFromUnifiedRows` (week/day) for the same unified rows.
  *
- * **B2B resolver order (per row) — no flow/navigation side effects, color only:**
- * 1. `option` — `calendarGridColorForOptionItem` (projection authoritative).
- * 2. `booking` (standalone entry) — `getCalendarEntryBlockColor` (entry-only fallback; matches booking badge).
- * 3. `manual` — `resolveUserCalendarEventBlockColor` (custom swatches preserved; job title override only).
+ * Resolver order (per row) — color only; no navigation/sync side effects:
+ * 1. `option` — `calendarGridColorForOptionItem` (projection wins when present).
+ * 2. `booking` — `getCalendarEntryBlockColor` (entry-only; matches booking badge).
+ * 3. `manual` — `resolveUserCalendarEventBlockColor` (custom/personal preserved; job title override only).
  */
 export function buildEventsByDateFromUnifiedRows(rows: UnifiedAgencyCalendarRow[]): Record<
   string,

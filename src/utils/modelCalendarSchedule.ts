@@ -1,14 +1,13 @@
 /**
- * Model calendar: **one** canonical color hierarchy for `calendar_entries` on model surfaces
- * (month dots, week, day). No new fetches, no store rewrites, no duplicated projection rules.
+ * Model calendar — **one** hierarchy for active `calendar_entries` surfaces (month grid, week, day).
+ * No new fetches, no store rewrites, no duplicated projection rules.
  *
- * 1. **Cached projection (authoritative when present):** `option_request_id` and
- *    `getOptionForProjection(oid)` returns an `OptionRequest` →
- *    `calendarGridColorForOptionItem` (identical to B2B for equivalent context).
- * 2. **Entry-only (fallback only):** no cached option → `getCalendarEntryBlockColor` (orphan /
- *    title–job heuristics; same as B2B standalone entry rows). Intentional B2B/model mismatch
- *    only if projection context is genuinely missing on the model side (Rule B).
- * 3. **B2B-only:** manual / `user_calendar_events` use `resolveUserCalendarEventBlockColor` elsewhere.
+ * 1. **Projection (wins when equivalent context exists):** `option_request_id` + `getOptionForProjection`
+ *    returns `OptionRequest` → `calendarGridColorForOptionItem` (same HEX as B2B for the same option+entry).
+ * 2. **Entry-only fallback:** no cached option → `getCalendarEntryBlockColor` (orphan / title–job
+ *    heuristics; same as B2B standalone rows). B2B vs model color mismatch is **not** a resolver bug
+ *    when the model truly lacks cached projection context (Rule C in product docs).
+ * 3. **B2B-only:** manual `user_calendar_events` use `resolveUserCalendarEventBlockColor` elsewhere.
  */
 import type { CalendarEntry, CalendarEntryType } from '../services/calendarSupabase';
 import type { CalendarDayEvent } from '../components/MonthCalendarView';
@@ -27,9 +26,9 @@ import {
 import { logCalendarPreDedupeIfDuplicatesDev } from './invariantValidationDev';
 
 /**
- * Single entry point for model month dots / week / day block hex. Implements the hierarchy in the
- * module header: projection-first, `getCalendarEntryBlockColor` only as fallback — never duplicate
- * projection rules in callers.
+ * Model-side **single entry point** for block/dot hex. Projection first; entry-only fallback never
+ * invents random colors. Active surfaces must call this (or `buildEventsByDateFromModelEntries`) —
+ * do not duplicate `resolveProjectionBucket` in UI.
  */
 export function resolveModelCalendarEntryColor(
   entry: CalendarEntry,

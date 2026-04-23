@@ -162,6 +162,19 @@ Wenn ein DB-Constraint umbenannt wird, MÜSSEN alle referenzierenden Funktionen 
 
 Migration `20261209c_user_calendar_colors_per_request_type.sql` enthält den ASSERT, der die alten Hardcodes (`#2E7D32` für Agency-Row vor Job, etc.) verbietet. Frontend-Invariante in `src/utils/calendarColors.ts`: `CALENDAR_COLORS.booking === CALENDAR_COLORS.job` (gesperrt durch `src/utils/__tests__/calendarColors.test.ts`).
 
+## CALENDAR COLOR SEMANTICS (FRONTEND — LOCKED)
+
+These **frontend-only** rules are **never** optional for active calendar UIs. They sit beside DB/trigger color rules for `user_calendar_events` (section above) and **`.cursorrules` §28.2(12)**. Full file map: [`.cursor/rules/calendar-colors-single-source.mdc`](./calendar-colors-single-source.mdc).
+
+1. **Projection-based color is authoritative** whenever equivalent context exists (B2B: `option` + `calendar_entry` → `calendarGridColorForOptionItem` / `getCalendarProjectionBadge`; model: cached `OptionRequest` for `option_request_id` → `resolveModelCalendarEntryColor` then same projection).
+2. **Entry-only color** (`getCalendarEntryBlockColor` / `getBookingEntryProjectionBadge`) is **fallback only** when projection context is **genuinely** unavailable (orphan `calendar_entries`, model without a cached `OptionRequest` in local store) — not a second parallel semantic system.
+3. **Dense strips, week footers, and overview segments** must aggregate the **actual rendered semantic HEX** values of the underlying events (`calendarOverviewLayout` + `event.color` / `block.color`) — **never** collapse distinct projection colors (e.g. awaiting-model purple, job-confirmation-pending brown) into a generic “other”/reject **grey** while chips/blocks use the true projection hex.
+4. **Auxiliary indicators** must not **contradict** the semantic colors of the events they summarize; **chip sort order** (coarse `kind` buckets) is not a substitute for correct **rendered** hex.
+5. **Manual / custom** `user_calendar` colors: `resolveUserCalendarEventBlockColor` — preserve user/DB `color` and existing job-title override; do not route through projection bucket rules except that title override.
+6. **Active** calendar surfaces must use the **canonical resolver hierarchy** only (`calendarProjectionLabel.ts` + B2B `buildEventsByDateFromUnifiedRows` + `buildTimelineEventsFromUnifiedRows` + `modelCalendarSchedule` + `calendarOverviewLayout` for aggregation) — no ad-hoc `entry_type` → hex in components.
+7. **Inactive** or unwired UIs: if they still use entry-only coloring, they must be **documented in code** before reactivation; no broad refactors in this class of files until activation is planned. Example: `ModelCalendarMonthAgenda` (file header).
+8. **No calendar color change** (resolvers, aggregators, constants) without targeted regression coverage, at minimum the Jest suites: `calendarOverviewLayout`, `calendarProjectionLabel`, `modelCalendarSchedule`, `calendarColorImportPolicy` (maps to: B2B month dense/strip, cross-view parity, model parity with context, model fallback, manual/orphan path, footer/overview). Run or extend these when touching colors.
+
 ## KALENDER-TITLE — IMMER SICHTBAR (alle Surfaces)
 
 Jedes Event MUSS in jeder Kalender-Sicht (Day/Week/Month/Agenda) sichtbar mit Titel (nicht nur Farbpunkt) gerendert werden:
@@ -172,7 +185,7 @@ Jedes Event MUSS in jeder Kalender-Sicht (Day/Week/Month/Agenda) sichtbar mit Ti
 
 Niemals neue Sichten hinzufügen, die nur die Farbe ohne Titel rendern.
 
-**B2B-Monat (`MonthCalendarView` mit `denseOverview`):** Zusätzlich erlaubt für Agency/Client-Übersicht: **sichtbare** Typ-Zusammenfassung (Zähler/Segmentleiste aus `kind`) plus begrenzte Titelleiste (Top-Einträge) und `+N`-Overflow; jedes Event bleibt mit **vollständigem Titel** in `accessibilityLabel` auf der Zelle erfasst; **Tap auf den Tag / +N** wechselt in die **Wochenansicht** (Fokus auf den Tag); **Woche → Tag** liefert die Blöcke mit vollen Titeln; **Tag → Event** öffnet die Detailansicht unverändert (`onOpenUnifiedRow`).
+**B2B-Monat (`MonthCalendarView` mit `denseOverview`):** Zusätzlich erlaubt: **proportional strip** aus **tatsächlichen** Event-**HEX** (Aggregation `monthDayKindSegments` / `weekColumnKindSegments` — **nicht** lossy ausschließlich nach grobem `kind`) plus begrenzte Titelleiste (Top-Einträge) und `+N`-Overflow; jedes Event mit **vollständigem Titel** in `accessibilityLabel`; **Tap auf den Tag / +N** wechselt in die **Wochenansicht** (Fokus auf den Tag); **Woche → Tag** liefert die Blöcke mit vollen Titeln; **Tag → Event** öffnet die Detailansicht unverändert (`onOpenUnifiedRow`).
 
 ## KEINE IMPLIZITE ORG-AUFLÖSUNG (unveränderlich, Fix B 2026-04-13)
 
@@ -1544,7 +1557,7 @@ Vollständige Produkt- und Routing-Regeln stehen in **`.cursorrules` §29** (kei
 | Billing Hub, Sub-Tab Attention, Owner/Model-Firewall | `.cursorrules` §29.4; `.cursor/rules/billing-payment-invariants.mdc` **I-PAY-11** |
 | Mediaslide/Netwalk vs. implizitem Storage-Mirror | `.cursorrules` §29.5; **EXTERNE PROFIL-SYNCS** (oben) |
 
-**Kalenderfarben:** eine Quelle — `src/utils/calendarColors.ts` (`CALENDAR_COLORS`, `CALENDAR_PROJECTION_COLORS`); Legende/Grid/Projection nicht auseinanderdriften — **`.cursorrules` §28.2** Ziffer 12.
+**Kalenderfarben (Frontend, gesperrt):** `src/utils/calendarColors.ts`; Resolver/Aggregatoren oben **CALENDAR COLOR SEMANTICS (FRONTEND — LOCKED)**; Legende/Grid/Strip/Footer/Projection nicht auseinanderdriften — **`.cursorrules` §28.2(12)** + `calendar-colors-single-source.mdc`.
 
 ---
 

@@ -140,6 +140,7 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
             <View style={s.denseOverviewCol}>
               {segments.length > 0 ? (
                 <View style={s.kindStripRow}>
+                  {/* compound key: two "other" buckets can differ by hex (footer/same) */}
                   {segments.map((seg, si) => (
                     <View
                       key={`${seg.bucket}|${seg.color}|${si}`}
