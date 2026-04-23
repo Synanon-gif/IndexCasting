@@ -16,6 +16,7 @@ alwaysApply: false
 6. **Active** calendar surfaces must use the **canonical resolver hierarchy** only (see entry points below).
 7. **Inactive** surfaces that still use entry-only coloring must be **documented before reactivation** (e.g. `ModelCalendarMonthAgenda` file header). No broad refactor until productized.
 8. **No calendar color change** without targeted regression coverage — at minimum run/extend: `src/utils/__tests__/calendarOverviewLayout.test.ts`, `calendarProjectionLabel.test.ts`, `modelCalendarSchedule.test.ts`, `calendarColorImportPolicy.test.ts` (maps to B2B month dense/strip, cross-view parity, model parity with context, model fallback, manual/custom/orphan, footer/overview).
+9. **Tentative job title-override parity must remain symmetric across projection-based and entry-only resolver arms.** (Details + Tests: `getBookingEntryProjectionBadge` / `resolveProjectionBucket`, `calendarProjectionLabel.test.ts`.)
 
 **Authoritative product rules:** `.cursorrules` **§28.2(12)**; **system invariants** — `CALENDAR COLOR SEMANTICS (FRONTEND — LOCKED)` in `system-invariants.mdc`.
 

@@ -166,6 +166,8 @@ Migration `20261209c_user_calendar_colors_per_request_type.sql` enthält den ASS
 
 These **frontend-only** rules are **never** optional for active calendar UIs. They sit beside DB/trigger color rules for `user_calendar_events` (section above) and **`.cursorrules` §28.2(12)**. Full file map: [`.cursor/rules/calendar-colors-single-source.mdc`](./calendar-colors-single-source.mdc).
 
+**Tentative job title-override parity must remain symmetric across projection-based and entry-only resolver arms.**
+
 1. **Projection-based color is authoritative** whenever equivalent context exists (B2B: `option` + `calendar_entry` → `calendarGridColorForOptionItem` / `getCalendarProjectionBadge`; model: cached `OptionRequest` for `option_request_id` → `resolveModelCalendarEntryColor` then same projection).
 2. **Entry-only color** (`getCalendarEntryBlockColor` / `getBookingEntryProjectionBadge`) is **fallback only** when projection context is **genuinely** unavailable (orphan `calendar_entries`, model without a cached `OptionRequest` in local store) — not a second parallel semantic system.
 3. **Dense strips, week footers, and overview segments** must aggregate the **actual rendered semantic HEX** values of the underlying events (`calendarOverviewLayout` + `event.color` / `block.color`) — **never** collapse distinct projection colors (e.g. awaiting-model purple, job-confirmation-pending brown) into a generic “other”/reject **grey** while chips/blocks use the true projection hex.
