@@ -1,9 +1,13 @@
 import {
   getCalendarProjectionBadge,
   getBookingEntryProjectionBadge,
+  getCalendarEntryBlockColor,
+  displayTitleIndicatesCanonicalJob,
+  resolveUserCalendarEventBlockColor,
   dedupeCalendarGridEventsByOptionRequest,
   calendarGridColorForOptionItem,
 } from '../calendarProjectionLabel';
+import { CALENDAR_COLORS } from '../calendarColors';
 import type { SupabaseOptionRequest } from '../../services/optionRequestsSupabase';
 import type { CalendarEntry } from '../../services/calendarSupabase';
 
@@ -86,6 +90,62 @@ describe('calendarProjectionLabel', () => {
   it('maps job_confirmed to Job label', () => {
     const b = getCalendarProjectionBadge(baseOption({ final_status: 'job_confirmed' }), null, L);
     expect(b.label).toBe(L.job);
+  });
+
+  it('treats canonical Job title on calendar_entry as job when entry_type lags (RLS / payload drift)', () => {
+    const b = getCalendarProjectionBadge(
+      baseOption({ status: 'confirmed', final_status: 'option_confirmed' }),
+      entry({ entry_type: 'option', title: 'Job – Acme' }),
+      L,
+    );
+    expect(b.label).toBe(L.job);
+    expect(b.backgroundColor).toBe(CALENDAR_COLORS.job);
+  });
+
+  it('treats "Name – job" in model_name as job when final_status lags', () => {
+    const b = getCalendarProjectionBadge(
+      baseOption({
+        status: 'confirmed',
+        final_status: 'option_confirmed',
+        model_name: 'Client 3 – job',
+      }),
+      entry({ entry_type: 'option' }),
+      L,
+    );
+    expect(b.label).toBe(L.job);
+    expect(b.backgroundColor).toBe(CALENDAR_COLORS.job);
+  });
+
+  it('getBookingEntryProjectionBadge maps entry_type option + Job-prefixed title to job color', () => {
+    const b = getBookingEntryProjectionBadge(
+      { entry_type: 'option', status: 'available', title: 'Job – Test' },
+      L,
+    );
+    expect(b.backgroundColor).toBe(CALENDAR_COLORS.job);
+  });
+
+  it('getCalendarEntryBlockColor matches getBookingEntryProjectionBadge color', () => {
+    const entry = { entry_type: 'option' as const, status: 'available' as const, title: 'Job – T' };
+    expect(getCalendarEntryBlockColor(entry)).toBe(
+      getBookingEntryProjectionBadge(entry, L).backgroundColor,
+    );
+  });
+
+  it('resolveUserCalendarEventBlockColor upgrades stale orange when title is Job-shaped', () => {
+    expect(
+      resolveUserCalendarEventBlockColor({
+        title: 'Job – Client',
+        color: CALENDAR_COLORS.option,
+      }),
+    ).toBe(CALENDAR_COLORS.job);
+  });
+
+  it('displayTitleIndicatesCanonicalJob matches trigger-style titles', () => {
+    expect(displayTitleIndicatesCanonicalJob('Job – Client')).toBe(true);
+    expect(displayTitleIndicatesCanonicalJob('Client 3 - job')).toBe(true);
+    expect(displayTitleIndicatesCanonicalJob('Client 3 \u2014 job')).toBe(true);
+    expect(displayTitleIndicatesCanonicalJob('Job\u2013Acme')).toBe(true);
+    expect(displayTitleIndicatesCanonicalJob('Option – X')).toBe(false);
   });
 
   it('maps calendar entry_type booking with tentative status', () => {

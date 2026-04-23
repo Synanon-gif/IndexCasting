@@ -1,0 +1,33 @@
+---
+description: Kalenderfarben — einheitliche Quellen, kein calendarEntryColor in App, B2B/Job-Titel-Parität
+globs: "src/**/*calendar*,src/**/B2BUnified*,src/**/ModelCalendar*,src/**/ModelProfile*,src/**/Agency*Calendar*,src/utils/calendar*,src/utils/agencyCalendar*"
+alwaysApply: false
+---
+
+# Kalenderfarben — Single Source of Truth
+
+## Konstanten
+
+- `CALENDAR_COLORS` / `CALENDAR_PROJECTION_COLORS` in `src/utils/calendarColors.ts` (kein zweites Hex pro Semantik).
+
+## B2B (Client + Agency) — Monat / Woche / Tag
+
+- Farbe: `calendarProjectionLabel.ts` — `getCalendarProjectionBadge`, `getCalendarEntryBlockColor` (Orphan-`calendar_entries`), `calendarGridColorForOptionItem` für Option+Join.
+- **Kein** `import { calendarEntryColor }` aus `calendarColors` in App-`src` — `calendarColorImportPolicy.test.ts` bremst das.
+- **Titel-Zeile** für Option-Rows: `unifiedOptionRowDisplayTitle` in `agencyCalendarUnified.ts` (erst `calendar_entries.title`, sonst `model_name`), damit sichtbarer Text und `isJobProjection`/`displayTitleIndicatesCanonicalJob` zu denselben DB-Feldern passen.
+- **Gespiegelte / manuelle** `user_calendar_events`: `resolveUserCalendarEventBlockColor` — Job-förmiger Titel erzwingt **Job-Grün** auch bei veraltetem `color`-Swatch.
+- **Rolle** (`viewerRole`): ändert Badge-**Copy**, **nicht** die Bucket-Hintergrundfarbe.
+
+## Event-Typen
+
+- **Option / Casting / Job** über B2B-Merge: Farben ausschließlich über die Projektion oben, nicht `entry_type` pur.
+- **Tentative** bestätigtes Booking: Legende: Option-Farbe — absichtlich; nicht „auf grün faken“.
+- **Manuelles** user_calendar ohne Option-Bezug: `resolveUserCalendarEventBlockColor` bzw. personal/grüne Wahl; keine Hardcodes neben `CALENDAR_COLORS`.
+
+## Model-Profil (reine `calendar_entries`)
+
+- `getCalendarEntryBlockColor` in `modelCalendarSchedule` / `ModelCalendarMonthAgenda` — **nicht** die volle B2B-Attention-Matrix. Kein `calendarEntryColor` für Blöcke nachziehen.
+
+## Änderungen (nie „nur schnell“)
+
+- Jede Anpassung: Legende, `calendarProjectionLabel`, ggf. `agencyCalendarUnified` (Titel), Tests (`calendarProjectionLabel.test`, `calendarColorImportPolicy`), `.cursorrules` §28.2#12.

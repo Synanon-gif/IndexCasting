@@ -6,9 +6,9 @@ import { CALENDAR_COLORS, CALENDAR_PROJECTION_COLORS } from '../utils/calendarCo
 
 /**
  * Calendar color legend — shown beneath every calendar surface
- * (Agency, Client Web, Model). Swatches match `calendarGridColorForOptionItem`,
- * `getCalendarProjectionBadge`, `calendarEntryColor`, and manual-event defaults
- * (`CALENDAR_COLORS` + `CALENDAR_PROJECTION_COLORS` in `src/utils/calendarColors.ts`).
+ * (Agency, Client Web, Model). Swatches match `calendarGridColorForOptionItem` /
+ * `getCalendarProjectionBadge` / `getCalendarEntryBlockColor` (`src/utils/calendarProjectionLabel.ts`)
+ * and `CALENDAR_COLORS` + `CALENDAR_PROJECTION_COLORS`; manual events use per-row color + `CALENDAR_COLORS.personal` default.
  */
 export const CalendarColorLegend: React.FC = () => {
   const items: { label: string; color: string }[] = [

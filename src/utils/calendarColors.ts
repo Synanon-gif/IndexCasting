@@ -35,7 +35,18 @@ export const CALENDAR_PROJECTION_COLORS = {
 
 export type CalendarEntryColorType = keyof typeof CALENDAR_COLORS;
 
-/** Returns the color for a calendar entry type. Defaults to personal (grey). */
+/**
+ * Maps a **raw** `calendar_entries.entry_type` string to a theme swatch. Does **not** apply
+ * lifecycle/title rules (Job confirmed vs Option, tentative booking, etc.).
+ *
+ * - **Do not** use for B2B unified calendar or model profile **event blocks** / month dots — use
+ *   `getCalendarEntryBlockColor` / projection helpers in `calendarProjectionLabel.ts` (Job titles,
+ *   tentative override, legend parity).
+ * - Safe uses: unit tests, trivial type→hex tables, or non-calendar UI that only has `entry_type`.
+ * - **Policy:** app code under `src/` must not *import* this symbol; CI is guarded by
+ *   `src/utils/__tests__/calendarColorImportPolicy.test.ts` (intentional changes: adjust that test
+ *   and `.cursor/rules/calendar-colors-single-source.mdc` together).
+ */
 export function calendarEntryColor(entryType: string | undefined): string {
   if (!entryType) return CALENDAR_COLORS.personal;
   return CALENDAR_COLORS[entryType as CalendarEntryColorType] ?? CALENDAR_COLORS.personal;

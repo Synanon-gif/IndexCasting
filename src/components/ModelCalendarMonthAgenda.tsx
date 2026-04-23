@@ -7,7 +7,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import type { CalendarEntry } from '../services/calendarSupabase';
-import { calendarEntryColor } from '../utils/calendarColors';
+import { getCalendarEntryBlockColor } from '../utils/calendarProjectionLabel';
 import { dedupeModelCalendarEntries } from '../utils/modelCalendarSchedule';
 
 export type ModelCalendarMonthAgendaProps = {
@@ -65,7 +65,9 @@ export const ModelCalendarMonthAgenda: React.FC<ModelCalendarMonthAgendaProps> =
     const dates = [...byDate.keys()].sort();
     return dates.map((date) => ({
       date,
-      rows: (byDate.get(date) ?? []).sort((a, b) => (a.start_time ?? '').localeCompare(b.start_time ?? '')),
+      rows: (byDate.get(date) ?? []).sort((a, b) =>
+        (a.start_time ?? '').localeCompare(b.start_time ?? ''),
+      ),
     }));
   }, [rowsInMonth]);
 
@@ -75,7 +77,11 @@ export const ModelCalendarMonthAgenda: React.FC<ModelCalendarMonthAgendaProps> =
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() =>
-              setCalendarMonth((m) => (m.month === 0 ? { year: m.year - 1, month: 11 } : { year: m.year, month: m.month - 1 }))
+              setCalendarMonth((m) =>
+                m.month === 0
+                  ? { year: m.year - 1, month: 11 }
+                  : { year: m.year, month: m.month - 1 },
+              )
             }
             hitSlop={12}
             style={styles.navBtn}
@@ -87,7 +93,11 @@ export const ModelCalendarMonthAgenda: React.FC<ModelCalendarMonthAgendaProps> =
           </Text>
           <TouchableOpacity
             onPress={() =>
-              setCalendarMonth((m) => (m.month === 11 ? { year: m.year + 1, month: 0 } : { year: m.year, month: m.month + 1 }))
+              setCalendarMonth((m) =>
+                m.month === 11
+                  ? { year: m.year + 1, month: 0 }
+                  : { year: m.year, month: m.month + 1 },
+              )
             }
             hitSlop={12}
             style={styles.navBtn}
@@ -113,7 +123,7 @@ export const ModelCalendarMonthAgenda: React.FC<ModelCalendarMonthAgendaProps> =
                 <Text style={styles.sectionYmd}>{date}</Text>
               </TouchableOpacity>
               {rows.map((entry) => {
-                const bg = calendarEntryColor(entry.entry_type);
+                const bg = getCalendarEntryBlockColor(entry);
                 return (
                   <TouchableOpacity
                     key={entry.id}
@@ -122,7 +132,8 @@ export const ModelCalendarMonthAgenda: React.FC<ModelCalendarMonthAgendaProps> =
                     activeOpacity={0.75}
                   >
                     <Text style={styles.cardTitle}>
-                      {(entry.start_time ?? '').toString().slice(0, 5) || '—'} · {entry.title || entry.entry_type}
+                      {(entry.start_time ?? '').toString().slice(0, 5) || '—'} ·{' '}
+                      {entry.title || entry.entry_type}
                     </Text>
                     {entry.note ? <Text style={styles.cardMeta}>{entry.note}</Text> : null}
                   </TouchableOpacity>

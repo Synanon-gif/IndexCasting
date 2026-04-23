@@ -42,12 +42,50 @@ export type CalendarProjectionBadge = {
   textColor: string;
 };
 
+/**
+ * Collapse Unicode dash / minus shapes to ASCII hyphen so Job detection matches
+ * trigger output regardless of en-dash vs em-dash vs hyphen (common copy/paste drift).
+ */
+function normalizeCalendarTitleDashesForJobMatch(s: string): string {
+  return s.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-');
+}
+
+/**
+ * True when visible text already matches the canonical Job title shapes produced by DB
+ * triggers / RLS-safe updates ("Job – …", "… – job"), while `entry_type` or
+ * `option_requests.final_status` can still lag in the client payload.
+ * Kept aligned with {@link agencyCalendarUnified} `stripLifecycleAffixes` job arms.
+ */
+export function displayTitleIndicatesCanonicalJob(title: string | null | undefined): boolean {
+  if (title == null) return false;
+  const t0 = String(title).trim();
+  if (!t0) return false;
+  const t = normalizeCalendarTitleDashesForJobMatch(t0);
+  if (/^job\s*-\s*/i.test(t)) return true;
+  if (/-\s*job$/i.test(t)) return true;
+  return false;
+}
+
 function isJobProjection(
   option: SupabaseOptionRequest,
   calendar_entry: CalendarEntry | null,
 ): boolean {
   if (option.final_status === 'job_confirmed') return true;
-  return calendar_entry?.entry_type === 'booking';
+  if (calendar_entry?.entry_type === 'booking') return true;
+  if (displayTitleIndicatesCanonicalJob(calendar_entry?.title)) return true;
+  if (displayTitleIndicatesCanonicalJob(option.model_name)) return true;
+  if (displayTitleIndicatesCanonicalJob(option.client_organization_name)) return true;
+  if (displayTitleIndicatesCanonicalJob(option.client_name)) return true;
+  return false;
+}
+
+/**
+ * `user_calendar_events` row: DB may still carry a stale orange swatch after job confirm
+ * while `title` was updated by trigger — align block color with title/legend.
+ */
+export function resolveUserCalendarEventBlockColor(ev: { title: string; color: string }): string {
+  if (displayTitleIndicatesCanonicalJob(ev.title)) return CALENDAR_COLORS.job;
+  return ev.color || CALENDAR_COLORS.personal;
 }
 
 function isCastingProjection(
@@ -205,7 +243,7 @@ export function getCalendarProjectionBadge(
 
 /** Standalone calendar row (e.g. booking_events) without option join. */
 export function getBookingEntryProjectionBadge(
-  entry: Pick<CalendarEntry, 'entry_type' | 'status'>,
+  entry: Pick<CalendarEntry, 'entry_type' | 'status'> & { title?: string | null },
   labels: Pick<CalendarProjectionLabels, 'job' | 'jobTentative' | 'casting' | 'optionPending'>,
 ): CalendarProjectionBadge {
   const textColor = '#fff';
@@ -221,7 +259,27 @@ export function getBookingEntryProjectionBadge(
   if (t === 'casting' || t === 'gosee') {
     return { label: labels.casting, backgroundColor: CALENDAR_COLORS.casting, textColor };
   }
+  if (displayTitleIndicatesCanonicalJob(entry.title)) {
+    return { label: labels.job, backgroundColor: CALENDAR_COLORS.job, textColor };
+  }
   return { label: labels.optionPending, backgroundColor: CALENDAR_COLORS.option, textColor };
+}
+
+const COLOR_ONLY_LABELS: Pick<
+  CalendarProjectionLabels,
+  'job' | 'jobTentative' | 'casting' | 'optionPending'
+> = {
+  job: '',
+  jobTentative: '',
+  casting: '',
+  optionPending: '',
+};
+
+/** Standalone `calendar_entries` row (month dot, model agenda) — same colors as booking badges. */
+export function getCalendarEntryBlockColor(
+  entry: Pick<CalendarEntry, 'entry_type' | 'status'> & { title?: string | null },
+): string {
+  return getBookingEntryProjectionBadge(entry, COLOR_ONLY_LABELS).backgroundColor;
 }
 
 /**

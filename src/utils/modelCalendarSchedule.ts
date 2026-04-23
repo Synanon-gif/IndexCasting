@@ -1,11 +1,11 @@
 /**
  * Model calendar: schedule blocks + month dots from `calendar_entries` only
- * (same colors as CALENDAR_COLORS / calendarEntryColor).
+ * (same colors as projection badges / getCalendarEntryBlockColor).
  */
 import type { CalendarEntry, CalendarEntryType } from '../services/calendarSupabase';
 import type { CalendarDayEvent } from '../components/MonthCalendarView';
 import type { CalendarScheduleBlock } from './calendarUnifiedTimeline';
-import { calendarEntryColor } from './calendarColors';
+import { getCalendarEntryBlockColor } from './calendarProjectionLabel';
 import {
   DEFAULT_BLOCK_END_MIN,
   DEFAULT_BLOCK_START_MIN,
@@ -39,7 +39,7 @@ export function buildEventsByDateFromModelEntries(
     if (!map[d]) map[d] = [];
     map[d].push({
       id: e.id,
-      color: calendarEntryColor(e.entry_type),
+      color: getCalendarEntryBlockColor(e),
       title: (e.title ?? e.entry_type ?? 'Event').trim() || 'Event',
       kind: e.entry_type ?? undefined,
     });
@@ -60,7 +60,7 @@ function blockFromEntry(e: CalendarEntry): CalendarScheduleBlock {
     startMin: start,
     endMin: end,
     title: (e.title ?? e.entry_type ?? 'Event').trim() || 'Event',
-    color: calendarEntryColor(e.entry_type),
+    color: getCalendarEntryBlockColor(e),
   };
 }
 

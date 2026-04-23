@@ -10,8 +10,8 @@ import type {
 import {
   getBookingEntryProjectionBadge,
   getCalendarProjectionBadge,
+  resolveUserCalendarEventBlockColor,
 } from './calendarProjectionLabel';
-import { CALENDAR_COLORS } from './calendarColors';
 import {
   DEFAULT_BLOCK_END_MIN,
   DEFAULT_BLOCK_START_MIN,
@@ -91,7 +91,7 @@ export function buildTimelineEventsFromUnifiedRows(
         startMin,
         endMin,
         title: row.title,
-        color: row.ev.color || CALENDAR_COLORS.personal,
+        color: resolveUserCalendarEventBlockColor(row.ev),
         row,
       });
       continue;

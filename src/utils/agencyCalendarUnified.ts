@@ -21,11 +21,22 @@ import {
 } from '../constants/calendarSourcePriority';
 import type { UserCalendarEvent } from '../services/userCalendarEventsSupabase';
 import type { ClientAssignmentFlag } from '../services/clientAssignmentsSupabase';
-import { calendarGridColorForOptionItem } from './calendarProjectionLabel';
-import { CALENDAR_COLORS, calendarEntryColor } from './calendarColors';
+import {
+  calendarGridColorForOptionItem,
+  getCalendarEntryBlockColor,
+  resolveUserCalendarEventBlockColor,
+} from './calendarProjectionLabel';
+import { CALENDAR_COLORS } from './calendarColors';
 import { attentionSignalsFromOptionRequestLike } from './optionRequestAttention';
 import { attentionHeaderLabelFromSignals } from './negotiationAttentionLabels';
 import { uiCopy } from '../constants/uiCopy';
+
+/** Prefer `calendar_entries.title` so blocks match DB lifecycle copy (e.g. agency Job title) and legend. */
+function unifiedOptionRowDisplayTitle(item: AgencyCalendarItem): string {
+  const ce = item.calendar_entry?.title?.trim();
+  if (ce) return ce;
+  return item.option.model_name ?? uiCopy.common.unknownModel;
+}
 
 /** Same numeric ordering as SQL `calendar_export_events_json` / ICS `sourcePriority` (lower = wins). */
 export const CALENDAR_SOURCE_PRIORITY_ORDER_FOR_AUDIT = [
@@ -162,7 +173,7 @@ export function buildUnifiedAgencyCalendarRows(
     const category = normalizeOptionCategory(item);
     const effectiveAssigneeUserId = effectiveAssigneeForOption(item, assignmentByClientOrgId);
     const needsAgencyAction = needsAgencyActionForOption(item);
-    const title = item.option.model_name ?? uiCopy.common.unknownModel;
+    const title = unifiedOptionRowDisplayTitle(item);
     return {
       kind: 'option',
       sortKey: `${date}\0${title}\0${item.option.id}`,
@@ -571,7 +582,7 @@ export function buildEventsByDateFromUnifiedRows(rows: UnifiedAgencyCalendarRow[
     if (row.kind === 'manual') {
       map[date].push({
         id: row.id,
-        color: row.ev.color || CALENDAR_COLORS.personal,
+        color: resolveUserCalendarEventBlockColor(row.ev),
         title: row.title,
         kind: 'manual',
       });
@@ -592,11 +603,7 @@ export function buildEventsByDateFromUnifiedRows(rows: UnifiedAgencyCalendarRow[
       });
       continue;
     }
-    let color = calendarEntryColor(row.entry.entry_type);
-    if (row.entry.entry_type === 'booking') {
-      const tentative = row.entry.status === 'tentative';
-      color = tentative ? CALENDAR_COLORS.option : CALENDAR_COLORS.job;
-    }
+    const color = getCalendarEntryBlockColor(row.entry);
     map[date].push({
       id: row.id,
       color,
