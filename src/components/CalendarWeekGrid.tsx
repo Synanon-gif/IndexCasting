@@ -11,6 +11,7 @@ import { colors, spacing, typography } from '../theme/theme';
 import { isMobileWidth } from '../theme/breakpoints';
 import type { CalendarScheduleBlock } from '../utils/calendarUnifiedTimeline';
 import { formatMinutesAsHm } from '../utils/calendarTimelineLayout';
+import { formatWeekKindFooterShort, weekColumnKindSegments } from '../utils/calendarOverviewLayout';
 
 const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const COL_GAP = 4;
@@ -28,6 +29,10 @@ export type CalendarWeekGridProps = {
   onNextWeek: () => void;
   rangeLabel: string;
   maxChipsPerDay?: number;
+  /** B2B: single-line event chips on mobile, slightly higher mobile chip cap. */
+  denseWorkWeek?: boolean;
+  /** B2B: compact kind counts under the chip list (full day). */
+  showDayKindFooter?: boolean;
 };
 
 export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
@@ -40,6 +45,8 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
   onNextWeek,
   rangeLabel,
   maxChipsPerDay = 4,
+  denseWorkWeek = false,
+  showDayKindFooter = false,
 }) => {
   const { width: windowWidth } = useWindowDimensions();
   const isMobile = isMobileWidth(windowWidth);
@@ -62,8 +69,8 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
     return m;
   }, [events, weekDates]);
 
-  const chipFontSize = isMobile ? 8 : 9;
-  const mobileMaxChips = isMobile ? 2 : maxChipsPerDay;
+  const chipFontSize = denseWorkWeek ? (isMobile ? 7 : 8) : isMobile ? 8 : 9;
+  const mobileMaxChips = isMobile ? (denseWorkWeek ? 3 : 2) : maxChipsPerDay;
 
   return (
     <View style={styles.wrap}>
@@ -119,25 +126,45 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
                         e.stopPropagation?.();
                         onEventPress(ev);
                       }}
-                      style={[styles.chip, { backgroundColor: ev.color }]}
+                      style={[
+                        styles.chip,
+                        denseWorkWeek && styles.chipDense,
+                        { backgroundColor: ev.color },
+                      ]}
                       accessibilityLabel={`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
                     >
-                      {/* Mobile week chip: show TIME on first line and TITLE on
-                          a second line so every party always sees the event
-                          title — not only the desktop layout. */}
-                      <Text style={[styles.chipText, { fontSize: chipFontSize }]} numberOfLines={1}>
-                        {formatMinutesAsHm(ev.startMin)}
-                      </Text>
-                      <Text
-                        style={[styles.chipTextTitle, { fontSize: chipFontSize }]}
-                        numberOfLines={1}
-                      >
-                        {ev.title}
-                      </Text>
+                      {denseWorkWeek ? (
+                        <Text
+                          style={[styles.chipText, { fontSize: chipFontSize }]}
+                          numberOfLines={1}
+                        >
+                          {`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
+                        </Text>
+                      ) : (
+                        <>
+                          <Text
+                            style={[styles.chipText, { fontSize: chipFontSize }]}
+                            numberOfLines={1}
+                          >
+                            {formatMinutesAsHm(ev.startMin)}
+                          </Text>
+                          <Text
+                            style={[styles.chipTextTitle, { fontSize: chipFontSize }]}
+                            numberOfLines={1}
+                          >
+                            {ev.title}
+                          </Text>
+                        </>
+                      )}
                     </TouchableOpacity>
                   ))}
                   {list.length > mobileMaxChips ? (
                     <Text style={styles.more}>+{list.length - mobileMaxChips}</Text>
+                  ) : null}
+                  {showDayKindFooter && list.length > 0 ? (
+                    <Text style={styles.kindFooter} numberOfLines={1}>
+                      {formatWeekKindFooterShort(weekColumnKindSegments(list))}
+                    </Text>
                   ) : null}
                 </View>
               </TouchableOpacity>
@@ -174,16 +201,28 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
                           e.stopPropagation?.();
                           onEventPress(ev);
                         }}
-                        style={[styles.chip, { backgroundColor: ev.color }]}
+                        style={[
+                          styles.chip,
+                          denseWorkWeek && styles.chipDense,
+                          { backgroundColor: ev.color },
+                        ]}
                         accessibilityLabel={`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
                       >
-                        <Text style={styles.chipText} numberOfLines={1}>
+                        <Text
+                          style={[styles.chipText, denseWorkWeek && styles.chipTextDense]}
+                          numberOfLines={1}
+                        >
                           {formatMinutesAsHm(ev.startMin)} {ev.title}
                         </Text>
                       </TouchableOpacity>
                     ))}
                     {list.length > maxChipsPerDay ? (
                       <Text style={styles.more}>+{list.length - maxChipsPerDay}</Text>
+                    ) : null}
+                    {showDayKindFooter && list.length > 0 ? (
+                      <Text style={styles.kindFooter} numberOfLines={1}>
+                        {formatWeekKindFooterShort(weekColumnKindSegments(list))}
+                      </Text>
                     ) : null}
                   </View>
                 </TouchableOpacity>
@@ -251,7 +290,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 3,
   },
+  chipDense: {
+    paddingVertical: 2,
+    paddingHorizontal: 3,
+  },
   chipText: { fontSize: 9, color: '#fff', fontWeight: '600' },
+  chipTextDense: { fontSize: 8 },
   chipTextTitle: { fontSize: 9, color: '#fff', fontWeight: '500', opacity: 0.95 },
   more: { fontSize: 9, color: colors.textSecondary, textAlign: 'center' },
+  kindFooter: {
+    fontSize: 8,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 2,
+    fontWeight: '500',
+  },
 });

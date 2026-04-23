@@ -172,6 +172,8 @@ Jedes Event MUSS in jeder Kalender-Sicht (Day/Week/Month/Agenda) sichtbar mit Ti
 
 Niemals neue Sichten hinzufügen, die nur die Farbe ohne Titel rendern.
 
+**B2B-Monat (`MonthCalendarView` mit `denseOverview`):** Zusätzlich erlaubt für Agency/Client-Übersicht: **sichtbare** Typ-Zusammenfassung (Zähler/Segmentleiste aus `kind`) plus begrenzte Titelleiste (Top-Einträge) und `+N`-Overflow; jedes Event bleibt mit **vollständigem Titel** in `accessibilityLabel` auf der Zelle bzw. den Chips erfasst; **Tap auf den Tag** wechselt wie bisher in die **Tag-Ansicht** mit vollständigen Titeln in den Blöcken.
+
 ## KEINE IMPLIZITE ORG-AUFLÖSUNG (unveränderlich, Fix B 2026-04-13)
 
 - `LIMIT 1` in Org-Kontext-Funktionen ist **verboten** (kein implicit org resolution)

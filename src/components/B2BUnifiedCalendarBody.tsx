@@ -129,6 +129,8 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
           eventsByDate={eventsByDate}
           selectedDate={selectedDate}
           compact={false}
+          denseOverview
+          denseOverviewMaxVisibleChips={1}
           onSelectDay={handleMonthDayClick}
           onPrevMonth={() =>
             setCalendarMonth((m) =>
@@ -157,6 +159,9 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
           onPrevWeek={() => shiftFocus(addDaysYmd(focusDate, -7))}
           onNextWeek={() => shiftFocus(addDaysYmd(focusDate, 7))}
           rangeLabel={rangeLabel}
+          maxChipsPerDay={6}
+          denseWorkWeek
+          showDayKindFooter
         />
       )}
 
@@ -167,6 +172,9 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
           onEventPress={(ev) => onOpenUnifiedRow((ev as CalendarTimelineEvent).row)}
           onPrevDay={() => shiftFocus(addDaysYmd(focusDate, -1))}
           onNextDay={() => shiftFocus(addDaysYmd(focusDate, 1))}
+          longEventCapMinDuration={120}
+          cappedBlockMaxHeightPx={132}
+          minLaneWidthPx={72}
         />
       )}
 

@@ -1,8 +1,17 @@
-import React, { useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  useWindowDimensions,
+  LayoutChangeEvent,
+} from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import type { CalendarScheduleBlock } from '../utils/calendarUnifiedTimeline';
 import { assignOverlapLanes, formatMinutesAsHm } from '../utils/calendarTimelineLayout';
+import { blockTimeRangeLabel, cappedBlockLayout } from '../utils/calendarOverviewLayout';
 
 const HOUR_HEIGHT = 44;
 const MIN_HOUR = 6;
@@ -14,6 +23,14 @@ export type CalendarDayTimelineProps = {
   onEventPress: (ev: CalendarScheduleBlock) => void;
   onPrevDay: () => void;
   onNextDay: () => void;
+  /**
+   * When set together with `cappedBlockMaxHeightPx`, blocks longer than this many minutes
+   * use a capped visual height (timespan still shown in the label).
+   */
+  longEventCapMinDuration?: number;
+  cappedBlockMaxHeightPx?: number;
+  /** When set, overlapping lanes get at least this width and the grid scrolls horizontally if needed. */
+  minLaneWidthPx?: number;
 };
 
 export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
@@ -22,8 +39,12 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
   onEventPress,
   onPrevDay,
   onNextDay,
+  longEventCapMinDuration,
+  cappedBlockMaxHeightPx,
+  minLaneWidthPx,
 }) => {
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const [viewportW, setViewportW] = useState(0);
   // Timeline scrollable area: fill available height (window minus header/tabs/controls estimate)
   // nestedScrollEnabled allows this inner scroll to work inside a parent page-level ScrollView
   const timelineMaxHeight = Math.max(300, Math.round(windowHeight * 0.55));
@@ -40,23 +61,113 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
     const endHourInner = Math.min(24, Math.ceil(evMax / 60));
     const displayStart = startHourInner * 60;
     const displayEnd = endHourInner * 60;
-    const lanes = assignOverlapLanes(events);
+    const lanesInner = assignOverlapLanes(events);
     const totalMin = Math.max(60, displayEnd - displayStart);
-    const totalHeight = totalMin * pxPerMin;
+    const totalHeightInner = totalMin * pxPerMin;
     return {
-      lanes,
+      lanes: lanesInner,
       displayStartMin: displayStart,
-      totalHeight,
+      totalHeight: totalHeightInner,
       startHour: startHourInner,
       endHour: endHourInner,
     };
   }, [events, pxPerMin]);
+
+  const maxLaneCount = useMemo(
+    () => (lanes.length ? Math.max(...lanes.map((l) => l.laneCount)) : 1),
+    [lanes],
+  );
+
+  const useLanePixels = minLaneWidthPx != null && minLaneWidthPx > 0;
+  const fallbackViewportW = Math.max(160, windowWidth - 44 - spacing.sm * 4);
+  const measuredW = viewportW > 0 ? viewportW : fallbackViewportW;
+  const innerCanvasW = useLanePixels
+    ? Math.max(measuredW, maxLaneCount * minLaneWidthPx!)
+    : undefined;
 
   const hours = useMemo(() => {
     const h: number[] = [];
     for (let x = startHour; x < endHour; x++) h.push(x);
     return h;
   }, [startHour, endHour]);
+
+  const onGridViewportLayout = (e: LayoutChangeEvent) => {
+    setViewportW(e.nativeEvent.layout.width);
+  };
+
+  const renderGridContents = (laneLayout: 'percent' | 'pixels') => (
+    <>
+      {hours.map((h, i) => (
+        <View key={`line-${h}`} style={[styles.gridHourLine, { top: i * HOUR_HEIGHT }]} />
+      ))}
+      {lanes.map((ev) => {
+        const top = (ev.startMin - displayStartMin) * pxPerMin;
+        const { heightPx, isCapped } = cappedBlockLayout(
+          ev.startMin,
+          ev.endMin,
+          pxPerMin,
+          22,
+          cappedBlockMaxHeightPx,
+          longEventCapMinDuration,
+        );
+        const timeLabel = blockTimeRangeLabel(ev.startMin, ev.endMin, isCapped);
+        if (laneLayout === 'pixels' && minLaneWidthPx) {
+          const w = minLaneWidthPx - 2;
+          const left = ev.lane * minLaneWidthPx + 1;
+          return (
+            <TouchableOpacity
+              key={`${ev.id}-${ev.startMin}-${ev.lane}`}
+              onPress={() => onEventPress(ev)}
+              style={[
+                styles.block,
+                {
+                  top,
+                  height: heightPx,
+                  left,
+                  width: w,
+                  backgroundColor: ev.color,
+                },
+              ]}
+              accessibilityLabel={`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
+            >
+              <Text style={styles.blockTime} numberOfLines={1}>
+                {timeLabel}
+              </Text>
+              <Text style={styles.blockTitle} numberOfLines={isCapped ? 2 : 4}>
+                {ev.title}
+              </Text>
+            </TouchableOpacity>
+          );
+        }
+        const wPct = 100 / ev.laneCount;
+        const leftPct = wPct * ev.lane;
+        return (
+          <TouchableOpacity
+            key={`${ev.id}-${ev.startMin}-${ev.lane}`}
+            onPress={() => onEventPress(ev)}
+            style={[
+              styles.block,
+              {
+                top,
+                height: heightPx,
+                left: `${leftPct}%`,
+                width: `${wPct}%`,
+                backgroundColor: ev.color,
+              },
+            ]}
+            accessibilityLabel={`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
+          >
+            <Text style={styles.blockTime} numberOfLines={1}>
+              {timeLabel}
+            </Text>
+            <Text style={styles.blockTitle} numberOfLines={isCapped ? 2 : 4}>
+              {ev.title}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </>
+  );
 
   return (
     <View style={styles.wrap}>
@@ -96,41 +207,23 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
               </View>
             ))}
           </View>
-          <View style={[styles.gridArea, { height: totalHeight }]}>
-            {hours.map((h, i) => (
-              <View
-                key={`line-${h}`}
-                style={[styles.gridHourLine, { top: i * HOUR_HEIGHT }]}
-              />
-            ))}
-            {lanes.map((ev) => {
-              const top = (ev.startMin - displayStartMin) * pxPerMin;
-              const h = Math.max((ev.endMin - ev.startMin) * pxPerMin, 22);
-              const w = 100 / ev.laneCount;
-              const left = w * ev.lane;
-              return (
-                <TouchableOpacity
-                  key={`${ev.id}-${ev.startMin}-${ev.lane}`}
-                  onPress={() => onEventPress(ev)}
-                  style={[
-                    styles.block,
-                    {
-                      top,
-                      height: h,
-                      left: `${left}%`,
-                      width: `${w}%`,
-                      backgroundColor: ev.color,
-                    },
-                  ]}
-                >
-                  <Text style={styles.blockTime}>{formatMinutesAsHm(ev.startMin)}</Text>
-                  <Text style={styles.blockTitle} numberOfLines={4}>
-                    {ev.title}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          {useLanePixels ? (
+            <View style={styles.gridViewport} onLayout={onGridViewportLayout}>
+              <ScrollView
+                horizontal
+                nestedScrollEnabled
+                showsHorizontalScrollIndicator={maxLaneCount > 1}
+              >
+                <View style={[styles.gridArea, { height: totalHeight, width: innerCanvasW }]}>
+                  {renderGridContents('pixels')}
+                </View>
+              </ScrollView>
+            </View>
+          ) : (
+            <View style={[styles.gridArea, { height: totalHeight, flex: 1 }]}>
+              {renderGridContents('percent')}
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -154,14 +247,23 @@ const styles = StyleSheet.create({
   },
   navHit: { padding: spacing.xs },
   navChevron: { fontSize: 22, color: colors.textPrimary, fontWeight: '600' },
-  title: { ...typography.label, fontSize: 13, color: colors.textPrimary, flex: 1, textAlign: 'center' },
+  title: {
+    ...typography.label,
+    fontSize: 13,
+    color: colors.textPrimary,
+    flex: 1,
+    textAlign: 'center',
+  },
   bodyRow: { flexDirection: 'row', alignItems: 'stretch' },
   hourLabel: {
     fontSize: 10,
     color: colors.textSecondary,
   },
-  gridArea: {
+  gridViewport: {
     flex: 1,
+    minWidth: 0,
+  },
+  gridArea: {
     position: 'relative',
     borderLeftWidth: 1,
     borderLeftColor: colors.border,
