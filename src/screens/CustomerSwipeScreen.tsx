@@ -8,7 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
-import { StorageImage } from '../components/StorageImage';
+import { ImageCarousel } from '../components/ImageCarousel';
 import { colors, spacing, typography } from '../theme/theme';
 import { getModelsPagedFromSupabase, type SwipeFilters } from '../services/modelsSupabase';
 import {
@@ -353,9 +353,7 @@ export const CustomerSwipeScreen: React.FC = () => {
           style={styles.card}
           onPress={() => handleOpenDetail(current)}
         >
-          <View style={styles.imageWrapper}>
-            <StorageImage uri={current.gallery[0]} style={styles.image} resizeMode="contain" />
-          </View>
+          <ImageCarousel images={current.gallery} style={styles.imageWrapper} imageStyle={styles.image} />
 
           <View style={styles.metaRow}>
             <View style={styles.nameCol}>
@@ -544,11 +542,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ model, onClose }) => {
             </Text>
 
             <View style={styles.detailHero}>
-              <StorageImage
-                uri={model.gallery[0]}
-                style={styles.detailHeroImage}
-                resizeMode="contain"
-              />
+              <ImageCarousel images={model.gallery} imageStyle={styles.detailHeroImage} />
             </View>
 
             <View style={styles.detailMeasurementsRow}>
