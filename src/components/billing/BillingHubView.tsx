@@ -45,10 +45,18 @@ import { OrganizationBillingProfilesPanel } from './OrganizationBillingProfilesP
 import { OrganizationBillingDefaultsPanel } from './OrganizationBillingDefaultsPanel';
 import { AgencyModelSettlementsPanel } from './AgencyModelSettlementsPanel';
 import { BillingPresetsPanel } from './BillingPresetsPanel';
+import { ManualBillingHubPanel } from './manual/ManualBillingHubPanel';
 
 export type BillingHubVariant = 'agency' | 'client';
 
-type AgencySubTab = 'outgoing' | 'incoming' | 'settlements' | 'presets' | 'profiles' | 'defaults';
+type AgencySubTab =
+  | 'outgoing'
+  | 'incoming'
+  | 'settlements'
+  | 'presets'
+  | 'profiles'
+  | 'defaults'
+  | 'manual';
 
 type ClientSubTab = 'received' | 'profiles' | 'defaults';
 
@@ -139,6 +147,7 @@ export const BillingHubView: React.FC<Props> = ({ organizationId, variant }) => 
         { key: 'presets' as AgencySubTab, label: hub.subTabPresets },
         { key: 'profiles' as AgencySubTab, label: hub.subTabProfiles },
         { key: 'defaults' as AgencySubTab, label: hub.subTabDefaults },
+        { key: 'manual' as AgencySubTab, label: hub.subTabManualInvoices },
       ];
     }
     return [
@@ -182,6 +191,8 @@ export const BillingHubView: React.FC<Props> = ({ organizationId, variant }) => 
         return <OrganizationBillingProfilesPanel organizationId={organizationId} />;
       case 'defaults':
         return <OrganizationBillingDefaultsPanel organizationId={organizationId} />;
+      case 'manual':
+        return <ManualBillingHubPanel agencyOrganizationId={organizationId} />;
     }
   }
 

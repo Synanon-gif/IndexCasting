@@ -2578,6 +2578,345 @@ export const uiCopy = {
     paginationLoading: 'Loading…',
     paginationEnd: 'No more results.',
     yearGroupLabel: (y: number) => `${y}`,
+
+    // ── Manual Billing entry (separate sub-tab inside Billing) ─────────────
+    subTabManualInvoices: 'Manual invoices',
+  },
+
+  /**
+   * Manual Billing — separate sub-system inside the Billing tab.
+   * Lets agencies manage their own legal entities, client/model billing
+   * profiles, and create manual invoice PDFs (Agency→Client, Agency→Model,
+   * Model→Agency). Strictly isolated from Stripe-routed invoices.
+   * English-only by design.
+   */
+  manualBilling: {
+    // Hub
+    headerTitle: 'Manual invoices',
+    headerSubtitle:
+      'Manage your billing identities and create professional invoice PDFs. Independent from Stripe — you stay in control of every line.',
+    backToBilling: 'Back to Billing',
+    notAvailableForRole:
+      'Only agency owners and bookers can manage manual invoices and billing profiles.',
+
+    // Entry tiles
+    tileProfilesTitle: 'Billing profiles',
+    tileProfilesSubtitle:
+      'Reusable identities for your agency, your clients, and your models. Used to pre-fill invoices.',
+    tileCreateInvoiceTitle: 'Create invoice manually',
+    tileCreateInvoiceSubtitle:
+      'Build a professional invoice step by step. Pick sender + recipient, add line items, preview the PDF, then generate.',
+    tileInvoicesTitle: 'Invoices & drafts',
+    tileInvoicesSubtitle:
+      'See drafts you started and invoices you generated. Re-open, re-export, or delete drafts.',
+    countLabelProfiles: (n: number) => `${n} profile${n === 1 ? '' : 's'}`,
+    countLabelInvoices: (n: number) => `${n} invoice${n === 1 ? '' : 's'}`,
+    countLabelDrafts: (n: number) => `${n} draft${n === 1 ? '' : 's'}`,
+
+    // Profiles section
+    profilesScreenTitle: 'Billing profiles',
+    profilesScreenSubtitle:
+      'Reusable identities. Use them as sender or recipient when creating invoices.',
+    profilesTabAgency: 'Agency profiles',
+    profilesTabClients: 'Clients',
+    profilesTabModels: 'Models',
+    profilesSearchPlaceholder: 'Search by name, VAT ID, city, contact…',
+    profilesEmptyAgency:
+      'No agency profiles yet. Add your first legal entity (Ltd, GmbH, Kft.) to start invoicing.',
+    profilesEmptyClients: 'No client profiles yet. Add a client to pre-fill its billing details.',
+    profilesEmptyModels: 'No model profiles yet. Add one to invoice from or to a model.',
+    profilesShowArchived: 'Show archived',
+    profilesNew: 'New profile',
+    profilesArchive: 'Archive',
+    profilesRestore: 'Restore',
+    profilesDelete: 'Delete',
+    profilesDeleteConfirmTitle: 'Delete this profile?',
+    profilesDeleteConfirmBody:
+      'This is permanent. Already-generated invoices keep their frozen snapshot — they will not change.',
+    profilesArchiveConfirmTitle: 'Archive this profile?',
+    profilesArchiveConfirmBody:
+      'Archived profiles stay available for old invoices but no longer appear in pickers.',
+    profilesArchived: 'Archived',
+    profilesDefaultBadge: 'Default',
+    profilesReverseChargeBadge: 'Reverse charge',
+    profilesEditTitle: 'Edit profile',
+    profilesNewAgencyTitle: 'New agency profile',
+    profilesNewClientTitle: 'New client profile',
+    profilesNewModelTitle: 'New model profile',
+
+    // Profile form fields
+    fieldLegalName: 'Legal name',
+    fieldLegalNameHint: 'Required. Appears on the invoice as the official party.',
+    fieldTradingName: 'Trading / display name',
+    fieldAddressLine1: 'Address line 1',
+    fieldAddressLine2: 'Address line 2',
+    fieldCity: 'City',
+    fieldPostalCode: 'Postal code',
+    fieldState: 'State / Region',
+    fieldCountryCode: 'Country code',
+    fieldCountryCodeHint: 'ISO-3166 (e.g. DE, GB, IT). Two letters.',
+    fieldCompanyRegistration: 'Company registration #',
+    fieldVatNumber: 'VAT ID',
+    fieldTaxNumber: 'Tax number',
+    fieldPhone: 'Phone',
+    fieldEmail: 'Email',
+    fieldWebsite: 'Website',
+    fieldBankName: 'Bank name',
+    fieldBankAddress: 'Bank address',
+    fieldIban: 'IBAN',
+    fieldBic: 'BIC / SWIFT',
+    fieldAccountHolder: 'Account holder',
+    fieldDefaultCurrency: 'Default currency',
+    fieldDefaultPaymentTerms: 'Default payment terms (days)',
+    fieldDefaultVatTreatment: 'Default VAT treatment',
+    fieldVatTreatmentDomestic: 'Domestic VAT',
+    fieldVatTreatmentReverseCharge: 'EU reverse charge',
+    fieldVatTreatmentZeroRated: 'Zero-rated',
+    fieldVatTreatmentExempt: 'Exempt',
+    fieldVatTreatmentOutOfScope: 'No VAT / outside scope',
+    fieldVatTreatmentCustom: 'Custom',
+    fieldDefaultReverseChargeNote: 'Default reverse-charge note',
+    fieldDefaultReverseChargeNoteHint:
+      'Suggested wording: “This supply is subject to the Reverse Charge. Customer to account for VAT under Article 196 of EU Directive 2006/112/EC.”',
+    fieldFooterNotes: 'Footer notes',
+    fieldIsDefault: 'Use as default agency profile',
+    fieldDisplayName: 'Display name',
+    fieldContactPerson: 'Contact person',
+    fieldBillingEmail: 'Billing email',
+    fieldPoNumber: 'PO / buyer reference',
+    fieldApContact: 'AP contact',
+    fieldDefaultInvoiceNote: 'Default invoice note',
+    fieldDefaultServiceChargePct: 'Default service charge (%)',
+    fieldExpensesReimbursed: 'Reimburse expenses by default',
+    fieldTravelSeparate: 'Show travel separately',
+    fieldAgencyFeeSeparate: 'Show agency fee separately',
+    fieldNotes: 'Internal notes',
+
+    // Profile form actions / errors
+    save: 'Save',
+    saving: 'Saving…',
+    cancel: 'Cancel',
+    saveSuccess: 'Profile saved.',
+    saveFailedLegalName: 'Legal name is required.',
+    saveFailedGeneric: 'Could not save. Please try again.',
+    archiveSuccess: 'Profile archived.',
+    archiveFailed: 'Could not archive profile.',
+    restoreSuccess: 'Profile restored.',
+    restoreFailed: 'Could not restore profile.',
+    deleteSuccess: 'Profile deleted.',
+    deleteFailed: 'Could not delete profile.',
+    unsavedChangesTitle: 'Discard unsaved changes?',
+    unsavedChangesBody: 'Your edits will be lost.',
+
+    // Invoice list
+    invoicesScreenTitle: 'Invoices & drafts',
+    invoicesScreenSubtitle:
+      'Drafts can be edited and finalized. Generated invoices are frozen and downloadable as PDF.',
+    invoicesEmpty: 'No manual invoices yet.',
+    invoicesFilterAll: 'All',
+    invoicesFilterDraft: 'Drafts',
+    invoicesFilterGenerated: 'Generated',
+    invoicesNew: 'New invoice',
+    invoiceStatusDraft: 'Draft',
+    invoiceStatusGenerated: 'Generated',
+    invoiceStatusVoid: 'Void',
+    invoiceDirectionAgencyClient: 'Agency → Client',
+    invoiceDirectionAgencyModel: 'Agency → Model',
+    invoiceDirectionModelAgency: 'Model → Agency',
+    invoiceListColNumber: 'Invoice #',
+    invoiceListColRecipient: 'To',
+    invoiceListColTotal: 'Total',
+    invoiceListColIssued: 'Issued',
+    invoiceDeleteDraft: 'Delete draft',
+    invoiceDeleteDraftConfirmTitle: 'Delete this draft?',
+    invoiceDeleteDraftConfirmBody: 'Drafts are not yet legal documents — this is safe.',
+    invoiceCannotDeleteGenerated:
+      'Generated invoices cannot be deleted — only marked as void in a future release.',
+
+    // Builder wizard
+    builderTitle: 'Create invoice',
+    builderEditTitle: 'Edit draft',
+    builderProgress: (step: number, total: number) => `Step ${step} of ${total}`,
+    builderNext: 'Next',
+    builderBack: 'Back',
+    builderSaveDraft: 'Save draft',
+    builderGenerate: 'Generate invoice',
+    builderPreview: 'Preview PDF',
+
+    // Step 1 — direction
+    step1Title: 'What kind of invoice?',
+    step1Subtitle: 'Pick the direction. We adjust which profiles you can pick next.',
+    step1OptionAgencyClient: 'Agency → Client',
+    step1OptionAgencyClientHint:
+      'Most common — your agency invoices a brand or production company.',
+    step1OptionAgencyModel: 'Agency → Model',
+    step1OptionAgencyModelHint: 'Pass through costs, fees, or services to a model.',
+    step1OptionModelAgency: 'Model → Agency',
+    step1OptionModelAgencyHint: 'A model invoices the agency (self-billing scenarios excluded).',
+
+    // Step 2 — profiles
+    step2Title: 'Sender and recipient',
+    step2Subtitle: 'Pick the billing profiles. Fields will be filled in automatically.',
+    step2SenderLabel: 'Sender',
+    step2RecipientLabel: 'Recipient',
+    step2PickAgencyProfile: 'Pick an agency profile',
+    step2PickClientProfile: 'Pick a client profile',
+    step2PickModelProfile: 'Pick a model profile',
+    step2NoProfileSelected: 'No profile selected.',
+    step2CreateProfileHint: 'Need a new profile? Cancel, open Billing profiles, then come back.',
+
+    // Step 3 — metadata
+    step3Title: 'Invoice details',
+    step3Subtitle:
+      'Number, dates, currency, references. We can suggest the next number — you decide.',
+    step3InvoiceNumberLabel: 'Invoice number',
+    step3InvoiceNumberPlaceholder: 'e.g. INV-2026-001',
+    step3SuggestNumber: 'Suggest next',
+    step3SuggestFailed: 'Could not suggest a number. Enter one manually.',
+    step3IssueDateLabel: 'Issue date',
+    step3SupplyDateLabel: 'Supply / performance date',
+    step3DueDateLabel: 'Due date',
+    step3PaymentTermsLabel: 'Payment terms (days)',
+    step3CurrencyLabel: 'Currency',
+    step3PoNumberLabel: 'PO / buyer reference',
+    step3JobReferenceLabel: 'Job / project reference',
+    step3BookingReferenceLabel: 'Booking reference',
+
+    // Step 4 — line items
+    step4Title: 'Line items',
+    step4Subtitle: 'Add what is being billed. Live totals update on the right.',
+    step4AddLine: 'Add line',
+    step4AddExpense: 'Add expense',
+    step4Duplicate: 'Duplicate',
+    step4Remove: 'Remove',
+    step4MoveUp: 'Move up',
+    step4MoveDown: 'Move down',
+    step4LineCategory: 'Category',
+    step4LineDescription: 'Description',
+    step4LineModelLabel: 'Model / person',
+    step4LineJobLabel: 'Job / project',
+    step4LinePerformedOn: 'Date',
+    step4LineQuantity: 'Qty',
+    step4LineUnit: 'Unit',
+    step4LineUnitAmount: 'Unit price',
+    step4LineTaxTreatment: 'Tax treatment',
+    step4LineTaxRate: 'VAT %',
+    step4LineNotes: 'Notes',
+    step4Empty: 'No lines yet. Add at least one to continue.',
+    step4CategoryDayRate: 'Day rate',
+    step4CategoryHalfDay: 'Half day',
+    step4CategoryFitting: 'Fitting',
+    step4CategoryShowFee: 'Show fee',
+    step4CategoryUsage: 'Usage / buyout',
+    step4CategoryTravel: 'Travel',
+    step4CategoryTaxi: 'Taxi',
+    step4CategoryFlight: 'Flight',
+    step4CategoryHotel: 'Hotel',
+    step4CategoryPerDiem: 'Per diem',
+    step4CategoryServiceCharge: 'Service / agency fee',
+    step4CategoryProduction: 'Production cost',
+    step4CategoryPhotography: 'Photography cost',
+    step4CategoryCancellation: 'Cancellation fee',
+    step4CategoryCustom: 'Custom',
+
+    // Step 5 — totals & tax
+    step5Title: 'Totals & tax notes',
+    step5Subtitle:
+      'Review the totals. Edit the tax note explicitly — we never apply a treatment silently.',
+    step5SubtotalRates: 'Subtotal — rates',
+    step5SubtotalExpenses: 'Subtotal — expenses',
+    step5ServiceChargeLabel: 'Service charge / agency fee (%)',
+    step5ServiceChargeAmount: 'Service charge amount',
+    step5VatBreakdown: 'VAT breakdown',
+    step5VatRow: (rate: number | null, treatment: string | null) =>
+      `${rate == null ? '—' : `${rate}%`}${treatment ? ` (${treatment})` : ''}`,
+    step5TaxTotal: 'Tax total',
+    step5GrandTotal: 'Grand total',
+    step5TaxNote: 'Tax note (printed on PDF)',
+    step5InvoiceNotes: 'Invoice notes',
+    step5PaymentInstructions: 'Payment instructions',
+    step5FooterNotes: 'Footer',
+    step5ReverseChargeWarning:
+      'You marked this as Reverse Charge. Make sure the recipient is a VAT-registered business in another EU member state.',
+    step5MultiCurrencyWarning:
+      'Some line items use a different currency than the invoice header. The PDF will use the header currency for totals.',
+
+    // Step 6 — preview
+    step6Title: 'Preview',
+    step6Subtitle: 'This is exactly what your client will see. Generate when you are ready.',
+    step6PreviewLoading: 'Building preview…',
+    step6PreviewFailed: 'Could not build preview. Please try again.',
+    step6Download: 'Download PDF',
+    step6OpenInNewTab: 'Open in new tab',
+    step6GenerateConfirmTitle: 'Generate this invoice?',
+    step6GenerateConfirmBody:
+      'Sender + recipient details will be frozen. The invoice number cannot be changed afterwards.',
+
+    // Validation errors
+    errorMissingSender: 'Pick a sender profile.',
+    errorMissingRecipient: 'Pick a recipient profile.',
+    errorMissingInvoiceNumber: 'Enter an invoice number.',
+    errorInvoiceNumberTaken: 'This invoice number is already used in your agency.',
+    errorNoLineItems: 'Add at least one line item.',
+    errorLineMissingDescription: 'Each line item needs a description.',
+    errorLineInvalidAmount: 'Each line item needs a unit price.',
+    errorBuilderGenerationFailed: 'Could not generate the invoice. Please try again.',
+    errorBuilderSaveFailed: 'Could not save the draft. Please try again.',
+    errorLoadFailed: 'Could not load. Please try again.',
+
+    // Direction-validation reasons (mapped from service)
+    reasonAgencyToClientSenderMustBeAgency:
+      'Sender must be one of your agency profiles for Agency → Client.',
+    reasonAgencyToClientRecipientMustBeCounterparty:
+      'Recipient must be a client profile for Agency → Client.',
+    reasonAgencyToModelSenderMustBeAgency:
+      'Sender must be one of your agency profiles for Agency → Model.',
+    reasonAgencyToModelRecipientMustBeCounterparty:
+      'Recipient must be a model profile for Agency → Model.',
+    reasonModelToAgencySenderMustBeCounterparty:
+      'Sender must be a model profile for Model → Agency.',
+    reasonModelToAgencyRecipientMustBeAgency:
+      'Recipient must be one of your agency profiles for Model → Agency.',
+
+    // PDF
+    pdfTitle: (number: string) => `Invoice ${number}`,
+    pdfSupplierLabel: 'Supplier',
+    pdfBillToLabel: 'Bill to',
+    pdfInvoiceLabel: 'Invoice',
+    pdfInvoiceNumberLabel: 'Number',
+    pdfIssueDateLabel: 'Issue date',
+    pdfSupplyDateLabel: 'Supply date',
+    pdfDueDateLabel: 'Due date',
+    pdfPaymentTermsLabel: 'Payment terms',
+    pdfCurrencyLabel: 'Currency',
+    pdfPoLabel: 'PO / Reference',
+    pdfJobLabel: 'Job',
+    pdfBookingLabel: 'Booking',
+    pdfBankDetailsLabel: 'Payment details',
+    pdfBankAccountHolder: 'Account holder',
+    pdfBankName: 'Bank',
+    pdfIban: 'IBAN',
+    pdfBic: 'BIC / SWIFT',
+    pdfLineColDate: 'Date',
+    pdfLineColDescription: 'Description',
+    pdfLineColQty: 'Qty',
+    pdfLineColUnit: 'Unit price',
+    pdfLineColVat: 'VAT',
+    pdfLineColAmount: 'Net',
+    pdfTotalsSubtotalRates: 'Subtotal rates',
+    pdfTotalsSubtotalExpenses: 'Subtotal expenses',
+    pdfTotalsServiceCharge: 'Service charge',
+    pdfTotalsVat: (rate: number | null, treatment: string | null) =>
+      `VAT ${rate == null ? (treatment ?? '—') : `${rate}%${treatment ? ` (${treatment})` : ''}`}`,
+    pdfTotalsTaxTotal: 'Tax total',
+    pdfTotalsGrandTotal: 'Grand total',
+    pdfTotalsAmountDue: 'Amount due',
+    pdfTaxNoteLabel: 'Tax note',
+    pdfNotesLabel: 'Notes',
+    pdfPaymentInstructionsLabel: 'Payment',
+    pdfPageLabel: (page: number, total: number) => `Page ${page} of ${total}`,
+    pdfDraftWatermark: 'DRAFT',
+    pdfFooterFallback: 'Generated with IndexCasting Manual Billing.',
   },
 
   // ── Agency ↔ Model internal settlements ───────────────────────────────────
