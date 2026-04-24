@@ -24,6 +24,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -36,6 +37,8 @@ import {
 import { colors, spacing, typography } from '../../../theme/theme';
 import { uiCopy } from '../../../constants/uiCopy';
 import { showAppAlert, showConfirmAlert } from '../../../utils/crossPlatformAlert';
+import { logManualBillingWarning } from '../../../utils/manualBillingLog';
+import { shareOrDownloadManualInvoicePdf } from '../../../utils/manualInvoicePdfShare';
 import {
   listManualAgencyBillingProfiles,
   listManualBillingCounterparties,
@@ -409,7 +412,7 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
         dirtyRef.current = false;
         return { ok: true, id: merged.id };
       } catch (e) {
-        console.error('[ManualInvoiceBuilderPanel] persistDraft exception:', e);
+        logManualBillingWarning('ManualInvoiceBuilderPanel:persistDraft', e);
         return { ok: false };
       }
     },
@@ -485,7 +488,7 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
         setPreviewUrl(URL.createObjectURL(blob));
       }
     } catch (e) {
-      console.error('[ManualInvoiceBuilderPanel] buildPreview failed:', e);
+      logManualBillingWarning('ManualInvoiceBuilderPanel:buildPreview', e);
       showAppAlert(c.step6PreviewFailed);
     } finally {
       setPreviewLoading(false);
@@ -601,12 +604,22 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
   };
   const goBack = () => {
     if (step === 1) {
-      // Leave wizard
-      if (dirtyRef.current) {
+      if (dirtyRef.current && draft.status === 'draft') {
         showConfirmAlert(c.unsavedChangesTitle, c.unsavedChangesBody, onBack, c.cancel);
       } else {
         onBack();
       }
+      return;
+    }
+    if (dirtyRef.current && draft.status === 'draft') {
+      showConfirmAlert(
+        c.unsavedChangesTitle,
+        c.unsavedChangesBody,
+        () => {
+          setStep((s) => Math.max(s - 1, 1));
+        },
+        c.cancel,
+      );
       return;
     }
     setStep((s) => Math.max(s - 1, 1));
@@ -636,10 +649,9 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
         </Text>
         <Text style={s.subtitle}>{c.builderProgress(step, TOTAL_STEPS)}</Text>
         {isReadOnly && (
-          <View style={s.readOnlyBanner}>
-            <Text style={s.readOnlyBannerText}>
-              This invoice is generated and frozen. You can re-export the PDF below.
-            </Text>
+          <View style={s.readOnlyBanner} accessibilityRole="alert">
+            <Text style={s.readOnlyBannerTitle}>{c.builderInvoiceLockedTitle}</Text>
+            <Text style={s.readOnlyBannerText}>{c.builderInvoiceLockedBody}</Text>
           </View>
         )}
       </View>
@@ -706,6 +718,16 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
           onRebuild={buildPreview}
           isGenerated={isReadOnly}
           invoiceNumber={draft.invoice_number || null}
+          isWeb={Platform.OS === 'web'}
+          onShareNative={async () => {
+            if (!previewBlob) return;
+            const fn = manualInvoicePdfFilename({
+              invoiceNumber: draft.invoice_number || null,
+              isDraft: draft.status !== 'generated',
+            });
+            const r = await shareOrDownloadManualInvoicePdf(previewBlob, fn);
+            if (!r.ok) showAppAlert(c.step6OpenPdfFailed);
+          }}
         />
       )}
 
@@ -1481,7 +1503,18 @@ const Step6Preview: React.FC<{
   onRebuild: () => void | Promise<void>;
   isGenerated: boolean;
   invoiceNumber: string | null;
-}> = ({ previewLoading, previewUrl, previewBlob, onRebuild, isGenerated, invoiceNumber }) => {
+  isWeb: boolean;
+  onShareNative: () => void | Promise<void>;
+}> = ({
+  previewLoading,
+  previewUrl,
+  previewBlob,
+  onRebuild,
+  isGenerated,
+  invoiceNumber,
+  isWeb,
+  onShareNative,
+}) => {
   const c = uiCopy.manualBilling;
   return (
     <View style={s.stepCard}>
@@ -1495,7 +1528,7 @@ const Step6Preview: React.FC<{
         </View>
       )}
 
-      {!previewLoading && previewUrl && (
+      {!previewLoading && isWeb && previewUrl ? (
         <View style={s.previewBox}>
           <iframe
             src={previewUrl}
@@ -1503,7 +1536,13 @@ const Step6Preview: React.FC<{
             style={{ width: '100%', height: 700, border: '1px solid #E2E0DB', borderRadius: 8 }}
           />
         </View>
-      )}
+      ) : null}
+
+      {!previewLoading && !isWeb && previewBlob ? (
+        <View style={s.nativePreviewFallback}>
+          <Text style={s.fieldHint}>{c.step6NativePreviewUnavailable}</Text>
+        </View>
+      ) : null}
 
       <View
         style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, flexWrap: 'wrap' }}
@@ -1511,7 +1550,7 @@ const Step6Preview: React.FC<{
         <TouchableOpacity onPress={onRebuild} style={s.secondaryBtn}>
           <Text style={s.secondaryBtnText}>{c.builderPreview}</Text>
         </TouchableOpacity>
-        {previewBlob && (
+        {previewBlob && isWeb ? (
           <TouchableOpacity
             onPress={() => {
               downloadManualInvoicePdf(
@@ -1526,8 +1565,13 @@ const Step6Preview: React.FC<{
           >
             <Text style={s.secondaryBtnText}>{c.step6Download}</Text>
           </TouchableOpacity>
-        )}
-        {previewUrl && (
+        ) : null}
+        {previewBlob && !isWeb ? (
+          <TouchableOpacity onPress={() => void onShareNative()} style={s.secondaryBtn}>
+            <Text style={s.secondaryBtnText}>{c.step6OpenPdf}</Text>
+          </TouchableOpacity>
+        ) : null}
+        {isWeb && previewUrl ? (
           <TouchableOpacity
             onPress={() => {
               if (typeof window !== 'undefined') window.open(previewUrl, '_blank');
@@ -1536,7 +1580,7 @@ const Step6Preview: React.FC<{
           >
             <Text style={s.secondaryBtnText}>{c.step6OpenInNewTab}</Text>
           </TouchableOpacity>
-        )}
+        ) : null}
       </View>
     </View>
   );
@@ -1572,9 +1616,25 @@ const s = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: colors.surfaceWarm,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.warningDark,
+  },
+  readOnlyBannerTitle: {
+    ...typography.body,
+    fontWeight: '700' as const,
+    color: colors.textPrimary,
+    marginBottom: 4,
   },
   readOnlyBannerText: { ...typography.body, color: colors.textSecondary },
+
+  nativePreviewFallback: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    marginBottom: spacing.sm,
+  },
 
   stepCard: {
     backgroundColor: colors.surface,

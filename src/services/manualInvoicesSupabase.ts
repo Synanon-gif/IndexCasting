@@ -13,6 +13,8 @@
 
 import { supabase } from '../../lib/supabase';
 import { assertOrgContext } from '../utils/orgGuard';
+import { logManualBillingWarning } from '../utils/manualBillingLog';
+import { normalizeManualInvoiceNumber } from '../utils/manualInvoiceNumber';
 import { computeManualInvoiceTotals, toLineLike } from '../utils/manualInvoiceTotals';
 import {
   getManualAgencyBillingProfile,
@@ -112,12 +114,12 @@ export async function suggestNextManualInvoiceNumber(
       p_prefix: prefix,
     });
     if (error) {
-      console.error('[suggestNextManualInvoiceNumber] error:', error);
+      logManualBillingWarning('suggestNextManualInvoiceNumber', error);
       return null;
     }
-    return typeof data === 'string' ? data : null;
+    return typeof data === 'string' ? normalizeManualInvoiceNumber(data) : null;
   } catch (e) {
-    console.error('[suggestNextManualInvoiceNumber] exception:', e);
+    logManualBillingWarning('suggestNextManualInvoiceNumber:exception', e);
     return null;
   }
 }
@@ -127,23 +129,35 @@ export async function isManualInvoiceNumberTaken(
   invoiceNumber: string,
   excludeInvoiceId?: string | null,
 ): Promise<boolean> {
-  if (!assertOrgContext(agencyOrgId, 'isManualInvoiceNumberTaken')) return false;
+  if (!assertOrgContext(agencyOrgId, 'isManualInvoiceNumberTaken')) return true;
+  const normCandidate = normalizeManualInvoiceNumber(invoiceNumber);
+  if (!normCandidate) return false;
+  const PAGE = 800;
   try {
-    let q = supabase
-      .from('manual_invoices')
-      .select('id', { count: 'exact', head: true })
-      .eq('agency_organization_id', agencyOrgId)
-      .eq('invoice_number', invoiceNumber);
-    if (excludeInvoiceId) q = q.neq('id', excludeInvoiceId);
-    const { count, error } = await q;
-    if (error) {
-      console.error('[isManualInvoiceNumberTaken] error:', error);
-      return false;
+    let from = 0;
+    for (;;) {
+      const { data, error } = await supabase
+        .from('manual_invoices')
+        .select('id, invoice_number')
+        .eq('agency_organization_id', agencyOrgId)
+        .not('invoice_number', 'is', null)
+        .range(from, from + PAGE - 1);
+      if (error) {
+        logManualBillingWarning('isManualInvoiceNumberTaken', error);
+        return true;
+      }
+      const rows = data ?? [];
+      for (const row of rows) {
+        if (excludeInvoiceId && row.id === excludeInvoiceId) continue;
+        if (normalizeManualInvoiceNumber(row.invoice_number) === normCandidate) return true;
+      }
+      if (rows.length < PAGE) break;
+      from += PAGE;
     }
-    return (count ?? 0) > 0;
-  } catch (e) {
-    console.error('[isManualInvoiceNumberTaken] exception:', e);
     return false;
+  } catch (e) {
+    logManualBillingWarning('isManualInvoiceNumberTaken:exception', e);
+    return true;
   }
 }
 
@@ -171,12 +185,12 @@ export async function listManualInvoices(
     if (opts.limit && opts.limit > 0) q = q.limit(opts.limit);
     const { data, error } = await q;
     if (error) {
-      console.error('[listManualInvoices] error:', error);
+      logManualBillingWarning('listManualInvoices', error);
       return [];
     }
     return (data ?? []) as ManualInvoiceRow[];
   } catch (e) {
-    console.error('[listManualInvoices] exception:', e);
+    logManualBillingWarning('listManualInvoices:exception', e);
     return [];
   }
 }
@@ -192,13 +206,13 @@ export async function getManualInvoiceWithLines(
       .order('position', { foreignTable: 'manual_invoice_line_items', ascending: true })
       .maybeSingle();
     if (error) {
-      console.error('[getManualInvoiceWithLines] error:', error);
+      logManualBillingWarning('getManualInvoiceWithLines', error);
       return null;
     }
     if (!data) return null;
     return data as unknown as ManualInvoiceWithLines;
   } catch (e) {
-    console.error('[getManualInvoiceWithLines] exception:', e);
+    logManualBillingWarning('getManualInvoiceWithLines:exception', e);
     return null;
   }
 }
@@ -214,13 +228,19 @@ export async function createManualInvoiceDraft(
   }
   const v = validateDirectionParticipants(header);
   if (v) {
-    console.error('[createManualInvoiceDraft] validation failed:', v);
+    logManualBillingWarning('createManualInvoiceDraft:validation', v);
     return { ok: false, reason: v };
   }
   try {
+    const invNorm = header.invoice_number
+      ? normalizeManualInvoiceNumber(header.invoice_number)
+      : '';
     const body = pruneUndefined({
       ...header,
       currency: (header.currency ?? 'EUR').toUpperCase(),
+      ...(header.invoice_number !== undefined && header.invoice_number !== null
+        ? { invoice_number: invNorm || null }
+        : {}),
     });
     const { data, error } = await supabase
       .from('manual_invoices')
@@ -232,12 +252,12 @@ export async function createManualInvoiceDraft(
       .select('id')
       .single();
     if (error) {
-      console.error('[createManualInvoiceDraft] insert error:', error);
+      logManualBillingWarning('createManualInvoiceDraft:insert', error);
       return { ok: false };
     }
     return { ok: true, id: (data as { id: string }).id };
   } catch (e) {
-    console.error('[createManualInvoiceDraft] exception:', e);
+    logManualBillingWarning('createManualInvoiceDraft:exception', e);
     return { ok: false };
   }
 }
@@ -264,7 +284,7 @@ export async function updateManualInvoiceHeader(
       .eq('id', invoiceId)
       .maybeSingle();
     if (cErr || !current) {
-      console.error('[updateManualInvoiceHeader] cannot read current row:', cErr);
+      logManualBillingWarning('updateManualInvoiceHeader:read', cErr);
       return { ok: false };
     }
     const merged = { ...(current as ManualInvoiceHeaderInput), ...patch };
@@ -275,6 +295,14 @@ export async function updateManualInvoiceHeader(
     const body = pruneUndefined({
       ...patch,
       ...(patch.currency ? { currency: patch.currency.toUpperCase() } : {}),
+      ...(patch.invoice_number !== undefined
+        ? {
+            invoice_number:
+              normalizeManualInvoiceNumber(
+                patch.invoice_number == null ? '' : String(patch.invoice_number),
+              ) || null,
+          }
+        : {}),
     });
     const { error } = await supabase
       .from('manual_invoices')
@@ -282,12 +310,12 @@ export async function updateManualInvoiceHeader(
       .eq('id', invoiceId)
       .eq('agency_organization_id', agencyOrgId);
     if (error) {
-      console.error('[updateManualInvoiceHeader] error:', error);
+      logManualBillingWarning('updateManualInvoiceHeader:update', error);
       return { ok: false };
     }
     return { ok: true };
   } catch (e) {
-    console.error('[updateManualInvoiceHeader] exception:', e);
+    logManualBillingWarning('updateManualInvoiceHeader:exception', e);
     return { ok: false };
   }
 }
@@ -337,8 +365,8 @@ function computeLineTotals(input: ManualInvoiceLineItemInput): {
  * 2) bulk-insert new items
  *
  * Done sequentially in two awaits — Supabase JS client doesn't support
- * transactions client-side, but the policies require draft-or-generated
- * status which we re-check here.
+ * transactions client-side. RLS allows line edits only while the parent
+ * invoice is still `draft`.
  */
 export async function replaceManualInvoiceLineItems(
   agencyOrgId: string,
@@ -355,11 +383,11 @@ export async function replaceManualInvoiceLineItems(
       .eq('agency_organization_id', agencyOrgId)
       .maybeSingle();
     if (invErr || !inv) {
-      console.error('[replaceManualInvoiceLineItems] invoice not found / not accessible:', invErr);
+      logManualBillingWarning('replaceManualInvoiceLineItems:invoice', invErr);
       return false;
     }
-    if ((inv as ManualInvoiceRow).status === 'void') {
-      console.error('[replaceManualInvoiceLineItems] invoice is void — refusing to edit');
+    if ((inv as ManualInvoiceRow).status !== 'draft') {
+      logManualBillingWarning('replaceManualInvoiceLineItems:not_draft');
       return false;
     }
 
@@ -370,7 +398,7 @@ export async function replaceManualInvoiceLineItems(
       .delete()
       .eq('invoice_id', invoiceId);
     if (delErr) {
-      console.error('[replaceManualInvoiceLineItems] delete error:', delErr);
+      logManualBillingWarning('replaceManualInvoiceLineItems:delete', delErr);
       return false;
     }
 
@@ -385,14 +413,14 @@ export async function replaceManualInvoiceLineItems(
     );
     const { error: insErr } = await supabase.from('manual_invoice_line_items').insert(bodies);
     if (insErr) {
-      console.error('[replaceManualInvoiceLineItems] insert error:', insErr);
+      logManualBillingWarning('replaceManualInvoiceLineItems:insert', insErr);
       return false;
     }
 
     await refreshManualInvoiceAggregates(agencyOrgId, invoiceId);
     return true;
   } catch (e) {
-    console.error('[replaceManualInvoiceLineItems] exception:', e);
+    logManualBillingWarning('replaceManualInvoiceLineItems:exception', e);
     return false;
   }
 }
@@ -414,7 +442,7 @@ export async function refreshManualInvoiceAggregates(
       .eq('agency_organization_id', agencyOrgId)
       .maybeSingle();
     if (invErr || !inv) {
-      console.error('[refreshManualInvoiceAggregates] invoice not found:', invErr);
+      logManualBillingWarning('refreshManualInvoiceAggregates:invoice', invErr);
       return false;
     }
     const { data: items, error: itErr } = await supabase
@@ -422,7 +450,7 @@ export async function refreshManualInvoiceAggregates(
       .select('*')
       .eq('invoice_id', invoiceId);
     if (itErr) {
-      console.error('[refreshManualInvoiceAggregates] items error:', itErr);
+      logManualBillingWarning('refreshManualInvoiceAggregates:items', itErr);
       return false;
     }
     const totals = computeManualInvoiceTotals(
@@ -448,12 +476,12 @@ export async function refreshManualInvoiceAggregates(
       .eq('id', invoiceId)
       .eq('agency_organization_id', agencyOrgId);
     if (updErr) {
-      console.error('[refreshManualInvoiceAggregates] update error:', updErr);
+      logManualBillingWarning('refreshManualInvoiceAggregates:update', updErr);
       return false;
     }
     return true;
   } catch (e) {
-    console.error('[refreshManualInvoiceAggregates] exception:', e);
+    logManualBillingWarning('refreshManualInvoiceAggregates:exception', e);
     return false;
   }
 }
@@ -492,7 +520,7 @@ export async function generateManualInvoice(
       .eq('agency_organization_id', agencyOrgId)
       .maybeSingle();
     if (invErr || !invRaw) {
-      console.error('[generateManualInvoice] invoice not found:', invErr);
+      logManualBillingWarning('generateManualInvoice:invoice', invErr);
       return { ok: false, reason: 'invoice_not_found' };
     }
     const inv = invRaw as ManualInvoiceRow;
@@ -514,15 +542,19 @@ export async function generateManualInvoice(
       .select('id', { count: 'exact', head: true })
       .eq('invoice_id', invoiceId);
     if (lcErr) {
-      console.error('[generateManualInvoice] line count error:', lcErr);
+      logManualBillingWarning('generateManualInvoice:lineCount', lcErr);
       return { ok: false, reason: 'line_items_unreadable' };
     }
     if ((lineCount ?? 0) === 0) {
       return { ok: false, reason: 'no_line_items' };
     }
 
-    // Resolve invoice number (caller value > existing > suggestion).
-    let invoiceNumber = (opts.invoiceNumber ?? inv.invoice_number ?? '').trim();
+    // Resolve invoice number (caller value > existing > suggestion), normalised.
+    let invoiceNumber = normalizeManualInvoiceNumber(
+      (opts.invoiceNumber ?? inv.invoice_number) != null
+        ? String(opts.invoiceNumber ?? inv.invoice_number)
+        : '',
+    );
     if (!invoiceNumber) {
       const suggested = await suggestNextManualInvoiceNumber(
         agencyOrgId,
@@ -568,8 +600,7 @@ export async function generateManualInvoice(
       .eq('agency_organization_id', agencyOrgId);
 
     if (updErr) {
-      // Most likely cause: invoice_number unique conflict due to race.
-      console.error('[generateManualInvoice] update error:', updErr);
+      logManualBillingWarning('generateManualInvoice:update', updErr);
       const msg = String((updErr as { message?: string }).message ?? '');
       if (msg.includes('uq_manual_invoices_org_number') || msg.includes('duplicate key')) {
         return { ok: false, reason: 'invoice_number_taken' };
@@ -579,7 +610,7 @@ export async function generateManualInvoice(
 
     return { ok: true, invoiceId, invoiceNumber };
   } catch (e) {
-    console.error('[generateManualInvoice] exception:', e);
+    logManualBillingWarning('generateManualInvoice:exception', e);
     return { ok: false, reason: 'exception' };
   }
 }
@@ -599,12 +630,12 @@ export async function deleteManualInvoiceDraft(
       .eq('agency_organization_id', agencyOrgId)
       .eq('status', 'draft');
     if (error) {
-      console.error('[deleteManualInvoiceDraft] error:', error);
+      logManualBillingWarning('deleteManualInvoiceDraft', error);
       return false;
     }
     return true;
   } catch (e) {
-    console.error('[deleteManualInvoiceDraft] exception:', e);
+    logManualBillingWarning('deleteManualInvoiceDraft:exception', e);
     return false;
   }
 }

@@ -2847,7 +2847,14 @@ export const uiCopy = {
     step6PreviewLoading: 'Building preview…',
     step6PreviewFailed: 'Could not build preview. Please try again.',
     step6Download: 'Download PDF',
+    step6NativePreviewUnavailable:
+      'Embedded preview is not available on this device. Build the preview, then open or share the PDF file.',
+    step6OpenPdf: 'Open / share PDF',
+    step6OpenPdfFailed: 'Could not open or share the PDF. Please try again.',
     step6OpenInNewTab: 'Open in new tab',
+    builderInvoiceLockedTitle: 'Invoice locked (generated)',
+    builderInvoiceLockedBody:
+      'This invoice is finalised. Edits are blocked in the database — only PDF export is available.',
     step6GenerateConfirmTitle: 'Generate this invoice?',
     step6GenerateConfirmBody:
       'Sender + recipient details will be frozen. The invoice number cannot be changed afterwards.',

@@ -191,14 +191,16 @@ function writeBlock(
 ): number {
   doc.setFont('helvetica', weight);
   doc.setFontSize(size);
+  const lineStep = size * 0.45 + 1.2;
   let y = yIn;
   for (const raw of lines) {
     const text = safeText(raw);
     if (!text) continue;
     const wrapped = doc.splitTextToSize(text, maxW);
     for (const w of wrapped) {
+      y = ensureSpace(doc, y, lineStep + 0.5);
       doc.text(w, x, y);
-      y += size * 0.45 + 1.2;
+      y += lineStep;
     }
   }
   return y;
@@ -226,12 +228,20 @@ function drawHeader(doc: JsPDFInstance, input: ManualInvoicePdfInput): number {
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(120, 120, 120);
+  let yAfterNumber = MARGIN + 11;
   if (invoice.invoice_number) {
-    doc.text(`#${safeText(invoice.invoice_number)}`, MARGIN, MARGIN + 11);
+    const numLines = doc.splitTextToSize(`#${safeText(invoice.invoice_number)}`, CONTENT_W);
+    let yn = MARGIN + 11;
+    for (const ln of numLines) {
+      yn = ensureSpace(doc, yn, 5);
+      doc.text(ln, MARGIN, yn);
+      yn += 4;
+    }
+    yAfterNumber = yn + 3;
   }
   doc.setTextColor(17, 17, 17);
 
-  let y = MARGIN + 18;
+  let y = ensureSpace(doc, Math.max(MARGIN + 18, yAfterNumber), 8);
 
   // Two-column header: Supplier left (88mm) | Bill To right (88mm)
   const colW = (CONTENT_W - 4) / 2;
@@ -242,6 +252,7 @@ function drawHeader(doc: JsPDFInstance, input: ManualInvoicePdfInput): number {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(120, 120, 120);
+  y = ensureSpace(doc, y, 5);
   doc.text(uiCopy.manualBilling.pdfSupplierLabel.toUpperCase(), leftX, y);
   doc.text(uiCopy.manualBilling.pdfBillToLabel.toUpperCase(), rightX, y);
   doc.setTextColor(17, 17, 17);
@@ -309,21 +320,31 @@ function drawHeader(doc: JsPDFInstance, input: ManualInvoicePdfInput): number {
     (pair): pair is [string, string] => pair[1].length > 0,
   );
 
-  // Render meta pairs in a 2-column grid
+  // Render meta pairs in a 2-column grid (values wrapped to column width)
   doc.setFontSize(9);
   for (let i = 0; i < metaPairs.length; i += 2) {
     const a = metaPairs[i];
     const b = i + 1 < metaPairs.length ? metaPairs[i + 1] : null;
+    y = ensureSpace(doc, y, 8);
     doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
     doc.setTextColor(120, 120, 120);
     doc.text(a[0].toUpperCase(), leftX, y);
     if (b) doc.text(b[0].toUpperCase(), rightX, y);
     y += 4;
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
     doc.setTextColor(17, 17, 17);
-    doc.text(a[1], leftX, y);
-    if (b) doc.text(b[1], rightX, y);
-    y += 6;
+    const aValLines = doc.splitTextToSize(a[1], colW);
+    const bValLines = b ? doc.splitTextToSize(b[1], colW) : [];
+    const maxVal = Math.max(aValLines.length, bValLines.length);
+    for (let li = 0; li < maxVal; li++) {
+      y = ensureSpace(doc, y, 5);
+      if (li < aValLines.length) doc.text(aValLines[li], leftX, y);
+      if (b && li < bValLines.length) doc.text(bValLines[li], rightX, y);
+      y += 4.2;
+    }
+    y += 2;
   }
 
   return y + 1;
@@ -388,7 +409,6 @@ function drawTableRow(
   doc.setFontSize(9);
   doc.setTextColor(17, 17, 17);
 
-  // Build raw cells
   const date = formatDateOnly(line.performed_on as string | null | undefined);
   const desc = (() => {
     const desc1 = safeText(line.description);
@@ -409,62 +429,64 @@ function drawTableRow(
   })();
   const amount = formatMoneyCents(lineNet(line), currency);
 
-  // Wrap description (the only multi-line cell)
   const descCol = cols.find((c) => c.key === 'description')!;
-  const descWrapped = doc.splitTextToSize(desc, descCol.w - 2 * ROW_PAD);
-  const rowH = Math.max(7, descWrapped.length * 4.4 + ROW_PAD);
+  let descLines = doc.splitTextToSize(desc.length > 0 ? desc : ' ', descCol.w - 2 * ROW_PAD);
+  if (descLines.length === 0) descLines = [''];
+  const lineStep = 4.4;
+  const topPad = 4.5;
 
-  // Page break?
-  const y = ensureSpace(doc, yIn, rowH + 2);
-  // If we broke, redraw header for clarity
-  let cursor = y;
-  if (y === MARGIN) {
+  const colByKey = Object.fromEntries(cols.map((c) => [c.key, c])) as Record<string, Col>;
+  const xPos: Record<string, number> = {};
+  let xRun = MARGIN + ROW_PAD;
+  for (const col of cols) {
+    xPos[col.key] = xRun;
+    xRun += col.w;
+  }
+
+  let cursor = ensureSpace(doc, yIn, 7);
+  if (cursor === MARGIN) {
     cursor = drawTableHeader(doc, MARGIN, cols);
   }
 
-  // Subtle separator
-  doc.setDrawColor(238, 236, 230);
-  doc.line(MARGIN, cursor + rowH, MARGIN + CONTENT_W, cursor + rowH);
+  let descIdx = 0;
+  let valuesDrawn = false;
+  let rowBottom = cursor;
 
-  let x = MARGIN + ROW_PAD;
-  for (const col of cols) {
-    let text = '';
-    switch (col.key) {
-      case 'date':
-        text = date;
-        break;
-      case 'description':
-        // Multi-line; render manually
-        for (let i = 0; i < descWrapped.length; i++) {
-          doc.text(descWrapped[i], x, cursor + 4.5 + i * 4.4);
-        }
-        x += col.w;
-        continue;
-      case 'qty':
-        text = qty;
-        break;
-      case 'unit':
-        text = unit;
-        break;
-      case 'vat':
-        text = vat;
-        break;
-      case 'amount':
-        text = amount;
-        break;
-    }
+  const textCell = (key: string, text: string) => {
+    const col = colByKey[key];
+    const x = xPos[key];
     if (col.align === 'right') {
-      doc.text(text, x + col.w - 2 * ROW_PAD, cursor + 4.5, { align: 'right' } as Record<
+      doc.text(text, x + col.w - 2 * ROW_PAD, cursor + topPad, { align: 'right' } as Record<
         string,
         unknown
       >);
     } else {
-      doc.text(text, x, cursor + 4.5);
+      doc.text(text, x, cursor + topPad);
     }
-    x += col.w;
+  };
+
+  while (descIdx < descLines.length) {
+    cursor = ensureSpace(doc, cursor, lineStep + 2);
+    if (cursor === MARGIN) {
+      cursor = drawTableHeader(doc, MARGIN, cols);
+    }
+    doc.text(descLines[descIdx], xPos.description + ROW_PAD, cursor + topPad);
+    if (!valuesDrawn) {
+      textCell('date', date);
+      textCell('qty', qty);
+      textCell('unit', unit);
+      textCell('vat', vat);
+      textCell('amount', amount);
+      valuesDrawn = true;
+    }
+    cursor += lineStep;
+    descIdx++;
+    rowBottom = cursor;
   }
 
-  return cursor + rowH + 1;
+  doc.setDrawColor(238, 236, 230);
+  doc.line(MARGIN, rowBottom + 0.5, MARGIN + CONTENT_W, rowBottom + 0.5);
+  return rowBottom + 2;
 }
 
 function drawTotals(

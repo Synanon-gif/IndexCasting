@@ -14,6 +14,7 @@
 
 import { supabase } from '../../lib/supabase';
 import { assertOrgContext } from '../utils/orgGuard';
+import { logManualBillingWarning } from '../utils/manualBillingLog';
 import type {
   ManualBillingAgencyProfileInput,
   ManualBillingAgencyProfileRow,
@@ -47,12 +48,12 @@ async function clearAgencyProfileDefaultExcept(
     if (exceptProfileId) q = q.neq('id', exceptProfileId);
     const { error } = await q;
     if (error) {
-      console.error('[clearAgencyProfileDefaultExcept] error:', error);
+      logManualBillingWarning('clearAgencyProfileDefaultExcept', error);
       return false;
     }
     return true;
   } catch (e) {
-    console.error('[clearAgencyProfileDefaultExcept] exception:', e);
+    logManualBillingWarning('clearAgencyProfileDefaultExcept:exception', e);
     return false;
   }
 }
@@ -72,12 +73,12 @@ export async function listManualAgencyBillingProfiles(
     if (!opts.includeArchived) q = q.eq('is_archived', false);
     const { data, error } = await q;
     if (error) {
-      console.error('[listManualAgencyBillingProfiles] error:', error);
+      logManualBillingWarning('listManualAgencyBillingProfiles', error);
       return [];
     }
     return (data ?? []) as ManualBillingAgencyProfileRow[];
   } catch (e) {
-    console.error('[listManualAgencyBillingProfiles] exception:', e);
+    logManualBillingWarning('listManualAgencyBillingProfiles:exception', e);
     return [];
   }
 }
@@ -92,12 +93,12 @@ export async function getManualAgencyBillingProfile(
       .eq('id', profileId)
       .maybeSingle();
     if (error) {
-      console.error('[getManualAgencyBillingProfile] error:', error);
+      logManualBillingWarning('getManualAgencyBillingProfile', error);
       return null;
     }
     return (data as ManualBillingAgencyProfileRow) ?? null;
   } catch (e) {
-    console.error('[getManualAgencyBillingProfile] exception:', e);
+    logManualBillingWarning('getManualAgencyBillingProfile:exception', e);
     return null;
   }
 }
@@ -111,7 +112,7 @@ export async function upsertManualAgencyBillingProfile(
     return { ok: false };
   }
   if (!payload.legal_name || payload.legal_name.trim() === '') {
-    console.error('[upsertManualAgencyBillingProfile] legal_name required');
+    logManualBillingWarning('upsertManualAgencyBillingProfile:legal_name');
     return { ok: false };
   }
   try {
@@ -148,7 +149,7 @@ export async function upsertManualAgencyBillingProfile(
         .eq('id', existingId)
         .eq('agency_organization_id', agencyOrgId);
       if (error) {
-        console.error('[upsertManualAgencyBillingProfile] update error:', error);
+        logManualBillingWarning('upsertManualAgencyBillingProfile:update', error);
         return { ok: false };
       }
       return { ok: true, id: existingId };
@@ -160,12 +161,12 @@ export async function upsertManualAgencyBillingProfile(
       .select('id')
       .single();
     if (error) {
-      console.error('[upsertManualAgencyBillingProfile] insert error:', error);
+      logManualBillingWarning('upsertManualAgencyBillingProfile:insert', error);
       return { ok: false };
     }
     return { ok: true, id: (data as { id: string }).id };
   } catch (e) {
-    console.error('[upsertManualAgencyBillingProfile] exception:', e);
+    logManualBillingWarning('upsertManualAgencyBillingProfile:exception', e);
     return { ok: false };
   }
 }
@@ -188,12 +189,12 @@ export async function archiveManualAgencyBillingProfile(
       .eq('id', profileId)
       .eq('agency_organization_id', agencyOrgId);
     if (error) {
-      console.error('[archiveManualAgencyBillingProfile] error:', error);
+      logManualBillingWarning('archiveManualAgencyBillingProfile', error);
       return false;
     }
     return true;
   } catch (e) {
-    console.error('[archiveManualAgencyBillingProfile] exception:', e);
+    logManualBillingWarning('archiveManualAgencyBillingProfile:exception', e);
     return false;
   }
 }
@@ -210,12 +211,12 @@ export async function deleteManualAgencyBillingProfile(
       .eq('id', profileId)
       .eq('agency_organization_id', agencyOrgId);
     if (error) {
-      console.error('[deleteManualAgencyBillingProfile] error:', error);
+      logManualBillingWarning('deleteManualAgencyBillingProfile', error);
       return false;
     }
     return true;
   } catch (e) {
-    console.error('[deleteManualAgencyBillingProfile] exception:', e);
+    logManualBillingWarning('deleteManualAgencyBillingProfile:exception', e);
     return false;
   }
 }
@@ -264,12 +265,12 @@ export async function listManualBillingCounterparties(
 
     const { data, error } = await q;
     if (error) {
-      console.error('[listManualBillingCounterparties] error:', error);
+      logManualBillingWarning('listManualBillingCounterparties', error);
       return [];
     }
     return (data ?? []) as ManualBillingCounterpartyRow[];
   } catch (e) {
-    console.error('[listManualBillingCounterparties] exception:', e);
+    logManualBillingWarning('listManualBillingCounterparties:exception', e);
     return [];
   }
 }
@@ -284,12 +285,12 @@ export async function getManualBillingCounterparty(
       .eq('id', counterpartyId)
       .maybeSingle();
     if (error) {
-      console.error('[getManualBillingCounterparty] error:', error);
+      logManualBillingWarning('getManualBillingCounterparty', error);
       return null;
     }
     return (data as ManualBillingCounterpartyRow) ?? null;
   } catch (e) {
-    console.error('[getManualBillingCounterparty] exception:', e);
+    logManualBillingWarning('getManualBillingCounterparty:exception', e);
     return null;
   }
 }
@@ -303,11 +304,11 @@ export async function upsertManualBillingCounterparty(
     return { ok: false };
   }
   if (!payload.legal_name || payload.legal_name.trim() === '') {
-    console.error('[upsertManualBillingCounterparty] legal_name required');
+    logManualBillingWarning('upsertManualBillingCounterparty:legal_name');
     return { ok: false };
   }
   if (payload.kind !== 'client' && payload.kind !== 'model') {
-    console.error('[upsertManualBillingCounterparty] invalid kind:', payload.kind);
+    logManualBillingWarning('upsertManualBillingCounterparty:invalid_kind');
     return { ok: false };
   }
   try {
@@ -326,7 +327,7 @@ export async function upsertManualBillingCounterparty(
         .eq('id', existingId)
         .eq('agency_organization_id', agencyOrgId);
       if (error) {
-        console.error('[upsertManualBillingCounterparty] update error:', error);
+        logManualBillingWarning('upsertManualBillingCounterparty:update', error);
         return { ok: false };
       }
       return { ok: true, id: existingId };
@@ -338,12 +339,12 @@ export async function upsertManualBillingCounterparty(
       .select('id')
       .single();
     if (error) {
-      console.error('[upsertManualBillingCounterparty] insert error:', error);
+      logManualBillingWarning('upsertManualBillingCounterparty:insert', error);
       return { ok: false };
     }
     return { ok: true, id: (data as { id: string }).id };
   } catch (e) {
-    console.error('[upsertManualBillingCounterparty] exception:', e);
+    logManualBillingWarning('upsertManualBillingCounterparty:exception', e);
     return { ok: false };
   }
 }
@@ -361,12 +362,12 @@ export async function archiveManualBillingCounterparty(
       .eq('id', counterpartyId)
       .eq('agency_organization_id', agencyOrgId);
     if (error) {
-      console.error('[archiveManualBillingCounterparty] error:', error);
+      logManualBillingWarning('archiveManualBillingCounterparty', error);
       return false;
     }
     return true;
   } catch (e) {
-    console.error('[archiveManualBillingCounterparty] exception:', e);
+    logManualBillingWarning('archiveManualBillingCounterparty:exception', e);
     return false;
   }
 }
@@ -383,12 +384,12 @@ export async function deleteManualBillingCounterparty(
       .eq('id', counterpartyId)
       .eq('agency_organization_id', agencyOrgId);
     if (error) {
-      console.error('[deleteManualBillingCounterparty] error:', error);
+      logManualBillingWarning('deleteManualBillingCounterparty', error);
       return false;
     }
     return true;
   } catch (e) {
-    console.error('[deleteManualBillingCounterparty] exception:', e);
+    logManualBillingWarning('deleteManualBillingCounterparty:exception', e);
     return false;
   }
 }
