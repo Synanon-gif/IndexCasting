@@ -222,6 +222,7 @@ import { BillingHubView } from '../components/billing/BillingHubView';
 import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { StorageImage } from '../components/StorageImage';
+import { ImageCarousel } from '../components/ImageCarousel';
 import { ClientOrgProfileScreen } from '../screens/ClientOrgProfileScreen';
 import {
   isCalendarThreadUuid,
@@ -369,6 +370,8 @@ type ModelSummary = {
   chest: number;
   legsInseam: number;
   coverUrl: string;
+  /** All portfolio images for this model (used by ImageCarousel). Falls back to [coverUrl] when empty. */
+  imageUrls?: string[];
   agencyId?: string | null;
   agencyName?: string | null;
   isSportsWinter?: boolean;
@@ -428,6 +431,9 @@ const LOAD_MORE_THRESHOLD = 10;
 /** Maps a raw DiscoveryModel (from the RPC) to the app-local ModelSummary shape. */
 function mapDiscoveryModelToSummary(m: DiscoveryModel): ModelSummary {
   const firstImg = m.portfolio_images?.[0] ?? '';
+  const imageUrls = (m.portfolio_images ?? []).map((u) =>
+    normalizeDocumentspicturesModelImageRef(u, m.id),
+  );
   return {
     id: m.id,
     name: m.name,
@@ -441,6 +447,7 @@ function mapDiscoveryModelToSummary(m: DiscoveryModel): ModelSummary {
     chest: m.chest ?? m.bust ?? 0,
     legsInseam: m.legs_inseam ?? 0,
     coverUrl: firstImg ? normalizeDocumentspicturesModelImageRef(firstImg, m.id) : '',
+    imageUrls,
     agencyId: m.territory_agency_id ?? m.agency_id ?? null,
     agencyName: m.agency_name ?? null,
     countryCode: m.country_code ?? m.territory_country_code ?? null,
@@ -1246,6 +1253,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         chest: m.chest ?? m.bust ?? 0,
         legsInseam: m.legsInseam ?? m.legs_inseam ?? 0,
         coverUrl: normalizeDocumentspicturesModelImageRef(m.gallery?.[0] ?? '', m.id),
+        imageUrls: (m.gallery ?? []).map((u: string) =>
+          normalizeDocumentspicturesModelImageRef(u, m.id),
+        ),
         agencyId: m.agencyId ?? m.agency_id ?? null,
         agencyName: m.agencyName ?? m.agency_name ?? null,
         countryCode: m.countryCode ?? null,
@@ -1460,6 +1470,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           chest: m.chest ?? m.bust ?? 0,
           legsInseam: m.legs_inseam ?? 0,
           coverUrl: normalizeDocumentspicturesModelImageRef(m.portfolio_images?.[0] ?? '', m.id),
+          imageUrls: (m.portfolio_images ?? []).map((u) =>
+            normalizeDocumentspicturesModelImageRef(u, m.id),
+          ),
           agencyId: m.territory_agency_id ?? m.agency_id ?? null,
           agencyName: m.agency_name ?? null,
           countryCode: m.location_country_code ?? m.territory_country_code ?? null,
@@ -1776,6 +1789,30 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     () => (filteredModels.length ? filteredModels[currentIndex % filteredModels.length] : null),
     [filteredModels, currentIndex],
   );
+
+  // Hydrate full portfolio for the current discover card.
+  // The get_discovery_models RPC returns only 1 portfolio_images entry (the cover) for performance;
+  // getModelData fetches the full set via MODEL_DETAIL_SELECT + model_photos fallback.
+  useEffect(() => {
+    const model = currentModel;
+    if (!model || isPackageMode || isSharedMode) return;
+    if ((model.imageUrls?.length ?? 0) > 1) return; // already hydrated
+    let cancelled = false;
+    void getModelData(model.id).then((data: any) => {
+      if (cancelled) return;
+      const imgs: string[] = data?.portfolio?.images ?? [];
+      if (imgs.length <= 1) return;
+      const patch = (prev: ModelSummary[]) =>
+        prev.map((m) => (m.id === model.id ? { ...m, imageUrls: imgs } : m));
+      setModels(patch);
+      setNearbyModels(patch);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Only re-run when the displayed model changes — not on derived state updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentModel?.id, isPackageMode, isSharedMode]);
 
   useEffect(() => {
     if (currentIndex >= filteredModels.length) {
@@ -2266,6 +2303,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         chest: (m as { chest?: number | null }).chest ?? m.bust ?? 0,
         legsInseam: 0,
         coverUrl: normalizeDocumentspicturesModelImageRef(getPackageCoverRawRef(m, pkgType), m.id),
+        imageUrls: [],
         // Package owner agency — enables "Chat with agency" CTA in detail view.
         // All models in a guest_link package belong to the same sending agency
         // (gl.agency_id is the package author).
@@ -4551,55 +4589,60 @@ const DiscoverView: React.FC<DiscoverProps> = ({
               style={[styles.coverCard, { maxWidth: cardMaxWidth, borderRadius: cardBorderRadius }]}
             >
               <View style={[styles.coverImageContainer, { height: cardImageHeight }]}>
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => onOpenDetails(current.id)}
+                <ImageCarousel
+                  images={
+                    current.imageUrls && current.imageUrls.length > 0
+                      ? current.imageUrls
+                      : current.coverUrl
+                        ? [current.coverUrl]
+                        : []
+                  }
                   style={styles.coverImageTouchable}
-                >
-                  <StorageImage
-                    uri={current.coverUrl || undefined}
-                    style={styles.coverImage}
-                    resizeMode={heroResizeMode}
-                    ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
-                    fallback={
-                      <View style={[styles.coverImage, { backgroundColor: colors.border }]} />
-                    }
-                  />
-                </TouchableOpacity>
-                <View style={styles.coverGradientOverlay} />
-                <View style={styles.coverMeasurementsOverlay}>
-                  <Text style={styles.coverNameOnImage}>{current.name}</Text>
-                  <Text style={styles.coverMeasurementsLabel}>
-                    Height {current.height} cm · Chest {current.chest || current.bust || '—'} cm ·
-                    Waist {current.waist || '—'} cm · Hips {current.hips || '—'} cm
-                    {current.legsInseam != null ? ` · Inseam ${current.legsInseam} cm` : ''}
-                  </Text>
-                  <Text style={styles.coverLocationLabel}>
-                    {current.hasRealLocation
-                      ? `${summaryDisplayCity(current) || '—'} · ${current.countryCode || '—'}`
-                      : `Represented in ${current.countryCode || '—'}${
-                          current.agencyName ? ` · ${current.agencyName}` : ''
-                        }`}
-                  </Text>
-                  {(current.isSportsWinter || current.isSportsSummer) && (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                      {current.isSportsWinter && (
-                        <View style={styles.sportsBadge}>
-                          <Text style={styles.sportsBadgeLabel}>
-                            {uiCopy.sportCategories.winterSports}
-                          </Text>
-                        </View>
-                      )}
-                      {current.isSportsSummer && (
-                        <View style={styles.sportsBadge}>
-                          <Text style={styles.sportsBadgeLabel}>
-                            {uiCopy.sportCategories.summerSports}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  )}
-                </View>
+                  imageStyle={styles.coverImage}
+                  resizeMode={heroResizeMode}
+                  ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
+                  onImagePress={() => onOpenDetails(current.id)}
+                  overlay={
+                    <>
+                      <View style={styles.coverGradientOverlay} />
+                      <View style={styles.coverMeasurementsOverlay}>
+                        <Text style={styles.coverNameOnImage}>{current.name}</Text>
+                        <Text style={styles.coverMeasurementsLabel}>
+                          Height {current.height} cm · Chest {current.chest || current.bust || '—'}{' '}
+                          cm · Waist {current.waist || '—'} cm · Hips {current.hips || '—'} cm
+                          {current.legsInseam != null ? ` · Inseam ${current.legsInseam} cm` : ''}
+                        </Text>
+                        <Text style={styles.coverLocationLabel}>
+                          {current.hasRealLocation
+                            ? `${summaryDisplayCity(current) || '—'} · ${current.countryCode || '—'}`
+                            : `Represented in ${current.countryCode || '—'}${
+                                current.agencyName ? ` · ${current.agencyName}` : ''
+                              }`}
+                        </Text>
+                        {(current.isSportsWinter || current.isSportsSummer) && (
+                          <View
+                            style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}
+                          >
+                            {current.isSportsWinter && (
+                              <View style={styles.sportsBadge}>
+                                <Text style={styles.sportsBadgeLabel}>
+                                  {uiCopy.sportCategories.winterSports}
+                                </Text>
+                              </View>
+                            )}
+                            {current.isSportsSummer && (
+                              <View style={styles.sportsBadge}>
+                                <Text style={styles.sportsBadgeLabel}>
+                                  {uiCopy.sportCategories.summerSports}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  }
+                />
               </View>
               <View style={styles.cardButtonRow}>
                 <TouchableOpacity style={styles.nextButton} onPress={onNext}>

@@ -30,6 +30,16 @@ interface ImageCarouselProps {
   /** Forwarded to StorageImage. */
   imageStyle?: StyleProp<ImageStyle>;
   resizeMode?: 'cover' | 'contain' | 'stretch' | 'center';
+  /** Signed-URL lifetime forwarded to StorageImage (defaults to 3 600 s). */
+  ttlSeconds?: number;
+  /** When provided, tapping the image area (not an arrow) calls this handler. */
+  onImagePress?: () => void;
+  /**
+   * Optional overlay rendered above the image but below the navigation arrows.
+   * Use for gradient/metadata overlays that must stay below the arrow z-level.
+   * Wrapped in pointerEvents="none" — make overlay content non-interactive.
+   */
+  overlay?: React.ReactNode;
 }
 
 export const ImageCarousel: React.FC<ImageCarouselProps> = ({
@@ -37,6 +47,9 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   style,
   imageStyle,
   resizeMode = 'contain',
+  ttlSeconds,
+  onImagePress,
+  overlay,
 }) => {
   const [index, setIndex] = useState(0);
 
@@ -57,9 +70,30 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     }
   };
 
+  const imageNode = (
+    <StorageImage
+      uri={images[safeIndex]}
+      style={onImagePress ? { width: '100%', height: '100%' } : imageStyle}
+      resizeMode={resizeMode}
+      ttlSeconds={ttlSeconds}
+    />
+  );
+
   return (
     <View style={style}>
-      <StorageImage uri={images[safeIndex]} style={imageStyle} resizeMode={resizeMode} />
+      {onImagePress ? (
+        <Pressable onPress={onImagePress} style={[StyleSheet.absoluteFill, { zIndex: 0 }]}>
+          {imageNode}
+        </Pressable>
+      ) : (
+        imageNode
+      )}
+
+      {overlay && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          {overlay}
+        </View>
+      )}
 
       {hasMultiple && (
         <>
