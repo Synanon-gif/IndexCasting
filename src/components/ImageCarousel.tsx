@@ -1,11 +1,24 @@
+/**
+ * ImageCarousel — inline image browser with overlaid left/right arrow buttons.
+ *
+ * Arrow containers use pointerEvents="box-none" so touches on the image area
+ * still pass through to the parent. Pressable buttons have zIndex/elevation to
+ * guarantee they paint above the image on both web and native.
+ *
+ * Nested inside a TouchableOpacity (swipe card): on native, Pressable wins the
+ * responder; on web, nativeEvent.stopPropagation() prevents the parent click.
+ */
+
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
+  Platform,
+  Pressable,
   StyleSheet,
+  Text,
+  View,
   type GestureResponderEvent,
-  type StyleProp,
   type ImageStyle,
+  type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import { StorageImage } from './StorageImage';
@@ -19,11 +32,6 @@ interface ImageCarouselProps {
   resizeMode?: 'cover' | 'contain' | 'stretch' | 'center';
 }
 
-/**
- * Inline image carousel with overlaid left/right arrows.
- * Safe to nest inside a TouchableOpacity — arrow Views claim the responder
- * via onStartShouldSetResponder so the parent press does not fire.
- */
 export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   images,
   style,
@@ -42,10 +50,12 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const goPrev = () => setIndex((i) => (i - 1 + images.length) % images.length);
   const goNext = () => setIndex((i) => (i + 1) % images.length);
 
-  const makeArrowResponder = (handler: () => void) => ({
-    onStartShouldSetResponder: () => true,
-    onResponderRelease: (_e: GestureResponderEvent) => handler(),
-  });
+  /** Stop the parent card's TouchableOpacity from also firing on web. */
+  const stopProp = (e: GestureResponderEvent) => {
+    if (Platform.OS === 'web') {
+      (e.nativeEvent as unknown as { stopPropagation?: () => void }).stopPropagation?.();
+    }
+  };
 
   return (
     <View style={style}>
@@ -53,13 +63,35 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
 
       {hasMultiple && (
         <>
-          <View {...makeArrowResponder(goPrev)} style={[styles.arrow, styles.arrowLeft]}>
-            <Text style={styles.arrowText}>{'‹'}</Text>
-          </View>
-          <View {...makeArrowResponder(goNext)} style={[styles.arrow, styles.arrowRight]}>
-            <Text style={styles.arrowText}>{'›'}</Text>
+          {/* Left arrow — box-none lets image touches pass through */}
+          <View style={[styles.arrowZone, styles.arrowZoneLeft]} pointerEvents="box-none">
+            <Pressable
+              onPress={(e) => {
+                stopProp(e);
+                goPrev();
+              }}
+              style={styles.arrowButton}
+              hitSlop={8}
+            >
+              <Text style={styles.arrowText}>{'‹'}</Text>
+            </Pressable>
           </View>
 
+          {/* Right arrow */}
+          <View style={[styles.arrowZone, styles.arrowZoneRight]} pointerEvents="box-none">
+            <Pressable
+              onPress={(e) => {
+                stopProp(e);
+                goNext();
+              }}
+              style={styles.arrowButton}
+              hitSlop={8}
+            >
+              <Text style={styles.arrowText}>{'›'}</Text>
+            </Pressable>
+          </View>
+
+          {/* Dot indicators — purely decorative, no touch */}
           <View style={styles.dots} pointerEvents="none">
             {images.map((_, i) => (
               <View key={i} style={[styles.dot, i === safeIndex && styles.dotActive]} />
@@ -72,27 +104,41 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
 };
 
 const styles = StyleSheet.create({
-  arrow: {
+  /** Transparent full-height strip; only the Pressable inside is hittable. */
+  arrowZone: {
     position: 'absolute',
     top: 0,
     bottom: 0,
-    width: 44,
+    width: 60,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.22)',
-    cursor: 'pointer',
+    zIndex: 10,
+    elevation: 10,
   } as ViewStyle,
-  arrowLeft: { left: 0 },
-  arrowRight: { right: 0 },
+  arrowZoneLeft: { left: 0 },
+  arrowZoneRight: { right: 0 },
+
+  /** Circular button — visually prominent on any image. */
+  arrowButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.52)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    elevation: 10,
+  } as ViewStyle,
+
   arrowText: {
-    color: '#fff',
-    fontSize: 30,
-    lineHeight: 34,
-    fontWeight: '600',
+    color: '#ffffff',
+    fontSize: 26,
+    lineHeight: 30,
+    fontWeight: '700',
+    textAlign: 'center',
     includeFontPadding: false,
-    textAlignVertical: 'center',
-    userSelect: 'none',
-  } as object,
+  },
+
   dots: {
     position: 'absolute',
     bottom: 8,
@@ -100,15 +146,18 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 4,
-  },
+    gap: 5,
+    zIndex: 10,
+    elevation: 10,
+  } as ViewStyle,
   dot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: 'rgba(255,255,255,0.45)',
   },
   dotActive: {
-    backgroundColor: '#fff',
+    backgroundColor: '#ffffff',
+    transform: [{ scale: 1.25 }],
   },
 });
