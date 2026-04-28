@@ -36,7 +36,7 @@ export function planFeatureLines(
   if (isTrialContext || plan === 'trial' || plan === null) {
     const L = PLAN_LIMITS.trial;
     const sw = L.swipesPerDay ?? 10;
-    const gb = L.storageGB ?? 5;
+    const gb = L.storageGB ?? 10;
     const seats = L.maxAgencyMembers ?? 2;
     const base: string[] = [b.swipesPerDay(sw), b.storageLimit(gb)];
     if (billingAudience === 'agency') {
@@ -49,26 +49,26 @@ export function planFeatureLines(
   switch (plan) {
     case 'agency_basic':
       return [
-        b.swipesPerDay(10),
-        b.storageLimit(5),
+        b.swipesPerDay(PLAN_LIMITS.agency_basic.swipesPerDay ?? 10),
+        b.storageLimit(PLAN_LIMITS.agency_basic.storageGB ?? 10),
         b.agencyTeamSeats(PLAN_LIMITS.agency_basic.maxAgencyMembers ?? 2),
         b.realtimeMessaging,
         b.castingManagement,
       ];
     case 'agency_pro':
       return [
-        b.swipesPerDay(50),
-        b.storageLimit(50),
-        b.agencyTeamSeats(PLAN_LIMITS.agency_pro.maxAgencyMembers ?? 4),
+        b.swipesPerDay(PLAN_LIMITS.agency_pro.swipesPerDay ?? 20),
+        b.storageLimit(PLAN_LIMITS.agency_pro.storageGB ?? 100),
+        b.agencyTeamSeats(PLAN_LIMITS.agency_pro.maxAgencyMembers ?? 6),
         b.realtimeMessaging,
         b.castingManagement,
         b.fullPlatformAccess,
       ];
     case 'agency_enterprise':
       return [
-        b.swipesPerDay(150),
-        b.storageLimit(500),
-        b.agencyTeamSeatsUnlimited,
+        b.swipesPerDay(PLAN_LIMITS.agency_enterprise.swipesPerDay ?? 40),
+        b.storageLimit(PLAN_LIMITS.agency_enterprise.storageGB ?? 200),
+        b.agencyTeamSeats(PLAN_LIMITS.agency_enterprise.maxAgencyMembers ?? 20),
         b.realtimeMessaging,
         b.castingManagement,
         b.fullPlatformAccess,

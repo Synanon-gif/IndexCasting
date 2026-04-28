@@ -529,9 +529,9 @@ Deno.serve(withObservability('stripe-webhook', async (req: Request) => {
         // Sync swipe limit when plan changes
         if (plan) {
           const planLimits: Record<string, number> = {
-            agency_basic:      10,
-            agency_pro:        50,
-            agency_enterprise: 150,
+            agency_basic:       10,
+            agency_pro:         20,
+            agency_enterprise: 40,
           };
           const newLimit = planLimits[plan];
           if (newLimit !== undefined) {

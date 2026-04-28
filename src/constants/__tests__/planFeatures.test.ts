@@ -1,11 +1,11 @@
 jest.mock('../../services/subscriptionSupabase', () => ({
   PLAN_LIMITS: {
-    trial:             { swipesPerDay: 10, storageGB: 5, maxAgencyMembers: 2 },
-    agency_basic:      { swipesPerDay: 10, storageGB: 5, maxAgencyMembers: 2 },
-    agency_pro:        { swipesPerDay: 50, storageGB: 50, maxAgencyMembers: 4 },
-    agency_enterprise: { swipesPerDay: 150, storageGB: 500, maxAgencyMembers: null },
-    client:            { swipesPerDay: null, storageGB: null, maxAgencyMembers: null },
-    admin:             { swipesPerDay: null, storageGB: null, maxAgencyMembers: null },
+    trial: { swipesPerDay: 10, storageGB: 10, maxAgencyMembers: 2 },
+    agency_basic: { swipesPerDay: 10, storageGB: 10, maxAgencyMembers: 2 },
+    agency_pro: { swipesPerDay: 20, storageGB: 100, maxAgencyMembers: 6 },
+    agency_enterprise: { swipesPerDay: 40, storageGB: 200, maxAgencyMembers: 20 },
+    client: { swipesPerDay: null, storageGB: null, maxAgencyMembers: null },
+    admin: { swipesPerDay: null, storageGB: null, maxAgencyMembers: null },
   },
 }));
 
@@ -29,6 +29,6 @@ describe('planFeatureLines', () => {
 
   it('returns agency_pro feature set when not trial', () => {
     const lines = planFeatureLines('agency_pro', false);
-    expect(lines.some((l) => l.includes('50'))).toBe(true);
+    expect(lines.some((l) => l.includes('100'))).toBe(true);
   });
 });

@@ -217,7 +217,6 @@ import { toDisplayStatus } from '../utils/statusHelpers';
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
-import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
 import { BillingHubView } from '../components/billing/BillingHubView';
 import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
@@ -2970,7 +2969,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               >
                 Team
               </Text>
-              {clientOrgId && <OwnerBillingStatusCard variant="client" />}
               {clientOrgId && isOrganizationOwner(auth.profile?.org_member_role) && (
                 <ClientOrgMetricsPanelWrapper orgId={clientOrgId} />
               )}

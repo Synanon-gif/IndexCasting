@@ -96,8 +96,14 @@ describe('checkAndIncrementStorage', () => {
 
   it('calls RPC for each concurrent upload independently', async () => {
     rpcMock
-      .mockResolvedValueOnce({ data: { allowed: true, used_bytes: 100, limit_bytes: AGENCY_STORAGE_LIMIT_BYTES }, error: null })
-      .mockResolvedValueOnce({ data: { allowed: true, used_bytes: 200, limit_bytes: AGENCY_STORAGE_LIMIT_BYTES }, error: null });
+      .mockResolvedValueOnce({
+        data: { allowed: true, used_bytes: 100, limit_bytes: AGENCY_STORAGE_LIMIT_BYTES },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { allowed: true, used_bytes: 200, limit_bytes: AGENCY_STORAGE_LIMIT_BYTES },
+        error: null,
+      });
 
     const [r1, r2] = await Promise.all([
       checkAndIncrementStorage(100),
@@ -191,7 +197,9 @@ describe('deleteChatThreadWithFiles', () => {
 
     const result = await deleteChatThreadWithFiles(CONV_ID);
 
-    expect(rpcMock).toHaveBeenCalledWith('get_chat_thread_file_paths', { p_conversation_id: CONV_ID });
+    expect(rpcMock).toHaveBeenCalledWith('get_chat_thread_file_paths', {
+      p_conversation_id: CONV_ID,
+    });
     expect(storageMock.from).toHaveBeenCalledWith('chat-files');
     expect(removeMock).toHaveBeenCalledWith(['chat/conv/file1.jpg', 'chat/conv/file2.png']);
     expect(rpcMock).toHaveBeenCalledWith('decrement_agency_storage_usage', { p_bytes: 500_000 });
@@ -249,7 +257,9 @@ describe('deleteModelPortfolioFiles', () => {
 
     const result = await deleteModelPortfolioFiles(MODEL_ID);
 
-    expect(rpcMock).toHaveBeenCalledWith('get_model_portfolio_file_paths', { p_model_id: MODEL_ID });
+    expect(rpcMock).toHaveBeenCalledWith('get_model_portfolio_file_paths', {
+      p_model_id: MODEL_ID,
+    });
     expect(storageMock.from).toHaveBeenCalledWith('documentspictures');
     expect(storageMock.from).toHaveBeenCalledWith('documents');
     expect(rpcMock).toHaveBeenCalledWith('decrement_agency_storage_usage', { p_bytes: 1_500_000 });
@@ -267,7 +277,9 @@ describe('deleteChatThreadWithFiles — authorization', () => {
     // Simulate the RPC throwing because conversation does not belong to caller's org.
     rpcMock.mockResolvedValueOnce({
       data: null,
-      error: new Error('get_chat_thread_file_paths: conversation does not belong to your organization'),
+      error: new Error(
+        'get_chat_thread_file_paths: conversation does not belong to your organization',
+      ),
     });
 
     const result = await deleteChatThreadWithFiles(CONV_ID);
@@ -284,7 +296,9 @@ describe('deleteModelPortfolioFiles — authorization', () => {
   it('returns zero counts when RPC raises unauthorized (wrong agency)', async () => {
     rpcMock.mockResolvedValueOnce({
       data: null,
-      error: new Error('get_model_portfolio_file_paths: model does not belong to your organization'),
+      error: new Error(
+        'get_model_portfolio_file_paths: model does not belong to your organization',
+      ),
     });
 
     const result = await deleteModelPortfolioFiles(MODEL_ID);
@@ -347,7 +361,7 @@ describe('formatStorageBytes', () => {
   it('formats bytes', () => expect(formatStorageBytes(512)).toBe('512 B'));
   it('formats KB', () => expect(formatStorageBytes(1536)).toBe('1.5 KB'));
   it('formats MB', () => expect(formatStorageBytes(5 * 1024 * 1024)).toBe('5.0 MB'));
-  it('formats 5 GB', () => expect(formatStorageBytes(AGENCY_STORAGE_LIMIT_BYTES)).toBe('5.0 GB'));
+  it('formats 10 GB', () => expect(formatStorageBytes(AGENCY_STORAGE_LIMIT_BYTES)).toBe('10.0 GB'));
 });
 
 // ─── Helper: getStorageUsagePercent ───────────────────────────────────────────
@@ -446,7 +460,7 @@ describe('checkAndIncrementStorage — custom limit enforcement', () => {
   });
 });
 
-describe('getMyAgencyStorageUsage — default 5 GB fallback', () => {
+describe('getMyAgencyStorageUsage — default plan fallback', () => {
   it('falls back to AGENCY_STORAGE_LIMIT_BYTES when no override columns are present', async () => {
     // Simulates a pre-migration RPC response with no new fields.
     rpcMock.mockResolvedValueOnce({

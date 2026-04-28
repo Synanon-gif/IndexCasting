@@ -53,6 +53,9 @@ docs/SECURITY_AUDIT_CODE_BUNDLE.md
 .env
 .vercel
 
+# Supabase CLI lokaler Cache (nicht versionieren)
+supabase/.temp/
+
 # Playwright
 test-results/
 playwright-report/

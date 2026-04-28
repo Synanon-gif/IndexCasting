@@ -11,9 +11,10 @@
  * Backend decision chain (must match `public.can_access_platform()` in migrations):
  *   1. admin_override — `admin_overrides.bypass_paywall` for the resolved org
  *   2. trial_active — `organization_subscriptions.trial_ends_at > now()`, subject to
- *      `used_trial_emails` (blocks re-trial across orgs for same email hash)
+ *      `used_trial_emails` (blocks re-trial across orgs for same email hash); not used to deny client orgs post-trial once DB grants free client access
  *   3. subscription_active — `status IN ('active','trialing')`
- *   4. else deny
+ *   4. client organizations — resolved `organizations.type = 'client'` → allow (free; no Stripe)
+ *   5. else deny
  *
  * Org resolution for that RPC: oldest `organization_members` row (`ORDER BY created_at ASC LIMIT 1`).
  * It applies to B2B org users (client/agency). Models do not use `organization_members` for agency
@@ -80,11 +81,11 @@ export interface PlanLimits {
 // ─── Plan metadata ────────────────────────────────────────────────────────────
 
 export const PLAN_LIMITS: Record<string, PlanLimits> = {
-  agency_basic: { swipesPerDay: 10, storageGB: 5, maxAgencyMembers: 2 },
-  agency_pro: { swipesPerDay: 50, storageGB: 50, maxAgencyMembers: 4 },
-  agency_enterprise: { swipesPerDay: 150, storageGB: 500, maxAgencyMembers: null },
+  agency_basic: { swipesPerDay: 10, storageGB: 10, maxAgencyMembers: 2 },
+  agency_pro: { swipesPerDay: 20, storageGB: 100, maxAgencyMembers: 6 },
+  agency_enterprise: { swipesPerDay: 40, storageGB: 200, maxAgencyMembers: 20 },
   client: { swipesPerDay: null, storageGB: null, maxAgencyMembers: null },
-  trial: { swipesPerDay: 10, storageGB: 5, maxAgencyMembers: 2 },
+  trial: { swipesPerDay: 10, storageGB: 10, maxAgencyMembers: 2 },
   admin: { swipesPerDay: null, storageGB: null, maxAgencyMembers: null },
 };
 

@@ -2134,7 +2134,7 @@ export const uiCopy = {
     storageLimitEffective: 'Effective Limit',
     storageLimitCustom: 'Custom',
     storageLimitUnlimited: 'Unlimited',
-    storageLimitDefault: 'Default (5 GB)',
+    storageLimitDefault: 'Default (plan-based; Basic: 10 GB)',
     storageLimitSetCustom: 'Set Limit',
     storageLimitSetUnlimited: 'Set Unlimited',
     storageLimitReset: 'Reset to Default',
@@ -2147,7 +2147,8 @@ export const uiCopy = {
     storageLimitInputPlaceholder: 'Limit in GB (e.g. 20)',
     storageLimitConfirmUnlimited:
       'Grant this organization unlimited storage? This removes all upload restrictions.',
-    storageLimitConfirmReset: 'Reset this organization to the default 5 GB storage limit?',
+    storageLimitConfirmReset:
+      'Reset this organization so plan-based storage applies (admin override cleared)?',
     storageLimitValidationNegative: 'Limit must be greater than 0 GB.',
     storageLimitValidationTooLarge: 'Limit cannot exceed 1024 GB (1 TB).',
   },

@@ -29,18 +29,18 @@ import { adminSetBypassPaywall, adminSetOrgPlan } from '../adminSupabase';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-const rpcMock      = jest.fn();
-const insertMock   = jest.fn().mockResolvedValue({ error: null });
-const selectMock   = jest.fn();
-const fromMock     = jest.fn();
+const rpcMock = jest.fn();
+const insertMock = jest.fn().mockResolvedValue({ error: null });
+const selectMock = jest.fn();
+const fromMock = jest.fn();
 
 // Supabase mock — used by both subscriptionSupabase and adminSupabase
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
-    rpc:  (...args: unknown[]) => rpcMock(...args),
+    rpc: (...args: unknown[]) => rpcMock(...args),
     from: (...args: unknown[]) => fromMock(...args),
     auth: {
-      getUser:    jest.fn().mockResolvedValue({ data: { user: { id: 'user-id-123' } } }),
+      getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'user-id-123' } } }),
       getSession: jest.fn().mockResolvedValue({ data: { session: { access_token: 'tok' } } }),
     },
   },
@@ -79,10 +79,10 @@ describe('getMyOrgAccessStatus — trial active', () => {
     const futureDate = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString();
     rpcMock.mockResolvedValue({
       data: {
-        allowed:         true,
-        reason:          'trial_active',
-        plan:            'trial',
-        trial_ends_at:   futureDate,
+        allowed: true,
+        reason: 'trial_active',
+        plan: 'trial',
+        trial_ends_at: futureDate,
         organization_id: ORG_ID,
       },
       error: null,
@@ -103,10 +103,10 @@ describe('getMyOrgAccessStatus — trial expired, no subscription', () => {
   it('returns allowed:false with reason no_active_subscription', async () => {
     rpcMock.mockResolvedValue({
       data: {
-        allowed:         false,
-        reason:          'no_active_subscription',
-        plan:            null,
-        trial_ends_at:   null,
+        allowed: false,
+        reason: 'no_active_subscription',
+        plan: null,
+        trial_ends_at: null,
         organization_id: ORG_ID,
       },
       error: null,
@@ -126,10 +126,10 @@ describe('getMyOrgAccessStatus — trial_already_used', () => {
   it('returns allowed:false with reason trial_already_used when RPC denies re-trial', async () => {
     rpcMock.mockResolvedValue({
       data: {
-        allowed:         false,
-        reason:          'trial_already_used',
-        plan:            null,
-        trial_ends_at:   null,
+        allowed: false,
+        reason: 'trial_already_used',
+        plan: null,
+        trial_ends_at: null,
         organization_id: ORG_ID,
       },
       error: null,
@@ -149,10 +149,10 @@ describe('getMyOrgAccessStatus — admin override', () => {
   it('returns allowed:true with reason admin_override regardless of subscription state', async () => {
     rpcMock.mockResolvedValue({
       data: {
-        allowed:         true,
-        reason:          'admin_override',
-        plan:            'agency_pro',
-        trial_ends_at:   null,
+        allowed: true,
+        reason: 'admin_override',
+        plan: 'agency_pro',
+        trial_ends_at: null,
         organization_id: ORG_ID,
       },
       error: null,
@@ -173,10 +173,10 @@ describe('getMyOrgAccessStatus — subscription active', () => {
   it('returns allowed:true with reason subscription_active and plan name', async () => {
     rpcMock.mockResolvedValue({
       data: {
-        allowed:         true,
-        reason:          'subscription_active',
-        plan:            'agency_pro',
-        trial_ends_at:   null,
+        allowed: true,
+        reason: 'subscription_active',
+        plan: 'agency_pro',
+        trial_ends_at: null,
         organization_id: ORG_ID,
       },
       error: null,
@@ -216,15 +216,15 @@ describe('getMyOrgAccessStatus — RPC failure', () => {
 describe('adminSetBypassPaywall — non-admin attempt', () => {
   it('returns false when the RPC raises an unauthorized exception', async () => {
     rpcMock.mockResolvedValue({
-      data:  null,
+      data: null,
       error: { message: 'admin_set_bypass_paywall: unauthorized' },
     });
 
     const result = await adminSetBypassPaywall(ORG_ID, true);
 
     expect(rpcMock).toHaveBeenCalledWith('admin_set_bypass_paywall', {
-      p_org_id:      ORG_ID,
-      p_bypass:      true,
+      p_org_id: ORG_ID,
+      p_bypass: true,
       p_custom_plan: null,
     });
     // Must return false — the caller should surface an error, not silently succeed.
@@ -249,8 +249,8 @@ describe('adminSetBypassPaywall — success', () => {
     const result = await adminSetBypassPaywall(ORG_ID, true, 'agency_enterprise');
 
     expect(rpcMock).toHaveBeenCalledWith('admin_set_bypass_paywall', {
-      p_org_id:      ORG_ID,
-      p_bypass:      true,
+      p_org_id: ORG_ID,
+      p_bypass: true,
       p_custom_plan: 'agency_enterprise',
     });
     expect(result).toBe(true);
@@ -262,8 +262,8 @@ describe('adminSetBypassPaywall — success', () => {
     const result = await adminSetBypassPaywall(ORG_ID, false);
 
     expect(rpcMock).toHaveBeenCalledWith('admin_set_bypass_paywall', {
-      p_org_id:      ORG_ID,
-      p_bypass:      false,
+      p_org_id: ORG_ID,
+      p_bypass: false,
       p_custom_plan: null,
     });
     expect(result).toBe(true);
@@ -280,7 +280,7 @@ describe('adminSetOrgPlan', () => {
 
     expect(rpcMock).toHaveBeenCalledWith('admin_set_org_plan', {
       p_org_id: ORG_ID,
-      p_plan:   'agency_pro',
+      p_plan: 'agency_pro',
       p_status: 'active',
     });
     expect(result).toBe(true);
@@ -288,7 +288,7 @@ describe('adminSetOrgPlan', () => {
 
   it('returns false when RPC returns an error', async () => {
     rpcMock.mockResolvedValue({
-      data:  null,
+      data: null,
       error: { message: 'admin_set_org_plan: unauthorized' },
     });
 
@@ -337,14 +337,14 @@ describe('getEffectivePlanLimits', () => {
 
   it('returns correct limits for agency_pro', () => {
     const limits = getEffectivePlanLimits('agency_pro', false);
-    expect(limits.swipesPerDay).toBe(50);
-    expect(limits.storageGB).toBe(50);
+    expect(limits.swipesPerDay).toBe(20);
+    expect(limits.storageGB).toBe(100);
   });
 
   it('returns correct limits for agency_enterprise', () => {
     const limits = getEffectivePlanLimits('agency_enterprise', false);
-    expect(limits.swipesPerDay).toBe(150);
-    expect(limits.storageGB).toBe(500);
+    expect(limits.swipesPerDay).toBe(40);
+    expect(limits.storageGB).toBe(200);
   });
 
   it('returns unlimited for client plan', () => {
@@ -365,12 +365,12 @@ describe('getMyOrgAccessStatus — org_type: client', () => {
   it("maps org_type 'client' correctly from the RPC response", async () => {
     rpcMock.mockResolvedValue({
       data: {
-        allowed:         true,
-        reason:          'trial_active',
-        plan:            'trial',
-        trial_ends_at:   new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
+        allowed: true,
+        reason: 'trial_active',
+        plan: 'trial',
+        trial_ends_at: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
         organization_id: ORG_ID,
-        org_type:        'client',
+        org_type: 'client',
       },
       error: null,
     });
@@ -381,15 +381,15 @@ describe('getMyOrgAccessStatus — org_type: client', () => {
     expect(result.allowed).toBe(true);
   });
 
-  it("returns org_type: null (fail-closed) when the RPC response contains an unrecognized org_type", async () => {
+  it('returns org_type: null (fail-closed) when the RPC response contains an unrecognized org_type', async () => {
     rpcMock.mockResolvedValue({
       data: {
-        allowed:         true,
-        reason:          'subscription_active',
-        plan:            'client',
-        trial_ends_at:   null,
+        allowed: true,
+        reason: 'subscription_active',
+        plan: 'client',
+        trial_ends_at: null,
         organization_id: ORG_ID,
-        org_type:        'unknown_type',  // unexpected value
+        org_type: 'unknown_type', // unexpected value
       },
       error: null,
     });
@@ -406,12 +406,12 @@ describe('getMyOrgAccessStatus — org_type: agency', () => {
   it("maps org_type 'agency' correctly from the RPC response", async () => {
     rpcMock.mockResolvedValue({
       data: {
-        allowed:         true,
-        reason:          'subscription_active',
-        plan:            'agency_pro',
-        trial_ends_at:   null,
+        allowed: true,
+        reason: 'subscription_active',
+        plan: 'agency_pro',
+        trial_ends_at: null,
         organization_id: ORG_ID,
-        org_type:        'agency',
+        org_type: 'agency',
       },
       error: null,
     });
@@ -423,13 +423,13 @@ describe('getMyOrgAccessStatus — org_type: agency', () => {
     expect(result.plan).toBe('agency_pro');
   });
 
-  it("returns org_type: null when org_type is missing from the RPC response (backward compat)", async () => {
+  it('returns org_type: null when org_type is missing from the RPC response (backward compat)', async () => {
     rpcMock.mockResolvedValue({
       data: {
-        allowed:         true,
-        reason:          'trial_active',
-        plan:            'trial',
-        trial_ends_at:   new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+        allowed: true,
+        reason: 'trial_active',
+        plan: 'trial',
+        trial_ends_at: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
         organization_id: ORG_ID,
         // org_type omitted — simulates an older DB version
       },

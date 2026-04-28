@@ -53,7 +53,7 @@ import {
   type AdminStorageOverride,
   type AdminBillingStatus,
 } from '../services/adminSupabase';
-import { formatStorageBytes } from '../services/agencyStorageSupabase';
+import { AGENCY_STORAGE_LIMIT_BYTES, formatStorageBytes } from '../services/agencyStorageSupabase';
 import { AdminHealthEventsView } from './admin/AdminHealthEventsView';
 
 type AdminTab = 'accounts' | 'organizations' | 'models' | 'logs' | 'health' | 'edit';
@@ -1361,7 +1361,9 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                                   <Text style={{ fontWeight: '700' }}>
                                     {sd.is_unlimited
                                       ? uiCopy.storage.storageLimitUnlimited
-                                      : formatStorageBytes(sd.effective_limit_bytes ?? 5368709120)}
+                                      : formatStorageBytes(
+                                          sd.effective_limit_bytes ?? AGENCY_STORAGE_LIMIT_BYTES,
+                                        )}
                                   </Text>
                                 </Text>
                                 <View

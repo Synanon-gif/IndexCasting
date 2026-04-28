@@ -12,16 +12,16 @@
 import { supabase } from '../../lib/supabase';
 import { logger } from '../utils/logger';
 
-/** 5 GB in bytes. Used as the fallback default when no admin override is set. */
-export const AGENCY_STORAGE_LIMIT_BYTES = 5 * 1024 * 1024 * 1024; // 5_368_709_120
+/** 10 GB (Agency Basic default) in bytes — fallback when RPC omits limit_bytes. */
+export const AGENCY_STORAGE_LIMIT_BYTES = 10 * 1024 * 1024 * 1024; // 10_737_418_240
 
 export interface AgencyStorageUsage {
   organization_id: string;
   used_bytes: number;
-  /** Effective limit in bytes. Equals the custom limit when set, otherwise 5 GB.
+  /** Effective limit in bytes. Equals the custom limit when set, otherwise plan default (Basic: 10 GB).
    *  null when is_unlimited = true — do not use for math in that case. */
   effective_limit_bytes: number | null;
-  /** Kept for backward compatibility — mirrors effective_limit_bytes (5 GB when unlimited). */
+  /** Kept for backward compatibility — mirrors effective_limit_bytes (plan default when unlimited). */
   limit_bytes: number;
   /** When true the organization has no storage cap. */
   is_unlimited: boolean;
@@ -58,7 +58,7 @@ export interface ModelPortfolioFilePath {
  * The returned object includes:
  *   - used_bytes: current usage
  *   - effective_limit_bytes: null when unlimited, otherwise the active cap
- *   - limit_bytes: backward-compat alias (5 GB when unlimited)
+ *   - limit_bytes: backward-compat alias (plan default when unlimited)
  *   - is_unlimited: true when the org has no storage cap
  */
 export async function getMyAgencyStorageUsage(): Promise<AgencyStorageUsage | null> {
@@ -263,7 +263,7 @@ export async function deleteModelPortfolioFiles(modelId: string): Promise<{
 
 /**
  * Formats a byte count to a human-readable string.
- * Examples: 0 → "0 B", 1536 → "1.5 KB", 5368709120 → "5.0 GB"
+ * Examples: 0 → "0 B", 1536 → "1.5 KB", 10737418240 → "10.0 GB"
  */
 export function formatStorageBytes(bytes: number): string {
   if (bytes <= 0) return '0 B';
