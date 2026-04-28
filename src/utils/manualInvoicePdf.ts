@@ -358,10 +358,10 @@ function lineColumns(): Col[] {
   // Widths must sum to CONTENT_W (180mm)
   return [
     { key: 'date', label: uiCopy.manualBilling.pdfLineColDate, w: 22 },
-    { key: 'description', label: uiCopy.manualBilling.pdfLineColDescription, w: 88 },
+    { key: 'description', label: uiCopy.manualBilling.pdfLineColDescription, w: 80 },
     { key: 'qty', label: uiCopy.manualBilling.pdfLineColQty, w: 14, align: 'right' },
     { key: 'unit', label: uiCopy.manualBilling.pdfLineColUnit, w: 22, align: 'right' },
-    { key: 'vat', label: uiCopy.manualBilling.pdfLineColVat, w: 12, align: 'right' },
+    { key: 'vat', label: uiCopy.manualBilling.pdfLineColVat, w: 20, align: 'right' },
     { key: 'amount', label: uiCopy.manualBilling.pdfLineColAmount, w: 22, align: 'right' },
   ];
 }

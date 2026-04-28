@@ -2529,7 +2529,7 @@ export const uiCopy = {
     subTabIncoming: 'Incoming',
     subTabSettlements: 'Model settlements',
     subTabPresets: 'Clients & presets',
-    subTabProfiles: 'Billing profiles',
+    subTabProfiles: 'Org profiles',
     subTabDefaults: 'Defaults',
 
     // Sub-tabs (Client view)
@@ -2764,6 +2764,21 @@ export const uiCopy = {
     step2PickClientProfile: 'Pick a client profile',
     step2PickModelProfile: 'Pick a model profile',
     step2NoProfileSelected: 'No profile selected.',
+    step2NoAgencyProfileFound:
+      'No agency billing profiles found. Add one in Manual invoices → Billing profiles first.',
+    step2CopyFromOrgProfile: 'Copy from Org profiles',
+    step2CopyFromOrgProfileImporting: 'Copying…',
+    step2CopyFromOrgProfileNoOrg:
+      'No Org profile found. Add one under Billing → Org profiles first.',
+    step2CopyFromOrgProfileNoName:
+      'Your Org profile has no billing name set. Fill in the billing name under Billing → Org profiles first.',
+    step2SearchPlaceholder: 'Search…',
+    step2SortLabel: 'Sort:',
+    step2SortAlpha: 'A–Z',
+    step2SortModified: 'Recently modified',
+    step2DefaultBadge: 'Default',
+    step2NoSearchResults: (term: string) => `No results for "${term}"`,
+    step2ShowingCount: (shown: number, total: number) => `Showing ${shown} of ${total}`,
     step2CreateProfileHint: 'Need a new profile? Cancel, open Billing profiles, then come back.',
 
     // Step 3 — metadata
@@ -2870,6 +2885,7 @@ export const uiCopy = {
     errorLineInvalidAmount: 'Each line item needs a unit price.',
     errorBuilderGenerationFailed: 'Could not generate the invoice. Please try again.',
     errorBuilderSaveFailed: 'Could not save the draft. Please try again.',
+    errorBuilderNoOrgContext: 'No organisation context found. Please sign in again.',
     errorLoadFailed: 'Could not load. Please try again.',
 
     // Direction-validation reasons (mapped from service)
