@@ -119,6 +119,124 @@ type Draft = {
 
 const TOTAL_STEPS = 6;
 
+/** Shown when a date field cannot be parsed before Save draft / persist. */
+const MANUAL_INVOICE_DATE_INVALID_MSG =
+  'Please enter the date in a valid format, e.g. 2026-05-22 or 22.05.2026.';
+
+function pad2(n: number): string {
+  return n >= 10 ? String(n) : `0${n}`;
+}
+
+function isValidYmd(y: number, m: number, d: number): boolean {
+  if (!Number.isFinite(y) || y < 1 || y > 9999) return false;
+  if (!Number.isFinite(m) || m < 1 || m > 12) return false;
+  if (!Number.isFinite(d) || d < 1 || d > 31) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
+/**
+ * Parses common typed dates to ISO YYYY-MM-DD for Postgres date columns.
+ * Supports YYYY-MM-DD, DD.MM.YYYY, DD/MM/YYYY (slash/dash), with ambiguous
+ * numeric segments resolved like DD/MM vs MM/DD (EU-first when both ≤ 12).
+ */
+function parseManualInvoiceDateToIso(raw: string): { ok: true; iso: string } | { ok: false } {
+  const s = raw.trim();
+  if (!s) return { ok: false };
+
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    if (isValidYmd(y, mo, d)) return { ok: true, iso: `${m[1]}-${m[2]}-${m[3]}` };
+    return { ok: false };
+  }
+
+  m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (m) {
+    const d = Number(m[1]);
+    const mo = Number(m[2]);
+    const y = Number(m[3]);
+    if (isValidYmd(y, mo, d)) return { ok: true, iso: `${y}-${pad2(mo)}-${pad2(d)}` };
+    return { ok: false };
+  }
+
+  m = s.match(/^(\d{1,2})([/.-])(\d{1,2})\2(\d{4})$/);
+  if (m) {
+    const a = Number(m[1]);
+    const b = Number(m[3]);
+    const y = Number(m[4]);
+    let day: number;
+    let month: number;
+    if (a > 12 && b <= 12) {
+      day = a;
+      month = b;
+    } else if (b > 12 && a <= 12) {
+      month = a;
+      day = b;
+    } else if (a <= 12 && b <= 12) {
+      day = a;
+      month = b;
+    } else {
+      return { ok: false };
+    }
+    if (isValidYmd(y, month, day)) return { ok: true, iso: `${y}-${pad2(month)}-${pad2(day)}` };
+    return { ok: false };
+  }
+
+  return { ok: false };
+}
+
+type NormalizedOptionalDate =
+  | { kind: 'empty' }
+  | { kind: 'iso'; value: string }
+  | { kind: 'invalid' };
+
+function normalizeOptionalManualInvoiceDateField(raw: string): NormalizedOptionalDate {
+  const t = raw.trim();
+  if (!t) return { kind: 'empty' };
+  const r = parseManualInvoiceDateToIso(t);
+  return r.ok ? { kind: 'iso', value: r.iso } : { kind: 'invalid' };
+}
+
+/**
+ * Builds header + lines with ISO dates only for Supabase. Empty optional fields → null.
+ * Any non-empty field that fails parsing yields invalid result (caller blocks save).
+ */
+function normalizeDraftForPersistence(
+  d: Draft,
+): { ok: true; header: ManualInvoiceHeaderInput; lines: DraftLine[] } | { ok: false } {
+  const issue = normalizeOptionalManualInvoiceDateField(d.issue_date);
+  if (issue.kind === 'invalid') return { ok: false };
+  const supply = normalizeOptionalManualInvoiceDateField(d.supply_date);
+  if (supply.kind === 'invalid') return { ok: false };
+  const due = normalizeOptionalManualInvoiceDateField(d.due_date);
+  if (due.kind === 'invalid') return { ok: false };
+
+  const lines: DraftLine[] = [];
+  for (const line of d.lines) {
+    const po = normalizeOptionalManualInvoiceDateField(line.performed_on ?? '');
+    if (po.kind === 'invalid') return { ok: false };
+    lines.push({
+      ...line,
+      performed_on: po.kind === 'empty' ? null : po.value,
+    });
+  }
+
+  const base = toHeaderInput(d);
+  return {
+    ok: true,
+    header: {
+      ...base,
+      issue_date: issue.kind === 'empty' ? null : issue.value,
+      supply_date: supply.kind === 'empty' ? null : supply.value,
+      due_date: due.kind === 'empty' ? null : due.value,
+    },
+    lines,
+  };
+}
+
 function newKey(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -380,18 +498,28 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
 
   // ── Persistence helpers ─────────────────────────────────────────────────
   const persistDraft = useCallback(
-    async (patch?: Partial<Draft>): Promise<{ ok: boolean; id?: string; reason?: string }> => {
+    async (
+      patch?: Partial<Draft>,
+    ): Promise<{ ok: boolean; id?: string; reason?: string; message?: string }> => {
       const merged: Draft = patch ? { ...draft, ...patch } : draft;
+      const normalized = normalizeDraftForPersistence(merged);
+      if (!normalized.ok) {
+        return {
+          ok: false,
+          reason: 'invalid_date',
+          message: MANUAL_INVOICE_DATE_INVALID_MSG,
+        };
+      }
       try {
         if (!merged.id) {
-          const res = await createManualInvoiceDraft(agencyOrganizationId, toHeaderInput(merged));
+          const res = await createManualInvoiceDraft(agencyOrganizationId, normalized.header);
           if (!res.ok || !res.id) return { ok: false, reason: res.reason };
           // Now upsert line items
-          if (merged.lines.length > 0) {
+          if (normalized.lines.length > 0) {
             const ok = await replaceManualInvoiceLineItems(
               agencyOrganizationId,
               res.id,
-              merged.lines.map((l, idx) => ({ ...l, position: idx })),
+              normalized.lines.map((l, idx) => ({ ...l, position: idx })),
             );
             if (!ok) return { ok: false, reason: 'line_items_failed' };
           }
@@ -403,13 +531,13 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
         const upd = await updateManualInvoiceHeader(
           agencyOrganizationId,
           merged.id,
-          toHeaderInput(merged),
+          normalized.header,
         );
         if (!upd.ok) return { ok: false, reason: upd.reason };
         const okLines = await replaceManualInvoiceLineItems(
           agencyOrganizationId,
           merged.id,
-          merged.lines.map((l, idx) => ({ ...l, position: idx })),
+          normalized.lines.map((l, idx) => ({ ...l, position: idx })),
         );
         if (!okLines) return { ok: false, reason: 'line_items_failed' };
         dirtyRef.current = false;
@@ -436,6 +564,10 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
     try {
       const res = await persistDraft();
       if (!res.ok) {
+        if (res.reason === 'invalid_date' && res.message) {
+          showAppAlert(res.message);
+          return;
+        }
         logManualBillingWarning('ManualInvoiceBuilderPanel:onSaveDraft', {
           reason: res.reason,
           step,
@@ -625,7 +757,11 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
           // Persist latest first
           const persisted = await persistDraft();
           if (!persisted.ok || !persisted.id) {
-            showAppAlert(c.errorBuilderSaveFailed);
+            showAppAlert(
+              persisted.reason === 'invalid_date' && persisted.message
+                ? persisted.message
+                : c.errorBuilderSaveFailed,
+            );
             return;
           }
           // Pre-flight: check number collision (we have it locally).

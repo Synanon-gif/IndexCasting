@@ -109,11 +109,83 @@ function joinNonEmpty(parts: Array<string | null | undefined>, sep: string): str
     .join(sep);
 }
 
+/** Aligns with ManualInvoiceBuilderPanel date parsing — preview never sends raw keys as VAT labels. */
+function pad2Pdf(n: number): string {
+  return n >= 10 ? String(n) : `0${n}`;
+}
+
+function isValidYmdPdf(y: number, m: number, d: number): boolean {
+  if (!Number.isFinite(y) || y < 1 || y > 9999) return false;
+  if (!Number.isFinite(m) || m < 1 || m > 12) return false;
+  if (!Number.isFinite(d) || d < 1 || d > 31) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
+/** Same rules as manual invoice persist (YYYY-MM-DD, DD.MM.YYYY, slash/dash). */
+function parseFlexibleDateToIsoForPdf(raw: string): string | null {
+  const s = raw.trim();
+  if (!s) return null;
+
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    if (isValidYmdPdf(y, mo, d)) return `${m[1]}-${m[2]}-${m[3]}`;
+    return null;
+  }
+
+  m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (m) {
+    const d = Number(m[1]);
+    const mo = Number(m[2]);
+    const y = Number(m[3]);
+    if (isValidYmdPdf(y, mo, d)) return `${y}-${pad2Pdf(mo)}-${pad2Pdf(d)}`;
+    return null;
+  }
+
+  m = s.match(/^(\d{1,2})([/.-])(\d{1,2})\2(\d{4})$/);
+  if (m) {
+    const a = Number(m[1]);
+    const b = Number(m[3]);
+    const y = Number(m[4]);
+    let day: number;
+    let month: number;
+    if (a > 12 && b <= 12) {
+      day = a;
+      month = b;
+    } else if (b > 12 && a <= 12) {
+      month = a;
+      day = b;
+    } else if (a <= 12 && b <= 12) {
+      day = a;
+      month = b;
+    } else {
+      return null;
+    }
+    if (isValidYmdPdf(y, month, day)) return `${y}-${pad2Pdf(month)}-${pad2Pdf(day)}`;
+    return null;
+  }
+
+  return null;
+}
+
 function formatDateOnly(iso: string | null | undefined): string {
   if (!iso) return '';
-  // We want "2026-04-24" — strip any time component, never localize.
-  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return m ? m[0] : safeText(iso);
+  const parsed = parseFlexibleDateToIsoForPdf(String(iso));
+  if (parsed) return parsed;
+  const head = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return head ? head[0] : safeText(iso);
+}
+
+/** Strip enum-style tax treatment tokens so raw keys never appear on PDF output. */
+function stripRawTaxTreatmentKeysForPdf(text: string): string {
+  let s = safeText(text);
+  for (const k of ['reverse_charge', 'zero_rated', 'domestic', 'exempt', 'out_of_scope']) {
+    s = s.replace(new RegExp(`\\b${k}\\b`, 'g'), '');
+  }
+  return s.replace(/\s{2,}/g, ' ').trim();
 }
 
 function partyLines(party: PartyLike | null): {
@@ -411,21 +483,22 @@ function drawTableRow(
 
   const date = formatDateOnly(line.performed_on as string | null | undefined);
   const desc = (() => {
-    const desc1 = safeText(line.description);
+    const desc1 = stripRawTaxTreatmentKeysForPdf(safeText(line.description));
     const meta = joinNonEmpty(
       [line.model_label as string | null | undefined, line.job_label as string | null | undefined],
       ' • ',
     );
-    const notes = safeText(line.notes as string | null | undefined);
+    const notes = stripRawTaxTreatmentKeysForPdf(safeText(line.notes as string | null | undefined));
     return [desc1, meta, notes].filter(Boolean).join('\n');
   })();
   const qty = String(line.quantity ?? 1);
   const unit = formatMoneyCents(line.unit_amount_cents ?? 0, currency);
   const vat = (() => {
-    const r = line.tax_rate_percent;
-    const t = safeText(line.tax_treatment as string | null | undefined);
-    if (r == null || !Number.isFinite(r)) return t || '—';
-    return `${r}%${t ? ` (${t})` : ''}`;
+    const raw = line.tax_rate_percent;
+    if (raw == null) return '—';
+    const rateNum = typeof raw === 'number' ? raw : parseFloat(String(raw).trim());
+    if (!Number.isFinite(rateNum)) return '—';
+    return `${rateNum}%`;
   })();
   const amount = formatMoneyCents(lineNet(line), currency);
 
@@ -524,16 +597,14 @@ function drawTotals(
     );
   }
   for (const v of totals.vat_breakdown) {
+    const vatOnlyLabel =
+      v.rate_percent != null && Number.isFinite(v.rate_percent)
+        ? `${uiCopy.manualBilling.pdfLineColVat} ${v.rate_percent}%`
+        : `${uiCopy.manualBilling.pdfLineColVat} —`;
     if (v.tax_cents === 0 && (v.rate_percent == null || v.rate_percent === 0)) {
-      row(
-        uiCopy.manualBilling.pdfTotalsVat(v.rate_percent, v.treatment),
-        formatMoneyCents(0, currency),
-      );
+      row(vatOnlyLabel, formatMoneyCents(0, currency));
     } else {
-      row(
-        uiCopy.manualBilling.pdfTotalsVat(v.rate_percent, v.treatment),
-        formatMoneyCents(v.tax_cents, currency),
-      );
+      row(vatOnlyLabel, formatMoneyCents(v.tax_cents, currency));
     }
   }
   if (totals.tax_total_cents > 0) {
@@ -575,8 +646,14 @@ function drawNotes(doc: JsPDFInstance, yIn: number, input: ManualInvoicePdfInput
     y += 2;
   }
 
-  block(uiCopy.manualBilling.pdfTaxNoteLabel, invoice.tax_note);
-  block(uiCopy.manualBilling.pdfNotesLabel, invoice.invoice_notes);
+  block(
+    uiCopy.manualBilling.pdfTaxNoteLabel,
+    stripRawTaxTreatmentKeysForPdf(invoice.tax_note ?? ''),
+  );
+  block(
+    uiCopy.manualBilling.pdfNotesLabel,
+    stripRawTaxTreatmentKeysForPdf(invoice.invoice_notes ?? ''),
+  );
 
   // Bank details: prefer invoice payment_instructions; otherwise derive from sender.
   const senderInfo = partyLines(sender);
@@ -585,9 +662,12 @@ function drawNotes(doc: JsPDFInstance, yIn: number, input: ManualInvoicePdfInput
     : senderInfo.bank.length > 0
       ? senderInfo.bank.join('\n')
       : '';
-  block(uiCopy.manualBilling.pdfPaymentInstructionsLabel, bankBlock);
+  block(
+    uiCopy.manualBilling.pdfPaymentInstructionsLabel,
+    stripRawTaxTreatmentKeysForPdf(bankBlock),
+  );
 
-  block('', invoice.footer_notes ?? null);
+  block('', stripRawTaxTreatmentKeysForPdf(invoice.footer_notes ?? ''));
   return y;
 }
 
