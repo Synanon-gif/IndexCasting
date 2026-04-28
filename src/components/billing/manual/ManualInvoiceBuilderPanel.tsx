@@ -44,7 +44,10 @@ import {
   listManualBillingCounterparties,
   getManualAgencyBillingProfile,
   getManualBillingCounterparty,
+  upsertManualAgencyBillingProfile,
 } from '../../../services/manualBillingProfilesSupabase';
+import { listOrganizationBillingProfiles } from '../../../services/billingProfilesSupabase';
+import type { ManualBillingAgencyProfileInput } from '../../../types/manualBillingTypes';
 import {
   createManualInvoiceDraft,
   generateManualInvoice,
@@ -377,42 +380,12 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
 
   // ── Persistence helpers ─────────────────────────────────────────────────
   const persistDraft = useCallback(
-    async (patch?: Partial<Draft>): Promise<{ ok: boolean; id?: string }> => {
+    async (patch?: Partial<Draft>): Promise<{ ok: boolean; id?: string; reason?: string }> => {
       const merged: Draft = patch ? { ...draft, ...patch } : draft;
-
-      const logPersistDraftFailure = (failingStep: string, detail: Record<string, unknown>) => {
-        console.error('[ManualInvoiceBuilder persistDraft]', {
-          step: failingStep,
-          wizardStep: step,
-          draftId: merged.id ?? null,
-          agencyOrganizationIdPresent:
-            typeof agencyOrganizationId === 'string' && agencyOrganizationId.trim().length > 0,
-          sender_agency_profile_id: merged.sender_agency_profile_id,
-          sender_counterparty_id: merged.sender_counterparty_id,
-          recipient_agency_profile_id: merged.recipient_agency_profile_id,
-          recipient_counterparty_id: merged.recipient_counterparty_id,
-          ...detail,
-        });
-      };
-
       try {
         if (!merged.id) {
           const res = await createManualInvoiceDraft(agencyOrganizationId, toHeaderInput(merged));
-          if (!res.ok || !res.id) {
-            logPersistDraftFailure('createManualInvoiceDraft', {
-              serviceReturned: {
-                ok: res.ok,
-                id: res.id,
-                reason: res.reason,
-                ...(res.reason == null
-                  ? {
-                      note: 'no_reason_from_service — assertOrgContext failure, or DB insert error without PostgREST reason (RLS/FK/constraint); validateDirectionParticipants failures include reason',
-                    }
-                  : {}),
-              },
-            });
-            return { ok: false };
-          }
+          if (!res.ok || !res.id) return { ok: false, reason: res.reason };
           // Now upsert line items
           if (merged.lines.length > 0) {
             const ok = await replaceManualInvoiceLineItems(
@@ -420,12 +393,7 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
               res.id,
               merged.lines.map((l, idx) => ({ ...l, position: idx })),
             );
-            if (!ok) {
-              logPersistDraftFailure('replaceManualInvoiceLineItems_afterCreate', {
-                serviceReturned: { ok: false, reason: 'replace_returned_false' },
-              });
-              return { ok: false };
-            }
+            if (!ok) return { ok: false, reason: 'line_items_failed' };
           }
           await refreshManualInvoiceAggregates(agencyOrganizationId, res.id);
           setDraft((prev) => ({ ...prev, id: res.id! }));
@@ -437,70 +405,118 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
           merged.id,
           toHeaderInput(merged),
         );
-        if (!upd.ok) {
-          logPersistDraftFailure('updateManualInvoiceHeader', {
-            serviceReturned: {
-              ok: false,
-              reason: upd.reason,
-              ...(upd.reason == null
-                ? {
-                    note: 'no_reason_from_service — likely DB update error or header merge/read failure',
-                  }
-                : {}),
-            },
-          });
-          return { ok: false };
-        }
+        if (!upd.ok) return { ok: false, reason: upd.reason };
         const okLines = await replaceManualInvoiceLineItems(
           agencyOrganizationId,
           merged.id,
           merged.lines.map((l, idx) => ({ ...l, position: idx })),
         );
-        if (!okLines) {
-          logPersistDraftFailure('replaceManualInvoiceLineItems_afterUpdate', {
-            serviceReturned: { ok: false, reason: 'replace_returned_false' },
-          });
-          return { ok: false };
-        }
+        if (!okLines) return { ok: false, reason: 'line_items_failed' };
         dirtyRef.current = false;
         return { ok: true, id: merged.id };
       } catch (e) {
-        logPersistDraftFailure('exception', {
-          serviceReturned: {
-            error: e instanceof Error ? e.message : String(e),
-            raw: e,
-          },
-        });
         logManualBillingWarning('ManualInvoiceBuilderPanel:persistDraft', e);
-        return { ok: false };
+        return { ok: false, reason: 'exception' };
       }
     },
-    [agencyOrganizationId, draft, step],
+    [agencyOrganizationId, draft],
   );
 
   const onSaveDraft = async () => {
+    if (!agencyOrganizationId || agencyOrganizationId.trim() === '') {
+      showAppAlert(c.errorBuilderNoOrgContext);
+      return;
+    }
+    const stepErr = validateStep(step);
+    if (stepErr) {
+      showAppAlert(stepErr);
+      return;
+    }
     setSaving(true);
     try {
       const res = await persistDraft();
       if (!res.ok) {
-        console.error('[ManualInvoiceBuilder onSaveDraft] persistDraft returned ok:false', {
-          step: 'after persistDraft',
-          wizardStep: step,
+        logManualBillingWarning('ManualInvoiceBuilderPanel:onSaveDraft', {
+          reason: res.reason,
+          step,
           draftId: draft.id,
-          agencyOrganizationIdPresent:
-            typeof agencyOrganizationId === 'string' && agencyOrganizationId.trim().length > 0,
-          sender_agency_profile_id: draft.sender_agency_profile_id,
-          sender_counterparty_id: draft.sender_counterparty_id,
-          recipient_agency_profile_id: draft.recipient_agency_profile_id,
-          recipient_counterparty_id: draft.recipient_counterparty_id,
-          note: 'Exact failing branch + serviceReturned are in the preceding [ManualInvoiceBuilder persistDraft] console.error',
         });
-        showAppAlert(c.errorBuilderSaveFailed);
+        // Map known direction-validation reason codes to specific copy.
+        // reasonToCopy falls back to errorBuilderGenerationFailed for unknown
+        // codes — that message is wrong for a save; use the save fallback instead.
+        const safeCopy = res.reason ? reasonToCopy(res.reason) : null;
+        showAppAlert(
+          safeCopy && safeCopy !== c.errorBuilderGenerationFailed
+            ? safeCopy
+            : c.errorBuilderSaveFailed,
+        );
       }
     } finally {
       setSaving(false);
     }
   };
+
+  // ── Import agency profile from Org profiles ────────────────────────────
+  const [importingOrgProfile, setImportingOrgProfile] = useState(false);
+
+  const onImportFromOrgProfile = useCallback(async () => {
+    setImportingOrgProfile(true);
+    try {
+      const orgProfiles = await listOrganizationBillingProfiles(agencyOrganizationId);
+      const src = orgProfiles.find((p) => p.is_default) ?? orgProfiles[0] ?? null;
+      if (!src) {
+        showAppAlert(c.step2CopyFromOrgProfileNoOrg);
+        return;
+      }
+      const legalName = (src.billing_name ?? src.label ?? '').trim();
+      if (!legalName) {
+        showAppAlert(c.step2CopyFromOrgProfileNoName);
+        return;
+      }
+      const input: ManualBillingAgencyProfileInput = {
+        legal_name: legalName,
+        address_line_1: src.billing_address_1 ?? null,
+        address_line_2: src.billing_address_2 ?? null,
+        city: src.billing_city ?? null,
+        postal_code: src.billing_postal_code ?? null,
+        state: src.billing_state ?? null,
+        // billing_country is intentionally NOT mapped — it may be free text
+        // ("Germany") while country_code expects a 2-letter ISO code ("DE").
+        email: src.billing_email ?? null,
+        vat_number: src.vat_id ?? null,
+        tax_number: src.tax_id ?? null,
+        iban: src.iban ?? null,
+        bic: src.bic ?? null,
+        bank_name: src.bank_name ?? null,
+        default_currency: 'EUR',
+        default_payment_terms_days: 14,
+        is_default: true,
+        is_archived: false,
+      };
+      const res = await upsertManualAgencyBillingProfile(agencyOrganizationId, input, null);
+      if (!res.ok) {
+        showAppAlert(c.saveFailedGeneric);
+        return;
+      }
+      const refreshed = await listManualAgencyBillingProfiles(agencyOrganizationId);
+      setAgencyProfiles(refreshed);
+      // Auto-select the newly created profile as sender
+      const created = res.id ? (refreshed.find((p) => p.id === res.id) ?? null) : null;
+      if (created) {
+        setDraftWithDirty((prev) => ({
+          ...prev,
+          sender_agency_profile_id: created.id,
+          currency: created.default_currency || 'EUR',
+          payment_terms_days: created.default_payment_terms_days || 14,
+        }));
+      }
+    } catch (e) {
+      logManualBillingWarning('ManualInvoiceBuilderPanel:onImportFromOrgProfile', e);
+      showAppAlert(c.saveFailedGeneric);
+    } finally {
+      setImportingOrgProfile(false);
+    }
+  }, [agencyOrganizationId, c, setDraftWithDirty]);
 
   // ── Number suggestion ──────────────────────────────────────────────────
   const onSuggestNumber = async () => {
@@ -757,6 +773,8 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
           clientProfiles={clientProfiles}
           modelProfiles={modelProfiles}
           onChange={setDraftWithDirty}
+          onImportFromOrgProfile={onImportFromOrgProfile}
+          importingOrgProfile={importingOrgProfile}
         />
       )}
       {step === 3 && (
@@ -884,9 +902,24 @@ const Step2Profiles: React.FC<{
   clientProfiles: ManualBillingCounterpartyRow[];
   modelProfiles: ManualBillingCounterpartyRow[];
   onChange: (updater: (prev: Draft) => Draft) => void;
-}> = ({ draft, disabled, agencyProfiles, clientProfiles, modelProfiles, onChange }) => {
+  onImportFromOrgProfile: () => void | Promise<void>;
+  importingOrgProfile: boolean;
+}> = ({
+  draft,
+  disabled,
+  agencyProfiles,
+  clientProfiles,
+  modelProfiles,
+  onChange,
+  onImportFromOrgProfile,
+  importingOrgProfile,
+}) => {
   const c = uiCopy.manualBilling;
-  // Determine which side picks what
+  // Search state lives here — NOT inside PartyPicker — to survive parent re-renders.
+  const [senderSearch, setSenderSearch] = useState('');
+  const [recipientSearch, setRecipientSearch] = useState('');
+  const [sortMode, setSortMode] = useState<'alpha' | 'modified'>('alpha');
+
   const senderKind: 'agency' | 'client' | 'model' =
     draft.direction === 'model_to_agency' ? 'model' : 'agency';
   const recipientKind: 'agency' | 'client' | 'model' =
@@ -901,11 +934,17 @@ const Step2Profiles: React.FC<{
     kind,
     value,
     onPick,
+    required,
+    search,
+    onSearchChange,
   }: {
     label: string;
     kind: 'agency' | 'client' | 'model';
     value: string | null;
     onPick: (id: string | null) => void;
+    required?: boolean;
+    search: string;
+    onSearchChange: (v: string) => void;
   }) {
     const list =
       kind === 'agency' ? agencyProfiles : kind === 'client' ? clientProfiles : modelProfiles;
@@ -915,28 +954,156 @@ const Step2Profiles: React.FC<{
         : kind === 'client'
           ? c.step2PickClientProfile
           : c.step2PickModelProfile;
+    const isMissing = required && value == null && list.length > 0;
+    const term = search.trim().toLowerCase();
+
+    const filtered = term
+      ? list.filter((p) => {
+          if (p.legal_name.toLowerCase().includes(term)) return true;
+          if ((p.city ?? '').toLowerCase().includes(term)) return true;
+          if ((p.vat_number ?? '').toLowerCase().includes(term)) return true;
+          if (kind === 'agency') {
+            const ap = p as ManualBillingAgencyProfileRow;
+            return (ap.trading_name ?? '').toLowerCase().includes(term);
+          }
+          const cp = p as ManualBillingCounterpartyRow;
+          return (
+            (cp.display_name ?? '').toLowerCase().includes(term) ||
+            (cp.contact_person ?? '').toLowerCase().includes(term) ||
+            (cp.billing_email ?? '').toLowerCase().includes(term)
+          );
+        })
+      : list;
+
+    // ISO 8601 strings sort correctly as plain strings.
+    const sorted =
+      sortMode === 'modified'
+        ? [...filtered].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+        : filtered;
+
     return (
-      <View style={s.pickerBlock}>
-        <Text style={s.fieldLabel}>{label}</Text>
-        <View style={s.pillRow}>
-          {list.length === 0 && <Text style={s.emptyText}>{c.step2NoProfileSelected}</Text>}
-          {list.map((p) => {
-            const active = value === p.id;
-            return (
+      <View
+        style={[
+          s.pickerBlock,
+          isMissing && {
+            borderWidth: 1,
+            borderColor: colors.errorDark,
+            borderRadius: 8,
+            padding: 8,
+          },
+        ]}
+      >
+        <Text style={[s.fieldLabel, isMissing && { color: colors.errorDark }]}>{label}</Text>
+
+        {list.length > 0 && (
+          <TextInput
+            style={s.pickerSearchInput}
+            value={search}
+            onChangeText={onSearchChange}
+            placeholder={c.step2SearchPlaceholder}
+            placeholderTextColor={colors.textSecondary}
+            autoCorrect={false}
+            autoCapitalize="none"
+            editable={!disabled}
+          />
+        )}
+
+        {list.length === 0 ? (
+          <View style={s.pickerEmptyBlock}>
+            <Text style={s.emptyText}>
+              {kind === 'agency' ? c.step2NoAgencyProfileFound : c.step2NoProfileSelected}
+            </Text>
+            {kind === 'agency' && !disabled && (
               <TouchableOpacity
-                key={p.id}
-                disabled={disabled}
-                onPress={() => onPick(active ? null : p.id)}
-                style={[s.optionPill, active && s.optionPillActive, disabled && { opacity: 0.5 }]}
+                onPress={() => void onImportFromOrgProfile()}
+                disabled={importingOrgProfile}
+                style={[
+                  s.secondaryBtn,
+                  { marginTop: spacing.xs },
+                  importingOrgProfile && { opacity: 0.5 },
+                ]}
               >
-                <Text style={[s.optionPillText, active && s.optionPillTextActive]}>
-                  {p.legal_name}
+                <Text style={s.secondaryBtnText}>
+                  {importingOrgProfile
+                    ? c.step2CopyFromOrgProfileImporting
+                    : c.step2CopyFromOrgProfile}
                 </Text>
               </TouchableOpacity>
-            );
-          })}
-        </View>
-        {value == null && <Text style={s.fieldHint}>{placeholder}</Text>}
+            )}
+          </View>
+        ) : (
+          <>
+            {term.length > 0 && (
+              <Text style={s.pickerCount}>{c.step2ShowingCount(filtered.length, list.length)}</Text>
+            )}
+            {sorted.length === 0 ? (
+              <Text style={s.emptyText}>{c.step2NoSearchResults(search.trim())}</Text>
+            ) : (
+              sorted.map((p) => {
+                const active = value === p.id;
+                const isAgencyKind = kind === 'agency';
+                const ap = isAgencyKind ? (p as ManualBillingAgencyProfileRow) : null;
+                const cp = isAgencyKind ? null : (p as ManualBillingCounterpartyRow);
+
+                const metaParts: string[] = [];
+                if (ap) {
+                  if (ap.trading_name) metaParts.push(ap.trading_name);
+                } else if (cp) {
+                  if (cp.display_name && cp.display_name !== cp.legal_name)
+                    metaParts.push(cp.display_name);
+                  if (cp.contact_person) metaParts.push(cp.contact_person);
+                }
+                if (p.city) metaParts.push(p.city);
+                if (p.country_code) metaParts.push(p.country_code);
+                if (p.vat_number) metaParts.push(p.vat_number);
+                if (ap) metaParts.push(ap.default_currency);
+
+                return (
+                  <TouchableOpacity
+                    key={p.id}
+                    disabled={disabled}
+                    onPress={() => onPick(active ? null : p.id)}
+                    style={[
+                      s.profileRow,
+                      active && s.profileRowActive,
+                      disabled && { opacity: 0.5 },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <Text style={[s.profileRowName, active && s.profileRowNameActive]}>
+                        {p.legal_name}
+                      </Text>
+                      {ap?.is_default && (
+                        <View style={s.profileDefaultBadge}>
+                          <Text style={s.profileDefaultBadgeText}>{c.step2DefaultBadge}</Text>
+                        </View>
+                      )}
+                    </View>
+                    {metaParts.length > 0 && (
+                      <Text
+                        style={[s.profileRowMeta, active && { color: 'rgba(255,255,255,0.75)' }]}
+                        numberOfLines={1}
+                      >
+                        {metaParts.join(' · ')}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </>
+        )}
+
+        {value == null && list.length > 0 && <Text style={s.fieldHint}>{placeholder}</Text>}
         <Text style={s.fieldHint}>{c.step2CreateProfileHint}</Text>
       </View>
     );
@@ -947,9 +1114,31 @@ const Step2Profiles: React.FC<{
       <Text style={s.stepTitle}>{c.step2Title}</Text>
       <Text style={s.stepSubtitle}>{c.step2Subtitle}</Text>
 
+      {/* Sort mode toggle — shared across both pickers */}
+      <View style={s.sortBar}>
+        <Text style={s.fieldHint}>{c.step2SortLabel}</Text>
+        {(['alpha', 'modified'] as const).map((mode) => {
+          const active = sortMode === mode;
+          return (
+            <TouchableOpacity
+              key={mode}
+              onPress={() => setSortMode(mode)}
+              style={[s.sortPill, active && s.sortPillActive]}
+            >
+              <Text style={[s.sortPillText, active && s.sortPillTextActive]}>
+                {mode === 'alpha' ? c.step2SortAlpha : c.step2SortModified}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       <PartyPicker
         label={c.step2SenderLabel}
         kind={senderKind}
+        required
+        search={senderSearch}
+        onSearchChange={setSenderSearch}
         value={
           senderKind === 'agency' ? draft.sender_agency_profile_id : draft.sender_counterparty_id
         }
@@ -964,6 +1153,9 @@ const Step2Profiles: React.FC<{
       <PartyPicker
         label={c.step2RecipientLabel}
         kind={recipientKind}
+        required
+        search={recipientSearch}
+        onSearchChange={setRecipientSearch}
         value={
           recipientKind === 'agency'
             ? draft.recipient_agency_profile_id
@@ -1769,6 +1961,90 @@ const s = StyleSheet.create({
   choiceHintActive: { color: colors.textSecondary },
 
   pickerBlock: { marginBottom: spacing.md },
+  pickerSearchInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    backgroundColor: colors.background,
+    color: colors.textPrimary,
+    ...typography.body,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  pickerEmptyBlock: {
+    paddingVertical: spacing.xs,
+  },
+  pickerCount: {
+    ...typography.label,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  sortBar: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+    marginBottom: spacing.sm,
+  },
+  sortPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  sortPillActive: {
+    backgroundColor: colors.textPrimary,
+    borderColor: colors.textPrimary,
+  },
+  sortPillText: {
+    ...typography.label,
+    color: colors.textPrimary,
+  },
+  sortPillTextActive: {
+    color: colors.background,
+    fontWeight: '600' as const,
+  },
+  profileRow: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginBottom: 4,
+    backgroundColor: colors.background,
+  },
+  profileRowActive: {
+    backgroundColor: colors.textPrimary,
+    borderColor: colors.textPrimary,
+  },
+  profileRowName: {
+    ...typography.body,
+    fontWeight: '500' as const,
+    color: colors.textPrimary,
+  },
+  profileRowNameActive: {
+    color: colors.background,
+    fontWeight: '600' as const,
+  },
+  profileRowMeta: {
+    ...typography.label,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  profileDefaultBadge: {
+    backgroundColor: colors.border,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  profileDefaultBadgeText: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.textSecondary,
+  },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   optionPill: {
     paddingHorizontal: spacing.sm,
