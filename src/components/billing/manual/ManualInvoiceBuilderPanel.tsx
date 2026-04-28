@@ -400,7 +400,16 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
           const res = await createManualInvoiceDraft(agencyOrganizationId, toHeaderInput(merged));
           if (!res.ok || !res.id) {
             logPersistDraftFailure('createManualInvoiceDraft', {
-              serviceReturned: { ok: res.ok, id: res.id, reason: res.reason },
+              serviceReturned: {
+                ok: res.ok,
+                id: res.id,
+                reason: res.reason,
+                ...(res.reason == null
+                  ? {
+                      note: 'no_reason_from_service — assertOrgContext failure, or DB insert error without PostgREST reason (RLS/FK/constraint); validateDirectionParticipants failures include reason',
+                    }
+                  : {}),
+              },
             });
             return { ok: false };
           }
@@ -430,7 +439,15 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
         );
         if (!upd.ok) {
           logPersistDraftFailure('updateManualInvoiceHeader', {
-            serviceReturned: { ok: false, reason: upd.reason },
+            serviceReturned: {
+              ok: false,
+              reason: upd.reason,
+              ...(upd.reason == null
+                ? {
+                    note: 'no_reason_from_service — likely DB update error or header merge/read failure',
+                  }
+                : {}),
+            },
           });
           return { ok: false };
         }
@@ -467,8 +484,16 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
       const res = await persistDraft();
       if (!res.ok) {
         console.error('[ManualInvoiceBuilder onSaveDraft] persistDraft returned ok:false', {
+          step: 'after persistDraft',
           wizardStep: step,
           draftId: draft.id,
+          agencyOrganizationIdPresent:
+            typeof agencyOrganizationId === 'string' && agencyOrganizationId.trim().length > 0,
+          sender_agency_profile_id: draft.sender_agency_profile_id,
+          sender_counterparty_id: draft.sender_counterparty_id,
+          recipient_agency_profile_id: draft.recipient_agency_profile_id,
+          recipient_counterparty_id: draft.recipient_counterparty_id,
+          note: 'Exact failing branch + serviceReturned are in the preceding [ManualInvoiceBuilder persistDraft] console.error',
         });
         showAppAlert(c.errorBuilderSaveFailed);
       }

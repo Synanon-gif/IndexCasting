@@ -422,9 +422,11 @@ function drawTableRow(
   const qty = String(line.quantity ?? 1);
   const unit = formatMoneyCents(line.unit_amount_cents ?? 0, currency);
   const vat = (() => {
-    const r = line.tax_rate_percent;
-    if (r == null || !Number.isFinite(r)) return '—';
-    return `${r}%`;
+    const raw = line.tax_rate_percent;
+    if (raw == null) return '—';
+    const rateNum = typeof raw === 'number' ? raw : parseFloat(String(raw).trim());
+    if (!Number.isFinite(rateNum)) return '—';
+    return `${rateNum}%`;
   })();
   const amount = formatMoneyCents(lineNet(line), currency);
 
@@ -523,16 +525,14 @@ function drawTotals(
     );
   }
   for (const v of totals.vat_breakdown) {
+    const vatLabel =
+      v.rate_percent != null && Number.isFinite(v.rate_percent)
+        ? `${uiCopy.manualBilling.pdfLineColVat} ${v.rate_percent}%`
+        : `${uiCopy.manualBilling.pdfLineColVat} —`;
     if (v.tax_cents === 0 && (v.rate_percent == null || v.rate_percent === 0)) {
-      row(
-        uiCopy.manualBilling.pdfTotalsVat(v.rate_percent, v.treatment),
-        formatMoneyCents(0, currency),
-      );
+      row(vatLabel, formatMoneyCents(0, currency));
     } else {
-      row(
-        uiCopy.manualBilling.pdfTotalsVat(v.rate_percent, v.treatment),
-        formatMoneyCents(v.tax_cents, currency),
-      );
+      row(vatLabel, formatMoneyCents(v.tax_cents, currency));
     }
   }
   if (totals.tax_total_cents > 0) {
