@@ -1057,7 +1057,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 
   const modelEventsByDate = useMemo(
     () => buildEventsByDateFromModelEntries(calEntries, getOptionForModelCalendar),
-    [calEntries, getOptionForModelCalendar, options],
+    [calEntries, getOptionForModelCalendar],
   );
 
   const focusDateModel = selectedDate ?? todayYmd();
@@ -1065,11 +1065,11 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const modelWeekDates = useMemo(() => weekDayDates(modelWeekStart), [modelWeekStart]);
   const modelWeekEvents = useMemo(
     () => filterModelScheduleBlocksForWeek(calEntries, modelWeekDates, getOptionForModelCalendar),
-    [calEntries, modelWeekDates, getOptionForModelCalendar, options],
+    [calEntries, modelWeekDates, getOptionForModelCalendar],
   );
   const modelDayEvents = useMemo(
     () => filterModelScheduleBlocksForDate(calEntries, focusDateModel, getOptionForModelCalendar),
-    [calEntries, focusDateModel, getOptionForModelCalendar, options],
+    [calEntries, focusDateModel, getOptionForModelCalendar],
   );
 
   const modelWeekRangeLabel = useMemo(() => {

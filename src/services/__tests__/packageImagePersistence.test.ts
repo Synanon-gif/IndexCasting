@@ -317,7 +317,7 @@ describe('persistImagesForPackageImport — bounded-parallel downloads', () => {
     // Track concurrency: count active downloads while the artificial wait runs.
     let active = 0;
     let peak = 0;
-    const fetchImpl = jest.fn(async (url: string) => {
+    const fetchImpl = jest.fn(async (_url: string) => {
       active++;
       peak = Math.max(peak, active);
       // Yield to the event loop so other workers can also enter.
