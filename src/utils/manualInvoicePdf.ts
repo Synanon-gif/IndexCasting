@@ -423,9 +423,8 @@ function drawTableRow(
   const unit = formatMoneyCents(line.unit_amount_cents ?? 0, currency);
   const vat = (() => {
     const r = line.tax_rate_percent;
-    const t = safeText(line.tax_treatment as string | null | undefined);
-    if (r == null || !Number.isFinite(r)) return t || '—';
-    return `${r}%${t ? ` (${t})` : ''}`;
+    if (r == null || !Number.isFinite(r)) return '—';
+    return `${r}%`;
   })();
   const amount = formatMoneyCents(lineNet(line), currency);
 

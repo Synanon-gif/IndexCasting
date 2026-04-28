@@ -379,10 +379,31 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
   const persistDraft = useCallback(
     async (patch?: Partial<Draft>): Promise<{ ok: boolean; id?: string }> => {
       const merged: Draft = patch ? { ...draft, ...patch } : draft;
+
+      const logPersistDraftFailure = (failingStep: string, detail: Record<string, unknown>) => {
+        console.error('[ManualInvoiceBuilder persistDraft]', {
+          step: failingStep,
+          wizardStep: step,
+          draftId: merged.id ?? null,
+          agencyOrganizationIdPresent:
+            typeof agencyOrganizationId === 'string' && agencyOrganizationId.trim().length > 0,
+          sender_agency_profile_id: merged.sender_agency_profile_id,
+          sender_counterparty_id: merged.sender_counterparty_id,
+          recipient_agency_profile_id: merged.recipient_agency_profile_id,
+          recipient_counterparty_id: merged.recipient_counterparty_id,
+          ...detail,
+        });
+      };
+
       try {
         if (!merged.id) {
           const res = await createManualInvoiceDraft(agencyOrganizationId, toHeaderInput(merged));
-          if (!res.ok || !res.id) return { ok: false };
+          if (!res.ok || !res.id) {
+            logPersistDraftFailure('createManualInvoiceDraft', {
+              serviceReturned: { ok: res.ok, id: res.id, reason: res.reason },
+            });
+            return { ok: false };
+          }
           // Now upsert line items
           if (merged.lines.length > 0) {
             const ok = await replaceManualInvoiceLineItems(
@@ -390,7 +411,12 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
               res.id,
               merged.lines.map((l, idx) => ({ ...l, position: idx })),
             );
-            if (!ok) return { ok: false };
+            if (!ok) {
+              logPersistDraftFailure('replaceManualInvoiceLineItems_afterCreate', {
+                serviceReturned: { ok: false, reason: 'replace_returned_false' },
+              });
+              return { ok: false };
+            }
           }
           await refreshManualInvoiceAggregates(agencyOrganizationId, res.id);
           setDraft((prev) => ({ ...prev, id: res.id! }));
@@ -402,28 +428,50 @@ export const ManualInvoiceBuilderPanel: React.FC<Props> = ({
           merged.id,
           toHeaderInput(merged),
         );
-        if (!upd.ok) return { ok: false };
+        if (!upd.ok) {
+          logPersistDraftFailure('updateManualInvoiceHeader', {
+            serviceReturned: { ok: false, reason: upd.reason },
+          });
+          return { ok: false };
+        }
         const okLines = await replaceManualInvoiceLineItems(
           agencyOrganizationId,
           merged.id,
           merged.lines.map((l, idx) => ({ ...l, position: idx })),
         );
-        if (!okLines) return { ok: false };
+        if (!okLines) {
+          logPersistDraftFailure('replaceManualInvoiceLineItems_afterUpdate', {
+            serviceReturned: { ok: false, reason: 'replace_returned_false' },
+          });
+          return { ok: false };
+        }
         dirtyRef.current = false;
         return { ok: true, id: merged.id };
       } catch (e) {
+        logPersistDraftFailure('exception', {
+          serviceReturned: {
+            error: e instanceof Error ? e.message : String(e),
+            raw: e,
+          },
+        });
         logManualBillingWarning('ManualInvoiceBuilderPanel:persistDraft', e);
         return { ok: false };
       }
     },
-    [agencyOrganizationId, draft],
+    [agencyOrganizationId, draft, step],
   );
 
   const onSaveDraft = async () => {
     setSaving(true);
     try {
       const res = await persistDraft();
-      if (!res.ok) showAppAlert(c.errorBuilderSaveFailed);
+      if (!res.ok) {
+        console.error('[ManualInvoiceBuilder onSaveDraft] persistDraft returned ok:false', {
+          wizardStep: step,
+          draftId: draft.id,
+        });
+        showAppAlert(c.errorBuilderSaveFailed);
+      }
     } finally {
       setSaving(false);
     }
