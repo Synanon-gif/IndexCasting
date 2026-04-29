@@ -1,6 +1,8 @@
 import { readFileSync } from 'fs';
 import * as path from 'path';
 import {
+  AI_ASSISTANT_CONTEXT_CLARIFICATION,
+  AI_ASSISTANT_CONTEXT_TTL_MS,
   buildAssistantContext,
   buildCalendarItemDetailsFacts,
   buildCalendarFacts,
@@ -18,6 +20,7 @@ import {
   MAX_MODEL_SEARCH_CHARS,
   MODEL_CLARIFICATION_ANSWER,
   MODEL_INFO_CLARIFICATION_PREFIX,
+  isAssistantContextValid,
   resolveCalendarDetailDateRange,
   resolveCalendarItemDetailsAnswerFromContext,
   resolveCalendarItemDetailsAnswer,
@@ -580,24 +583,50 @@ describe('AI Assistant Phase 2 calendar item details', () => {
   });
 
   it('answers follow-up client/model/time questions from safe last-calendar context', () => {
+    const createdAt = new Date('2026-04-29T12:00:00.000Z');
     const context = buildAssistantContext({
       lastCalendarItem: safeJobRow,
       lastIntent: 'calendar_item_details',
+      createdAt,
     });
 
-    expect(resolveCalendarItemDetailsAnswerFromContext(context, 'counterparty')).toBe(
+    expect(isAssistantContextValid(context, createdAt)).toBe(true);
+    expect(resolveCalendarItemDetailsAnswerFromContext(context, 'counterparty', createdAt)).toBe(
       'The visible counterparty is Acme Client.',
     );
-    expect(resolveCalendarItemDetailsAnswerFromContext(context, 'model')).toBe(
+    expect(resolveCalendarItemDetailsAnswerFromContext(context, 'model', createdAt)).toBe(
       'The visible model is Rémi Lovisolo.',
     );
-    expect(resolveCalendarItemDetailsAnswerFromContext(context, 'date')).toBe(
+    expect(resolveCalendarItemDetailsAnswerFromContext(context, 'date', createdAt)).toBe(
       'It is on 2026-04-28, 10:00–14:00.',
     );
   });
 
   it('does not answer calendar follow-ups without context', () => {
     expect(resolveCalendarItemDetailsAnswerFromContext(null, 'counterparty')).toBeNull();
+    expect(AI_ASSISTANT_CONTEXT_CLARIFICATION).toBe(
+      'Which calendar item do you mean? Please tell me the item or date.',
+    );
+  });
+
+  it('does not answer stale or non-single-source calendar follow-ups from context', () => {
+    const createdAt = new Date('2026-04-29T12:00:00.000Z');
+    const context = buildAssistantContext({
+      lastCalendarItem: safeJobRow,
+      lastIntent: 'calendar_item_details',
+      createdAt,
+    });
+    const expiredNow = new Date(createdAt.getTime() + AI_ASSISTANT_CONTEXT_TTL_MS + 1);
+    const missingSource = { ...context, last_calendar_item_source: null };
+
+    expect(isAssistantContextValid(context, expiredNow)).toBe(false);
+    expect(
+      resolveCalendarItemDetailsAnswerFromContext(context, 'counterparty', expiredNow),
+    ).toBeNull();
+    expect(isAssistantContextValid(missingSource, createdAt)).toBe(false);
+    expect(
+      resolveCalendarItemDetailsAnswerFromContext(missingSource, 'counterparty', createdAt),
+    ).toBeNull();
   });
 
   it('keeps context minimized and excludes forbidden fields', () => {
@@ -619,8 +648,12 @@ describe('AI Assistant Phase 2 calendar item details', () => {
         status_label: 'Job confirmed',
         note: 'Visible shoot description',
       },
+      last_calendar_item_source: 'single_resolved_item',
       last_model_name: 'Rémi Lovisolo',
+      last_model_source: 'single_model_match',
       last_intent: 'calendar_item_details',
+      context_created_at: expect.any(String),
+      context_expires_at: expect.any(String),
     });
     expect(JSON.stringify(context)).not.toMatch(
       /hidden-id|hidden@example\.com|\+491234|proposed_price|agency_counter_price|client_price_status|model_approval|waiting_for|select \*|option_requests|calendar_entries|file\.pdf|raw message/i,
@@ -836,6 +869,13 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     ),
     'utf8',
   );
+  const bestRankMigration = readFileSync(
+    path.join(
+      process.cwd(),
+      'supabase/migrations/20261218_ai_assistant_best_rank_model_matching.sql',
+    ),
+    'utf8',
+  );
 
   it('defines the model facts RPC with row_security off and explicit Agency scope guards', () => {
     expect(migration).toMatch(/SECURITY DEFINER/i);
@@ -898,6 +938,24 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     );
   });
 
+  it('keeps fuzzy model matching best-rank-only with an explicit threshold', () => {
+    expect(bestRankMigration).toMatch(/v_similarity_threshold numeric := 0\.40/i);
+    expect(bestRankMigration).toMatch(/best_rank AS/i);
+    expect(bestRankMigration).toMatch(/JOIN best_rank br ON br\.rank = rm\.match_rank/i);
+    expect(bestRankMigration).toMatch(/length\(v_search_folded\) >= 3/i);
+    expect(bestRankMigration).toMatch(
+      /similarity\(vm\.scoped_display_name_folded, v_search_folded\) >= v_similarity_threshold/i,
+    );
+    expect(bestRankMigration).toMatch(/mat\.agency_id = v_agency_id/i);
+    expect(bestRankMigration.indexOf('WHERE mat.agency_id = v_agency_id')).toBeLessThan(
+      bestRankMigration.indexOf('ranked_matches AS'),
+    );
+    expect(bestRankMigration).toMatch(/RAISE LOG 'ai_assistant_model_matching_threshold/);
+    expect(bestRankMigration).not.toMatch(
+      /\bm\.(email|phone)|proposed_price|agency_counter_price|client_price_status|waiting_for|model_approval|file_url|message_text/i,
+    );
+  });
+
   it('folds model search text after lowercasing so uppercase accents match unaccented input', () => {
     expect(accentFoldMigration).toMatch(
       /CREATE OR REPLACE FUNCTION public\.ai_assistant_fold_search_text/i,
@@ -914,6 +972,8 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     expect(edge).toMatch(/facts\.matchStatus !== 'found'/);
     expect(edge).toMatch(/lastCalendarItem: facts\.item/);
     expect(edge).toMatch(/calendarContextFromDetails\(result\.facts\)/);
+    expect(edge).toMatch(/isAssistantContextValid\(context\)/);
+    expect(edge).toMatch(/AI_ASSISTANT_CONTEXT_CLARIFICATION/);
     expect(edge).not.toMatch(
       /proposed_price|agency_counter_price|client_price_status|model_approval|waiting_for/i,
     );
@@ -924,6 +984,7 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     expect(contextIndex).toBeGreaterThan(-1);
     expect(contextIndex).toBeLessThan(edge.indexOf('loadCalendarItemDetails({'));
     expect(edge).toMatch(/resolveRequestAssistantContext\(payload\)/);
+    expect(edge).toMatch(/return await answerWithUsage\(AI_ASSISTANT_CONTEXT_CLARIFICATION\)/);
     expect(edge).not.toMatch(/payload\.context.*organization_id|payload\.context.*id/i);
   });
 

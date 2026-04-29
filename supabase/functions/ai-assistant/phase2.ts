@@ -89,11 +89,15 @@ export type CalendarItemReference = {
 
 export type AiAssistantContext = {
   last_calendar_item?: CalendarItemReference | null;
+  last_calendar_item_source?: 'single_resolved_item' | null;
   last_model_name?: string | null;
+  last_model_source?: 'single_model_match' | null;
   last_intent?: Extract<
     AssistantIntent,
     'help_static' | 'calendar_summary' | 'calendar_item_details' | 'model_visible_profile_facts'
   > | null;
+  context_created_at?: string | null;
+  context_expires_at?: string | null;
 };
 
 export type CalendarItemDetailsFacts = {
@@ -192,6 +196,9 @@ export const MAX_CALENDAR_DETAIL_LOOKBACK_DAYS = 90;
 export const MAX_CALENDAR_RESULTS = 25;
 export const MAX_MODEL_FACT_CANDIDATES = 5;
 export const MAX_MODEL_SEARCH_CHARS = 80;
+export const AI_ASSISTANT_CONTEXT_TTL_MS = 10 * 60 * 1000;
+export const AI_ASSISTANT_CONTEXT_CLARIFICATION =
+  'Which calendar item do you mean? Please tell me the item or date.';
 export const CALENDAR_DETAIL_PRICING_REFUSAL =
   'I can’t answer pricing questions in the assistant yet. Please open the item directly in IndexCasting.';
 export const CALENDAR_DETAIL_AMBIGUOUS_ANSWER =
@@ -770,6 +777,8 @@ export function buildAssistantContext(input: {
   lastCalendarItem?: CalendarSummaryItem | CalendarItemReference | null;
   lastModelName?: string | null;
   lastIntent?: AiAssistantContext['last_intent'];
+  createdAt?: Date;
+  expiresAt?: Date;
 }): AiAssistantContext {
   const context: AiAssistantContext = {};
   if (input.lastCalendarItem) {
@@ -789,10 +798,14 @@ export function buildAssistantContext(input: {
         status_label: cleanString(item.status_label, 80),
         note: cleanString(item.note, 200),
       };
+      context.last_calendar_item_source = 'single_resolved_item';
     }
   }
   const modelName = cleanString(input.lastModelName, 120);
-  if (modelName) context.last_model_name = modelName;
+  if (modelName) {
+    context.last_model_name = modelName;
+    context.last_model_source = 'single_model_match';
+  }
   if (
     input.lastIntent === 'help_static' ||
     input.lastIntent === 'calendar_summary' ||
@@ -801,14 +814,45 @@ export function buildAssistantContext(input: {
   ) {
     context.last_intent = input.lastIntent;
   }
+  if (context.last_calendar_item || context.last_model_name) {
+    const createdAt = input.createdAt ?? new Date();
+    const expiresAt =
+      input.expiresAt ?? new Date(createdAt.getTime() + AI_ASSISTANT_CONTEXT_TTL_MS);
+    context.context_created_at = createdAt.toISOString();
+    context.context_expires_at = expiresAt.toISOString();
+  }
   return context;
+}
+
+export function isAssistantContextValid(context: AiAssistantContext | null, now = new Date()): boolean {
+  if (!context) return false;
+  const hasCalendarItem =
+    Boolean(context.last_calendar_item) &&
+    context.last_calendar_item_source === 'single_resolved_item';
+  const hasModelName =
+    Boolean(context.last_model_name) && context.last_model_source === 'single_model_match';
+  if (!hasCalendarItem && !hasModelName) return false;
+
+  if (typeof context.context_created_at !== 'string' || typeof context.context_expires_at !== 'string') {
+    return false;
+  }
+  const createdAt = Date.parse(context.context_created_at);
+  const expiresAt = Date.parse(context.context_expires_at);
+  const nowMs = now.getTime();
+  if (!Number.isFinite(createdAt) || !Number.isFinite(expiresAt)) return false;
+  if (createdAt > nowMs + 30_000) return false;
+  if (expiresAt <= nowMs) return false;
+  if (expiresAt - createdAt > AI_ASSISTANT_CONTEXT_TTL_MS + 30_000) return false;
+  return true;
 }
 
 export function resolveCalendarItemDetailsAnswerFromContext(
   context: AiAssistantContext | null,
   requestedField: CalendarDetailRequestedField,
+  now = new Date(),
 ): string | null {
   if (requestedField === 'pricing') return CALENDAR_DETAIL_PRICING_REFUSAL;
+  if (!isAssistantContextValid(context, now)) return null;
   const item = context?.last_calendar_item;
   if (!item) return null;
   return resolveCalendarItemDetailsAnswer({

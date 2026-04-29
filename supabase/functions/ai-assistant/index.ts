@@ -14,6 +14,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   AI_ASSISTANT_LIMIT_REACHED_ANSWER,
   AI_ASSISTANT_UNAVAILABLE_ANSWER,
+  AI_ASSISTANT_CONTEXT_CLARIFICATION,
   buildAssistantContext,
   buildCalendarItemDetailsFacts,
   buildCalendarFacts,
@@ -33,6 +34,7 @@ import {
   resolveCalendarItemDetailsAnswer,
   resolveCalendarItemDetailsAnswerFromContext,
   resolveModelFactsExecutionResult,
+  isAssistantContextValid,
   type AiAssistantContext,
   type AssistantIntent,
   type CalendarFacts,
@@ -273,6 +275,22 @@ function normalizeAssistantContext(raw: unknown): AiAssistantContext | null {
     record.last_intent === 'model_visible_profile_facts'
       ? record.last_intent
       : null;
+  const createdAt =
+    typeof record.context_created_at === 'string'
+      ? new Date(record.context_created_at)
+      : null;
+  const expiresAt =
+    typeof record.context_expires_at === 'string'
+      ? new Date(record.context_expires_at)
+      : null;
+  if (
+    !createdAt ||
+    !expiresAt ||
+    !Number.isFinite(createdAt.getTime()) ||
+    !Number.isFinite(expiresAt.getTime())
+  ) {
+    return null;
+  }
 
   let safeCalendarItem: AiAssistantContext['last_calendar_item'] = null;
   if (lastCalendarItem && typeof lastCalendarItem === 'object') {
@@ -309,8 +327,16 @@ function normalizeAssistantContext(raw: unknown): AiAssistantContext | null {
     lastCalendarItem: safeCalendarItem,
     lastModelName,
     lastIntent,
+    createdAt,
+    expiresAt,
   });
-  return context.last_calendar_item || context.last_model_name || context.last_intent ? context : null;
+  if (
+    record.last_calendar_item_source !== 'single_resolved_item' &&
+    record.last_model_source !== 'single_model_match'
+  ) {
+    return null;
+  }
+  return isAssistantContextValid(context) ? context : null;
 }
 
 function latestCalendarFactsFromHistory(raw: unknown): CalendarFacts | null {
@@ -331,13 +357,6 @@ function latestAssistantContextFromHistory(raw: unknown): AiAssistantContext | n
     if (message?.role !== 'assistant') continue;
     const context = normalizeAssistantContext(message.context);
     if (context) return context;
-    const facts = normalizeCalendarFactsContext(message.context);
-    if (facts && facts.items.length === 1) {
-      return buildAssistantContext({
-        lastCalendarItem: facts.items[0],
-        lastIntent: 'calendar_summary',
-      });
-    }
   }
   return null;
 }
@@ -926,6 +945,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         if (contextAnswer) {
           return await answerWithUsage(contextAnswer, 'allowed', assistantContext ?? undefined);
         }
+        return await answerWithUsage(AI_ASSISTANT_CONTEXT_CLARIFICATION);
       }
       if (serverContext.state !== 'ok' || !serverContext.organizationId) {
         return await answerWithUsage(
@@ -1109,6 +1129,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
             ? (result.facts.candidates ?? []).length
             : 0;
       console.log('[ai-assistant] model facts result count:', resultCount);
+      if (result.facts.matchStatus !== 'found') {
+        console.log('[ai-assistant] model facts non-single result', {
+          resultCount,
+          searchLength: (classification.searchText || assistantContext?.last_model_name || '').length,
+          fuzzyThreshold: 0.4,
+        });
+      }
 
       const execution = resolveModelFactsExecutionResult({ role, facts: result.facts });
       if (execution.type === 'answer') {

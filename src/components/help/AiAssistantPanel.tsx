@@ -46,6 +46,10 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
     setAssistantContext(null);
   }, [viewerRole]);
 
+  useEffect(() => {
+    if (!visible) setAssistantContext(null);
+  }, [visible]);
+
   const canSend = useMemo(() => draft.trim().length > 0 && !pending, [draft, pending]);
 
   const scrollToEnd = () => {
@@ -75,12 +79,13 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
         context: assistantContext,
       });
       if (result.ok) {
-        if (result.context) setAssistantContext(result.context);
+        setAssistantContext(result.context ?? null);
         setMessages((current) => [
           ...current,
           { role: 'assistant', content: result.answer, context: result.context },
         ]);
       } else {
+        setAssistantContext(null);
         setError(copy.unavailable);
       }
     } finally {
