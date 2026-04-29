@@ -1,16 +1,22 @@
 import { readFileSync } from 'fs';
 import * as path from 'path';
 import {
+  buildCalendarItemDetailsFacts,
   buildCalendarFacts,
   buildModelVisibleProfileFacts,
+  CALENDAR_DETAIL_PRICING_REFUSAL,
   CALENDAR_UNSUPPORTED_RANGE_ANSWER,
   CLIENT_MODEL_FACTS_REFUSAL,
   classifyAssistantIntent,
   extractModelProfileSearchText,
+  findSingleCalendarReferenceFromFacts,
   forbiddenIntentAnswer,
+  MAX_CALENDAR_DETAIL_LOOKBACK_DAYS,
   MAX_CALENDAR_RANGE_DAYS,
   MAX_MODEL_SEARCH_CHARS,
   MODEL_CLARIFICATION_ANSWER,
+  resolveCalendarDetailDateRange,
+  resolveCalendarItemDetailsAnswer,
   resolveModelFactsExecutionResult,
 } from '../../../supabase/functions/ai-assistant/phase2';
 
@@ -65,16 +71,19 @@ describe('AI Assistant Phase 2 intent router', () => {
   it('routes bounded last-job calendar questions without static fallback', () => {
     const result = classifyAssistantIntent('When was the last job?', 'agency', BASE_DATE);
 
-    expect(result.intent).toBe('calendar_summary');
+    expect(result.intent).toBe('calendar_item_details');
     expect(result.intent).not.toBe('help_static');
     expect(result.intent).not.toBe('unknown_live_data');
-    if (result.intent === 'calendar_summary') {
-      expect(result.dateRange).toEqual({
-        startDate: '2026-03-30',
-        endDate: '2026-04-29',
-        wasCapped: false,
-      });
-    }
+    if (result.intent === 'calendar_item_details') expect(result.reference).toBe('last_job');
+  });
+
+  it('uses a bounded 90-day range for historical last-job details', () => {
+    expect(resolveCalendarDetailDateRange(BASE_DATE)).toEqual({
+      startDate: '2026-01-30',
+      endDate: '2026-04-29',
+      wasCapped: false,
+    });
+    expect(MAX_CALENDAR_DETAIL_LOOKBACK_DAYS).toBe(90);
   });
 
   it('forbids billing questions', () => {
@@ -127,6 +136,22 @@ describe('AI Assistant Phase 2 intent router', () => {
     }
   });
 
+  it('extracts partial and accent-tolerant model search names for visible model lookup', () => {
+    const examples = [
+      ['What are the measurements of Remi Lovisolo?', 'Remi Lovisolo'],
+      ['What is the height of Johann E?', 'Johann E'],
+      ['Show me profile facts for Aram E', 'Aram E'],
+    ] as const;
+
+    for (const [question, expectedSearch] of examples) {
+      const result = classifyAssistantIntent(question, 'agency', BASE_DATE);
+      expect(result.intent).toBe('model_visible_profile_facts');
+      if (result.intent === 'model_visible_profile_facts') {
+        expect(result.searchText).toBe(expectedSearch);
+      }
+    }
+  });
+
   it('routes pronoun-based model facts to clarification instead of static fallback', () => {
     const result = classifyAssistantIntent('What are her measurements?', 'agency', BASE_DATE);
 
@@ -147,6 +172,36 @@ describe('AI Assistant Phase 2 intent router', () => {
     );
 
     expect(result.intent).toBe('model_visible_profile_facts');
+  });
+
+  it('routes calendar item detail follow-ups without static fallback', () => {
+    const questions = [
+      'Give me details about that job',
+      'Who was the client for the last job?',
+      'Which model was in that casting?',
+      'When was that job?',
+      'What was the description?',
+      'Who was it with?',
+    ];
+
+    for (const question of questions) {
+      const result = classifyAssistantIntent(question, 'agency', BASE_DATE);
+      expect(result.intent).toBe('calendar_item_details');
+      expect(result.intent).not.toBe('help_static');
+      expect(result.intent).not.toBe('unknown_live_data');
+    }
+  });
+
+  it('refuses calendar detail pricing questions deterministically', () => {
+    const result = classifyAssistantIntent('What was the price?', 'agency', BASE_DATE);
+
+    expect(result.intent).toBe('calendar_item_details');
+    if (result.intent === 'calendar_item_details') {
+      expect(result.requestedField).toBe('pricing');
+    }
+    expect(CALENDAR_DETAIL_PRICING_REFUSAL).toBe(
+      'I can’t answer pricing questions in the assistant yet. Please open the item directly in IndexCasting.',
+    );
   });
 
   it('forbids cross-org and bulk model wording', () => {
@@ -372,6 +427,128 @@ describe('AI Assistant Phase 2 calendar facts', () => {
   });
 });
 
+describe('AI Assistant Phase 2 calendar item details', () => {
+  const safeJobRow = {
+    date: '2026-04-28',
+    start_time: '10:00',
+    end_time: '14:00',
+    kind: 'job',
+    title: 'Job',
+    model_name: 'Rémi Lovisolo',
+    counterparty_name: 'Acme Client',
+    status_label: 'Job confirmed',
+    note: 'Visible shoot description',
+    id: 'hidden-id',
+    email: 'hidden@example.com',
+    phone: '+491234',
+    proposed_price: 1000,
+    agency_counter_price: 1200,
+    client_price_status: 'pending',
+    model_approval: 'pending',
+    waiting_for: 'model',
+    sql: 'select * from option_requests',
+    table: 'calendar_entries',
+    file_url: 'https://example.com/file.pdf',
+    message_text: 'raw message',
+  };
+
+  it('returns safe details for one visible job', () => {
+    const facts = buildCalendarItemDetailsFacts({
+      role: 'agency',
+      requestedField: 'summary',
+      rows: [safeJobRow],
+    });
+    const answer = resolveCalendarItemDetailsAnswer(facts);
+
+    expect(facts.matchStatus).toBe('found');
+    expect(answer).toContain('Job: Job');
+    expect(answer).toContain('Rémi Lovisolo');
+    expect(answer).toContain('Acme Client');
+    expect(answer).toContain('Visible shoot description');
+    expect(`${JSON.stringify(facts)}\n${answer}`).not.toMatch(
+      /hidden-id|hidden@example\.com|\+491234|proposed_price|agency_counter_price|client_price_status|model_approval|waiting_for|select \*|option_requests|calendar_entries|file\.pdf|raw message/i,
+    );
+  });
+
+  it('answers visible counterparty only for last-job client questions', () => {
+    const facts = buildCalendarItemDetailsFacts({
+      role: 'agency',
+      requestedField: 'counterparty',
+      rows: [safeJobRow],
+    });
+
+    expect(resolveCalendarItemDetailsAnswer(facts)).toBe(
+      'The visible counterparty is Acme Client.',
+    );
+  });
+
+  it('answers visible model only for casting model questions', () => {
+    const facts = buildCalendarItemDetailsFacts({
+      role: 'client',
+      requestedField: 'model',
+      rows: [
+        {
+          ...safeJobRow,
+          kind: 'casting',
+          title: 'Casting',
+          counterparty_name: 'Visible Agency',
+        },
+      ],
+    });
+
+    expect(resolveCalendarItemDetailsAnswer(facts)).toBe('The visible model is Rémi Lovisolo.');
+  });
+
+  it('asks clarification for ambiguous calendar detail references', () => {
+    const facts = buildCalendarItemDetailsFacts({
+      role: 'agency',
+      requestedField: 'summary',
+      rows: [
+        safeJobRow,
+        {
+          ...safeJobRow,
+          date: '2026-04-29',
+          model_name: 'Johann E',
+          counterparty_name: 'Other Client',
+        },
+      ],
+    });
+    const answer = resolveCalendarItemDetailsAnswer(facts);
+
+    expect(facts.matchStatus).toBe('ambiguous');
+    expect(answer).toContain('Which calendar item do you mean?');
+    expect(answer).toContain('Johann E');
+    expect(answer).not.toMatch(/hidden-id|email|phone|proposed_price|waiting_for/i);
+  });
+
+  it('uses previous assistant-returned calendar facts only when one item is clear', () => {
+    const oneItemFacts = buildCalendarFacts({
+      role: 'agency',
+      startDate: '2026-04-28',
+      endDate: '2026-04-28',
+      rangeWasCapped: false,
+      rows: [safeJobRow],
+    });
+    const ambiguousFacts = buildCalendarFacts({
+      role: 'agency',
+      startDate: '2026-04-28',
+      endDate: '2026-04-29',
+      rangeWasCapped: false,
+      rows: [safeJobRow, { ...safeJobRow, date: '2026-04-29' }],
+    });
+
+    expect(findSingleCalendarReferenceFromFacts(oneItemFacts)).toEqual({
+      date: '2026-04-28',
+      kind: 'job',
+      title: 'Job',
+      model_name: 'Rémi Lovisolo',
+      counterparty_name: 'Acme Client',
+      status_label: 'Job confirmed',
+    });
+    expect(findSingleCalendarReferenceFromFacts(ambiguousFacts)).toBe('ambiguous');
+  });
+});
+
 describe('AI Assistant Phase 2 model visible profile facts', () => {
   it('returns safe not-found facts for empty model data', () => {
     const facts = buildModelVisibleProfileFacts({ rows: [] });
@@ -529,6 +706,13 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     path.join(process.cwd(), 'supabase/functions/ai-assistant/index.ts'),
     'utf8',
   );
+  const hardeningMigration = readFileSync(
+    path.join(
+      process.cwd(),
+      'supabase/migrations/20261214_ai_assistant_calendar_details_and_model_matching.sql',
+    ),
+    'utf8',
+  );
 
   it('defines the model facts RPC with row_security off and explicit Agency scope guards', () => {
     expect(migration).toMatch(/SECURITY DEFINER/i);
@@ -544,6 +728,35 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     expect(migration).toMatch(
       /GRANT EXECUTE ON FUNCTION public\.ai_read_model_visible_profile_facts\(text, integer\) TO authenticated/i,
     );
+  });
+
+  it('adds a narrow calendar details RPC without forbidden field exposure', () => {
+    expect(hardeningMigration).toMatch(
+      /CREATE OR REPLACE FUNCTION public\.ai_read_calendar_item_details/i,
+    );
+    expect(hardeningMigration).toMatch(/SECURITY DEFINER/i);
+    expect(hardeningMigration).toMatch(/SET row_security TO off/i);
+    expect(hardeningMigration).toMatch(/IF v_uid IS NULL THEN/i);
+    expect(hardeningMigration).toMatch(/org_context_ambiguous/i);
+    expect(hardeningMigration).toMatch(/\(p_end_date - p_start_date\) > 89/i);
+    expect(hardeningMigration).toMatch(/LIMIT v_limit/i);
+    expect(hardeningMigration).toMatch(
+      /REVOKE ALL ON FUNCTION public\.ai_read_calendar_item_details\(text, text, jsonb, date, date, integer\) FROM PUBLIC, anon/i,
+    );
+    expect(hardeningMigration).toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.ai_read_calendar_item_details\(text, text, jsonb, date, date, integer\) TO authenticated/i,
+    );
+    expect(hardeningMigration).not.toMatch(
+      /proposed_price|agency_counter_price|client_price_status|model_approval|waiting_for|option_request_messages|file_url/i,
+    );
+  });
+
+  it('hardens model matching with MAT scope and accent-insensitive display-name search', () => {
+    expect(hardeningMigration).toMatch(/ai_assistant_fold_search_text/i);
+    expect(hardeningMigration).toMatch(/mat\.agency_id = v_agency_id/i);
+    expect(hardeningMigration).toMatch(/scoped_display_name_folded = v_search_folded/i);
+    expect(hardeningMigration).toMatch(/scoped_display_name_folded LIKE v_search_folded \|\| '%'/i);
+    expect(hardeningMigration).toMatch(/scoped_display_name_folded LIKE v_search_pattern/i);
   });
 
   it('does not use service_role or send raw SQL/table/RPC names in model facts prompts', () => {

@@ -6,11 +6,13 @@ const FUNCTION_NAME = 'ai-assistant';
 export type AiAssistantMessage = {
   role: 'user' | 'assistant';
   content: string;
+  context?: unknown;
 };
 
 type EdgeOk = {
   ok: true;
   answer: string;
+  context?: unknown;
 };
 
 type EdgeErr = {
@@ -20,7 +22,9 @@ type EdgeErr = {
 
 type EdgeResponse = EdgeOk | EdgeErr;
 
-export type AiAssistantResult = { ok: true; answer: string } | { ok: false; error: string };
+export type AiAssistantResult =
+  | { ok: true; answer: string; context?: unknown }
+  | { ok: false; error: string };
 
 export async function askAiAssistant(input: {
   message: string;
@@ -45,7 +49,7 @@ export async function askAiAssistant(input: {
     }
     if (!data) return { ok: false, error: 'empty_response' };
     if (data.ok === true && typeof data.answer === 'string') {
-      return { ok: true, answer: data.answer };
+      return { ok: true, answer: data.answer, context: data.context };
     }
     if (data.ok === false) {
       return { ok: false, error: data.error ?? 'assistant_unavailable' };

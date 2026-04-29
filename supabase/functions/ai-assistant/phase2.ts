@@ -3,6 +3,7 @@ export type ViewerRole = 'agency' | 'client' | 'model';
 export type AssistantIntent =
   | 'help_static'
   | 'calendar_summary'
+  | 'calendar_item_details'
   | 'model_visible_profile_facts'
   | 'billing'
   | 'team_management'
@@ -24,8 +25,19 @@ export type CalendarDateRange = {
 export type IntentClassification =
   | { intent: 'help_static' }
   | { intent: 'calendar_summary'; dateRange: CalendarDateRange }
+  | {
+      intent: 'calendar_item_details';
+      reference: 'followup' | 'last_job';
+      requestedField: CalendarDetailRequestedField;
+      kindHint?: CalendarSummaryItem['kind'];
+    }
   | { intent: 'model_visible_profile_facts'; searchText: string; needsClarification?: boolean }
-  | { intent: Exclude<AssistantIntent, 'help_static' | 'calendar_summary' | 'model_visible_profile_facts'> };
+  | {
+      intent: Exclude<
+        AssistantIntent,
+        'help_static' | 'calendar_summary' | 'calendar_item_details' | 'model_visible_profile_facts'
+      >;
+    };
 
 export type CalendarSummaryItem = {
   date: string;
@@ -48,6 +60,32 @@ export type CalendarFacts = {
   hasMore: boolean;
   rangeWasCapped: boolean;
   items: CalendarSummaryItem[];
+};
+
+export type CalendarDetailRequestedField =
+  | 'summary'
+  | 'counterparty'
+  | 'model'
+  | 'date'
+  | 'description'
+  | 'pricing';
+
+export type CalendarItemReference = {
+  date: string;
+  kind: CalendarSummaryItem['kind'];
+  title: string;
+  model_name: string | null;
+  counterparty_name: string | null;
+  status_label: string | null;
+};
+
+export type CalendarItemDetailsFacts = {
+  intent: 'calendar_item_details';
+  role: Extract<ViewerRole, 'agency' | 'client'>;
+  matchStatus: 'none' | 'ambiguous' | 'found';
+  requestedField: CalendarDetailRequestedField;
+  candidates?: CalendarItemReference[];
+  item?: CalendarSummaryItem;
 };
 
 export type ModelVisibleProfileRow = {
@@ -102,11 +140,24 @@ export const CLIENT_MODEL_FACTS_REFUSAL =
   'I can’t access agency-only model profile facts from the Client workspace.';
 
 export const MAX_CALENDAR_RANGE_DAYS = 31;
+export const MAX_CALENDAR_DETAIL_LOOKBACK_DAYS = 90;
 export const MAX_CALENDAR_RESULTS = 25;
 export const MAX_MODEL_FACT_CANDIDATES = 5;
 export const MAX_MODEL_SEARCH_CHARS = 80;
+export const CALENDAR_DETAIL_PRICING_REFUSAL =
+  'I can’t answer pricing questions in the assistant yet. Please open the item directly in IndexCasting.';
+export const CALENDAR_DETAIL_AMBIGUOUS_ANSWER =
+  'Which calendar item do you mean? Please tell me the item or date.';
 
-const FORBIDDEN_PATTERNS: Array<[Exclude<AssistantIntent, 'help_static' | 'calendar_summary' | 'model_visible_profile_facts'>, RegExp]> = [
+const FORBIDDEN_PATTERNS: Array<
+  [
+    Exclude<
+      AssistantIntent,
+      'help_static' | 'calendar_summary' | 'calendar_item_details' | 'model_visible_profile_facts'
+    >,
+    RegExp,
+  ]
+> = [
   ['cross_org', /\b(another|other|different|all)\s+(agency|agencies|client|clients|org|organization|company|companies)\b/i],
   ['cross_org', /\b(cross[-\s]?org|outside (my|our) (org|organization)|from another)\b/i],
   ['cross_org', /\b(all|every|export)\s+models?\b/i],
@@ -140,6 +191,19 @@ const CALENDAR_PATTERNS = [
   /\bwhat (is|do we have|do i have).*\b(today|tomorrow|next week|this week)\b/i,
   /\bwhen\s+was\s+(?:my\s+)?(?:the\s+)?last\s+(?:job|booking|casting|option)\b/i,
 ];
+
+const CALENDAR_DETAIL_PATTERNS = [
+  /\b(details?|more|tell me more)\b.*\b(that|this|last|job|booking|casting|option|calendar item|event)\b/i,
+  /\b(that|this|last)\s+(job|booking|casting|option|calendar item|event)\b/i,
+  /\bwho\s+was\s+(?:the\s+)?(?:client|agency|counterparty)\b.*\b(that|this|last|job|booking|casting|option)\b/i,
+  /\bwho\s+was\s+it\s+with\b/i,
+  /\bwhich\s+model\b.*\b(that|this|last|job|booking|casting|option)\b/i,
+  /\bwhen\s+was\s+(?:that|this|the\s+last)\s+(?:job|booking|casting|option|calendar item|event)\b/i,
+  /\bwhat\s+was\s+(?:the\s+)?(?:description|note)\b/i,
+];
+
+const CALENDAR_DETAIL_PRICE_PATTERN =
+  /\b(price|pricing|cost|fee|rate|budget|amount|how much|paid|pay)\b/i;
 
 const MODEL_PROFILE_PATTERNS = [
   /\b(measurements?|dimensions?)\b.*\b(?:of|for)\b.*\b(model\s+)?[a-z][\p{L}\p{N}'’.\-\s]{1,80}\b/iu,
@@ -179,6 +243,31 @@ function stripModelSearchNoise(value: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, MAX_MODEL_SEARCH_CHARS);
+}
+
+function resolveCalendarDetailRequestedField(message: string): CalendarDetailRequestedField {
+  if (CALENDAR_DETAIL_PRICE_PATTERN.test(message)) return 'pricing';
+  if (/\bwhich\s+model\b|\bmodel\b.*\b(in|for)\b/i.test(message)) return 'model';
+  if (/\b(client|agency|counterparty|who\s+was\s+it\s+with|who\s+was\s+.*with)\b/i.test(message)) {
+    return 'counterparty';
+  }
+  if (/\bwhen|date|time\b/i.test(message)) return 'date';
+  if (/\b(description|note)\b/i.test(message)) return 'description';
+  return 'summary';
+}
+
+function resolveCalendarDetailReference(message: string): 'followup' | 'last_job' {
+  if (/\blast\s+job\b/i.test(message)) return 'last_job';
+  return 'followup';
+}
+
+function resolveCalendarDetailKindHint(message: string): CalendarSummaryItem['kind'] | undefined {
+  if (/\bcasting\b/i.test(message)) return 'casting';
+  if (/\boption\b/i.test(message)) return 'option';
+  if (/\bjob\b/i.test(message)) return 'job';
+  if (/\bbooking\b/i.test(message)) return 'booking';
+  if (/\bprivate\s+event\b/i.test(message)) return 'private_event';
+  return undefined;
 }
 
 function isPronounModelFactsQuestion(message: string): boolean {
@@ -243,6 +332,15 @@ export function resolveCalendarDateRange(message: string, now = new Date()): Cal
   };
 }
 
+export function resolveCalendarDetailDateRange(now = new Date()): CalendarDateRange {
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return {
+    startDate: dateOnly(addDays(today, -(MAX_CALENDAR_DETAIL_LOOKBACK_DAYS - 1))),
+    endDate: dateOnly(today),
+    wasCapped: false,
+  };
+}
+
 export function classifyAssistantIntent(
   message: string,
   role: ViewerRole,
@@ -256,9 +354,25 @@ export function classifyAssistantIntent(
   }
 
   const calendarQuestion = CALENDAR_PATTERNS.some((pattern) => pattern.test(normalized));
+  const calendarDetailsQuestion =
+    CALENDAR_DETAIL_PATTERNS.some((pattern) => pattern.test(normalized)) ||
+    CALENDAR_DETAIL_PRICE_PATTERN.test(normalized);
   const modelProfileQuestion = MODEL_PROFILE_PATTERNS.some((pattern) => pattern.test(normalized));
   if (WRITE_ACTION_PATTERN.test(normalized) && !/^\s*how\s+do\s+i\b/i.test(normalized)) {
     return { intent: 'write_action' };
+  }
+
+  if (/\b(status|waiting\s+for)\b/i.test(normalized)) {
+    return { intent: 'unknown_live_data' };
+  }
+
+  if (calendarDetailsQuestion && (role === 'agency' || role === 'client')) {
+    return {
+      intent: 'calendar_item_details',
+      reference: resolveCalendarDetailReference(normalized),
+      requestedField: resolveCalendarDetailRequestedField(normalized),
+      kindHint: resolveCalendarDetailKindHint(normalized),
+    };
   }
 
   if (calendarQuestion && (role === 'agency' || role === 'client')) {
@@ -363,6 +477,146 @@ export function buildCalendarFacts(input: {
   };
 }
 
+export function buildCalendarItemReference(item: CalendarSummaryItem): CalendarItemReference {
+  return {
+    date: item.date,
+    kind: item.kind,
+    title: item.title,
+    model_name: item.model_name,
+    counterparty_name: item.counterparty_name,
+    status_label: item.status_label,
+  };
+}
+
+export function findSingleCalendarReferenceFromFacts(
+  facts: CalendarFacts | null,
+  kindHint?: CalendarSummaryItem['kind'],
+): CalendarItemReference | null | 'ambiguous' {
+  if (!facts || facts.items.length === 0) return null;
+  const items = kindHint ? facts.items.filter((item) => item.kind === kindHint) : facts.items;
+  if (items.length === 1) return buildCalendarItemReference(items[0]);
+  if (items.length > 1) return 'ambiguous';
+  return null;
+}
+
+export function buildCalendarItemDetailsFacts(input: {
+  role: Extract<ViewerRole, 'agency' | 'client'>;
+  requestedField: CalendarDetailRequestedField;
+  rows: unknown[];
+}): CalendarItemDetailsFacts {
+  const base = buildCalendarFacts({
+    role: input.role,
+    startDate: '1970-01-01',
+    endDate: '1970-01-01',
+    rangeWasCapped: false,
+    rows: input.rows,
+  }).items;
+
+  if (base.length === 0) {
+    return {
+      intent: 'calendar_item_details',
+      role: input.role,
+      matchStatus: 'none',
+      requestedField: input.requestedField,
+    };
+  }
+
+  if (base.length > 1) {
+    return {
+      intent: 'calendar_item_details',
+      role: input.role,
+      matchStatus: 'ambiguous',
+      requestedField: input.requestedField,
+      candidates: base.map(buildCalendarItemReference),
+    };
+  }
+
+  return {
+    intent: 'calendar_item_details',
+    role: input.role,
+    matchStatus: 'found',
+    requestedField: input.requestedField,
+    item: base[0],
+  };
+}
+
+function humanCalendarKind(kind: CalendarSummaryItem['kind']): string {
+  switch (kind) {
+    case 'option':
+      return 'Option';
+    case 'casting':
+      return 'Casting';
+    case 'job':
+      return 'Job';
+    case 'private_event':
+      return 'Private event';
+    case 'booking':
+      return 'Booking';
+  }
+}
+
+function formatCalendarDateTime(item: CalendarSummaryItem): string {
+  const times = [item.start_time, item.end_time].filter(Boolean).join('–');
+  return times ? `${item.date}, ${times}` : item.date;
+}
+
+export function resolveCalendarItemDetailsAnswer(facts: CalendarItemDetailsFacts): string {
+  if (facts.requestedField === 'pricing') return CALENDAR_DETAIL_PRICING_REFUSAL;
+
+  if (facts.matchStatus === 'none') {
+    return 'I can’t find a visible calendar item matching that reference.';
+  }
+
+  if (facts.matchStatus === 'ambiguous') {
+    const candidates = (facts.candidates ?? [])
+      .slice(0, 5)
+      .map((candidate) => {
+        const parts = [
+          humanCalendarKind(candidate.kind),
+          candidate.title,
+          candidate.date,
+          candidate.model_name,
+          candidate.counterparty_name,
+        ].filter(Boolean);
+        return parts.join(' · ');
+      })
+      .join('; ');
+    return candidates ? `${CALENDAR_DETAIL_AMBIGUOUS_ANSWER} ${candidates}` : CALENDAR_DETAIL_AMBIGUOUS_ANSWER;
+  }
+
+  const item = facts.item;
+  if (!item) return 'I can’t find a visible calendar item matching that reference.';
+
+  switch (facts.requestedField) {
+    case 'counterparty':
+      return item.counterparty_name
+        ? `The visible counterparty is ${item.counterparty_name}.`
+        : 'No visible counterparty is shown for that calendar item.';
+    case 'model':
+      return item.model_name
+        ? `The visible model is ${item.model_name}.`
+        : 'No visible model is shown for that calendar item.';
+    case 'date':
+      return `It is on ${formatCalendarDateTime(item)}.`;
+    case 'description':
+      return item.note
+        ? `The visible description is: ${item.note}`
+        : 'No visible description or note is shown for that calendar item.';
+    case 'summary': {
+      const lines = [
+        `${humanCalendarKind(item.kind)}: ${item.title}`,
+        `When: ${formatCalendarDateTime(item)}`,
+        item.model_name ? `Model: ${item.model_name}` : null,
+        item.counterparty_name ? `With: ${item.counterparty_name}` : null,
+        item.status_label ? `Status: ${item.status_label}` : null,
+        item.note ? `Description: ${item.note}` : null,
+      ].filter(Boolean);
+      return lines.join('\n');
+    }
+  }
+  return CALENDAR_DETAIL_PRICING_REFUSAL;
+}
+
 export function buildModelVisibleProfileFacts(input: {
   rows: ModelVisibleProfileRow[];
 }): ModelVisibleProfileFacts {
@@ -455,7 +709,10 @@ export function resolveModelFactsExecutionResult(input: {
 }
 
 export function forbiddenIntentAnswer(
-  intent: Exclude<AssistantIntent, 'help_static' | 'calendar_summary' | 'model_visible_profile_facts'>,
+  intent: Exclude<
+    AssistantIntent,
+    'help_static' | 'calendar_summary' | 'calendar_item_details' | 'model_visible_profile_facts'
+  >,
   role?: ViewerRole,
 ): string {
   switch (intent) {

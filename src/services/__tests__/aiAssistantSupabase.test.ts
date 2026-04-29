@@ -70,4 +70,19 @@ describe('askAiAssistant', () => {
 
     expect(result).toEqual({ ok: false, error: 'message_too_long' });
   });
+
+  it('preserves safe assistant context for follow-up routing', async () => {
+    const context = { calendarFacts: { intent: 'calendar_summary', items: [] } };
+    mockInvoke.mockResolvedValue({
+      data: { ok: true, answer: 'No visible calendar items.', context },
+      error: null,
+    });
+
+    const result = await askAiAssistant({
+      message: 'What is on my calendar?',
+      viewerRole: 'agency',
+    });
+
+    expect(result).toEqual({ ok: true, answer: 'No visible calendar items.', context });
+  });
 });

@@ -65,7 +65,10 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
         history: nextMessages.slice(-6),
       });
       if (result.ok) {
-        setMessages((current) => [...current, { role: 'assistant', content: result.answer }]);
+        setMessages((current) => [
+          ...current,
+          { role: 'assistant', content: result.answer, context: result.context },
+        ]);
       } else {
         setError(copy.unavailable);
       }
