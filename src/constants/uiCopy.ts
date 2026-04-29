@@ -3209,8 +3209,8 @@ export const uiCopy = {
     liveDataRefusal:
       "I don't have access to your live data yet. I can explain where to find this in IndexCasting.",
     subtitles: {
-      agency: 'Agency workflow guidance',
-      client: 'Client workflow guidance',
+      agency: 'You are using IndexCasting as an Agency.',
+      client: 'You are using IndexCasting as a Client.',
       model: 'Model account guidance',
     },
   },

@@ -115,19 +115,27 @@ function requiresLiveData(message: string): boolean {
 function roleKnowledge(role: ViewerRole): string {
   if (role === 'agency') {
     return [
-      'Agency help: explain dashboard and navigation basics, roster/profile management, model media at a high level, creating and managing options or castings, calendar basics, negotiations, inviting bookers/team members, packages and guest links, and where billing lives.',
-      'Agencies use the roster to manage model profiles, the calendar to review option/casting/booking timing, messages/negotiation areas to discuss requests, and settings/team areas for organization setup.',
+      'You are using IndexCasting as an Agency.',
+      'Use exact Agency navigation labels: DASHBOARD, MY MODELS, CLIENTS, MESSAGES, CALENDAR, RECRUITING, TEAM, LINKS, BILLING, SETTINGS.',
+      'Agency option creation: go to CALENDAR in the bottom navigation. Click ADD OPTION. Select or enter the model, client, date/time, and option details shown in the form. Save/create the option. The option appears in CALENDAR and can continue through confirmation or negotiation depending on the workflow.',
+      'Agency casting creation: go to CALENDAR. Click ADD CASTING. Fill in the casting details. Save/create. A casting is not the same as a confirmed booking.',
+      'Agency navigation help: use MY MODELS for model profile and media management, CLIENTS for client relationships, MESSAGES for conversations and negotiation threads, RECRUITING for model applications, TEAM for bookers, LINKS for packages or guest links, BILLING for billing location, and SETTINGS for account or organization settings.',
     ].join('\n');
   }
   if (role === 'client') {
     return [
-      'Client help: explain discover/search, projects and selections, creating option or casting requests, negotiations, calendar basics, team/employee basics, shared packages and guest access.',
-      'Clients use Discover to find models, Projects to organize selections, requests/messages to negotiate with agencies, the calendar for timing, and settings/team areas for organization setup.',
+      'You are using IndexCasting as a Client.',
+      'Use client-facing navigation only: Dashboard, Discover, Projects, Messages, Calendar, Agencies, Team, Billing, Profile, and Settings where visible.',
+      'Client option request workflow: use Discover or Projects to open the relevant model or selection. Choose Request option. Select the date/time and request details shown in the form. Send the request.',
+      'Client casting request workflow: use Discover or Projects to open the relevant model or selection. Choose Request casting. Select the date/time and casting details shown in the form. Send the request.',
+      'Do not use Agency-only navigation labels or buttons for Client help.',
+      'Client navigation help: use Discover to find models, Projects to organize selections, Messages for agency conversations and negotiation threads, Calendar for visible request or job timing, Team for client organization employees, Billing for the client billing area when available, and Profile/Settings for account or organization details.',
     ].join('\n');
   }
   return [
-    'Model help: explain only basic account, profile, application, media/profile completeness, and calendar concepts.',
-    'Do not discuss agency/client internal workflows beyond where a model may see relevant basic account information.',
+    'You are using IndexCasting as a Model.',
+    'Explain only basic model account, profile, application, media/profile completeness, and calendar concepts.',
+    'Do not describe Agency-only or Client-only internal navigation as available to Models.',
   ].join('\n');
 }
 
@@ -140,7 +148,8 @@ function buildSystemPrompt(role: ViewerRole): string {
     'You must not invent bookings, models, requests, invoices, messages, organization data, people, dates, statuses, or availability.',
     'If a question requires live/private data, say: "I don\'t have access to your live data yet. I can explain where to find this in IndexCasting." Then give brief navigation guidance.',
     'Keep answers concise and practical.',
-    'Use role-specific guidance for the viewer role.',
+    'Use role-specific guidance for the viewer role and visible UI labels. Prefer short step-by-step answers.',
+    'Do not invent navigation labels, buttons, screens, status values, or workflow steps.',
     'Never reveal internal security, RLS, database, API key, or implementation details.',
     '',
     `Viewer role: ${role}`,
