@@ -216,14 +216,17 @@ const FORBIDDEN_PATTERNS: Array<
   ['cross_org', /\b(another|other|different|all)\s+(agency|agencies|client|clients|org|organization|company|companies)\b/i],
   ['cross_org', /\b(cross[-\s]?org|outside (my|our) (org|organization)|from another)\b/i],
   ['cross_org', /\b(all|every|export)\s+models?\b/i],
-  ['billing', /\b(billing|invoice|invoices|payment|payments|subscription|subscriptions|stripe|tax|vat|bank|payout|settlement)\b/i],
+  ['cross_org', /\b(show|list|give|export)\s+(?:me\s+)?all\s+(?:data|records)\b/i],
+  ['billing', /\b(billing|invoice|invoices|payment|payments|subscription|subscriptions|stripe|tax|vat|bank|payout|settlement|revenue|revenues|turnover)\b/i],
+  ['billing', /\b(show|list|give|get)\b.*\b(prices?|pricing|rates?|fees?|budgets?)\b/i],
   ['gdpr_export_delete', /\b(gdpr|export (my|all|personal)|personal data export|delete (my )?account|account deletion|delete organization|dissolve organization)\b/i],
   ['team_management', /\b(invite|invitation|team member|team members|member list|members list|organization members|remove member|add member)\b/i],
   ['admin_security', /\b(admin|security|api key|secret|system prompt|developer instruction|policy|policies|permissions)\b/i],
-  ['database_schema', /\b(service[_\s-]?role|sql|query the database|database|schema|table|tables|rpc|rls|migration|supabase internals?)\b/i],
+  ['admin_security', /\b(ignore|override|forget)\b.*\b(previous rules|all rules|system instructions|developer instructions)\b/i],
+  ['database_schema', /\b(service[_\s-]?role|sql|query the database|database|schema|table|tables|rpc|rls|migration|supabase internals?|internal ids?|org ids?|organization ids?|uuids?)\b/i],
   ['raw_messages', /\b(raw messages?|chat history|message dump|all messages?|what did .* (say|write|send)|show .* messages?)\b/i],
   ['model_hidden_data', /\b(hidden|private|invisible|not visible)\b.*\b(agency\s+)?models?\b/i],
-  ['model_hidden_data', /\b(show|give|tell|list|what(?:'s| is)?)\b.*\b(email|e-mail|phone|phone number|private notes?|hidden notes?|admin notes?|private pictures?|private photos?|hidden pictures?|hidden photos?|raw storage|file urls?|storage paths?|mediaslide|sync id|internal ids?)\b/i],
+  ['model_hidden_data', /\b(show|give|tell|list|what(?:'s| is)?)\b.*\b(emails?|e-mails?|phone|phone numbers?|private notes?|hidden notes?|admin notes?|private pictures?|private photos?|hidden pictures?|hidden photos?|raw storage|file urls?|storage paths?|mediaslide|sync id|internal ids?)\b/i],
   ['model_hidden_data', /\b(model email|model emails|email address|all models from|private model|private models|hidden model|hidden models|not visible model|invisible model)\b/i],
 ];
 
@@ -232,22 +235,29 @@ const LIVE_DATA_PATTERNS = [
   /\b(status)\b.*\b(my|our|this)\b.*\b(request|option|casting|booking|project)\b/i,
   /\b(available|availability)\b.*\b(today|tomorrow|this week|next week|now)\b/i,
   /\b(who)\b.*\b(organization|team|company|agency|client)\b/i,
+  /\bwho\s+is\s+booked\b/i,
+  /\bis\s+[a-z\p{L}\p{N}'’.\-\s]{2,80}\s+booked\b/iu,
+  /\bwhen\s+is\s+[a-z\p{L}\p{N}'’.\-\s]{2,80}\s+working\b/iu,
+  /\b(find|show|list)\s+bookings?\s+for\b/i,
 ];
 
 const CALENDAR_PATTERNS = [
   /\bcalendar\b/i,
   /\bwhat\s+(?:is|what's)\s+on\s+(?:my|our)?\s*calendar\b/i,
   /\bshow\s+(?:my|our)?\s*calendar\b/i,
-  /\bwhat\s+(?:do\s+i|do\s+we)\s+have\b.*\b(today|tomorrow|this week|next week|next \d+ days?)\b/i,
+  /\bwhat\s+(?:do\s+i|do\s+we)\s+have\b.*\b(today|tomorrow|this week|next week|next \d+ days?|soon|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4}-\d{2}-\d{2})\b/i,
   /\bwhat\s+(?:bookings?|options?|castings?|jobs?|requests?)\s+do\s+(?:i|we)\s+have\b/i,
   /\bdo\s+(?:i|we)\s+have\s+any\s+(?:bookings?|options?|castings?|jobs?|requests?)\b/i,
-  /\b(what|show|list|tell me|do i|do we|have|what's|what is)\b.*\b(today|tomorrow|this week|next week|next \d+ days?|month)\b.*\b(options?|castings?|jobs?|bookings?|requests?)\b/i,
-  /\b(options?|castings?|jobs?|bookings?|requests?)\b.*\b(today|tomorrow|this week|next week|next \d+ days?|month)\b/i,
-  /\bwhat (is|do we have|do i have).*\b(today|tomorrow|next week|this week)\b/i,
+  /\b(what|show|list|tell me|do i|do we|have|what's|what is|who)\b.*\b(today|tomorrow|this week|next week|next \d+ days?|month|soon|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4}-\d{2}-\d{2})\b.*\b(options?|castings?|jobs?|bookings?|booked|requests?)\b/i,
+  /\b(options?|castings?|jobs?|bookings?|booked|requests?)\b.*\b(today|tomorrow|this week|next week|next \d+ days?|month|soon|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4}-\d{2}-\d{2})\b/i,
+  /\bwhat (is|do we have|do i have).*\b(today|tomorrow|next week|this week|soon|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4}-\d{2}-\d{2})\b/i,
+  /\b(?:from|between)\s+\d{4}-\d{2}-\d{2}\s+(?:to|and|-)\s+\d{4}-\d{2}-\d{2}\b/i,
   /\bwhen\s+was\s+(?:my\s+)?(?:the\s+)?last\s+(?:job|booking|casting|option)\b/i,
 ];
 
 const CALENDAR_DETAIL_PATTERNS = [
+  /^\s*tell me more\s*$/i,
+  /^\s*what\s+job\??\s*$/i,
   /\b(details?|more|tell me more)\b.*\b(that|this|last|job|booking|casting|option|calendar item|event)\b/i,
   /\b(that|this|last)\s+(job|booking|casting|option|calendar item|event)\b/i,
   /\bwho\s+was\s+(?:the\s+)?(?:client|agency|counterparty)\??\s*$/i,
@@ -258,6 +268,9 @@ const CALENDAR_DETAIL_PATTERNS = [
   /\bwhat\s+time\s+was\s+(?:it|that|this)\??\s*$/i,
   /\bwhen\s+was\s+(?:it|that|this)\??\s*$/i,
   /\bwhen\s+was\s+(?:that|this|the\s+last)\s+(?:job|booking|casting|option|calendar item|event)\b/i,
+  /\bwhere\s+was\s+(?:it|that|this)\??\s*$/i,
+  /\bhow\s+long\s+(?:was|is)\s+(?:it|that|this)\??\s*$/i,
+  /\bwhen\s+does\s+(?:it|that|this)\s+(?:start|end)\??\s*$/i,
   /\bwhat\s+was\s+(?:the\s+)?title\??\s*$/i,
   /\bwhat\s+was\s+(?:the\s+)?(?:description|note)\b/i,
 ];
@@ -303,6 +316,27 @@ function daysBetweenInclusive(startDate: string, endDate: string): number {
   return Math.floor((end - start) / 86_400_000) + 1;
 }
 
+function dateFromDateOnly(value: string): Date | null {
+  const parsed = Date.parse(`${value}T00:00:00.000Z`);
+  if (!Number.isFinite(parsed)) return null;
+  return new Date(parsed);
+}
+
+const WEEKDAY_TO_UTC_DAY: Record<string, number> = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+};
+
+function nextWeekdayDate(today: Date, weekday: number): Date {
+  const diff = (weekday - today.getUTCDay() + 7) % 7;
+  return addDays(today, diff);
+}
+
 function stripModelSearchNoise(value: string): string {
   return value
     .replace(/\b(what|are|is|the|of|for|model|show|me|basic|profile|facts|does|have|an|account|height|measurements?|dimensions?|city|base|based|location|located|hair|eyes?|shoes?|shoe size|chest|bust|waist|hips|here|received|match|system|compare|against|with|in|on|my|our|visible)\b/giu, ' ')
@@ -319,7 +353,7 @@ function resolveCalendarDetailRequestedField(message: string): CalendarDetailReq
   if (/\b(client|agency|counterparty|who\s+was\s+it\s+with|who\s+was\s+.*with)\b/i.test(message)) {
     return 'counterparty';
   }
-  if (/\bwhen|date|time\b/i.test(message)) return 'date';
+  if (/\bwhen|date|time|start|end|how\s+long\b/i.test(message)) return 'date';
   if (/\b(description|note)\b/i.test(message)) return 'description';
   return 'summary';
 }
@@ -440,7 +474,30 @@ export function resolveCalendarDateRange(message: string, now = new Date()): Cal
   let days = 7;
 
   const nextDaysMatch = normalized.match(/\bnext\s+(\d{1,3})\s+days?\b/);
-  if (/\bwhen\s+was\s+(?:my\s+)?(?:the\s+)?last\s+(?:job|booking|casting|option)\b/i.test(normalized)) {
+  const explicitRangeMatch = normalized.match(
+    /\b(?:from|between)\s+(\d{4}-\d{2}-\d{2})\s+(?:to|and|-)\s+(\d{4}-\d{2}-\d{2})\b/,
+  );
+  const explicitDateMatch = normalized.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  const weekdayMatch = normalized.match(
+    /\b(?:this\s+|next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/,
+  );
+  if (explicitRangeMatch?.[1] && explicitRangeMatch[2]) {
+    const rangeStart = dateFromDateOnly(explicitRangeMatch[1]);
+    const rangeEnd = dateFromDateOnly(explicitRangeMatch[2]);
+    if (rangeStart && rangeEnd && rangeEnd >= rangeStart) {
+      start = rangeStart;
+      days = daysBetweenInclusive(explicitRangeMatch[1], explicitRangeMatch[2]);
+    }
+  } else if (explicitDateMatch?.[1]) {
+    const explicitDate = dateFromDateOnly(explicitDateMatch[1]);
+    if (explicitDate) {
+      start = explicitDate;
+      days = 1;
+    }
+  } else if (weekdayMatch?.[1]) {
+    start = nextWeekdayDate(today, WEEKDAY_TO_UTC_DAY[weekdayMatch[1]]);
+    days = 1;
+  } else if (/\bwhen\s+was\s+(?:my\s+)?(?:the\s+)?last\s+(?:job|booking|casting|option)\b/i.test(normalized)) {
     start = addDays(today, -(MAX_CALENDAR_RANGE_DAYS - 1));
     days = MAX_CALENDAR_RANGE_DAYS;
   } else if (normalized.includes('tomorrow')) {
@@ -570,9 +627,23 @@ function asCalendarKind(value: unknown): CalendarSummaryItem['kind'] | null {
   return null;
 }
 
+function redactSensitiveText(value: string): string {
+  return value
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[redacted]')
+    .replace(/https?:\/\/\S+/gi, '[redacted]')
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '[redacted]')
+    .replace(/\+\d[\d\s().-]{6,}\d/g, '[redacted]')
+    .replace(/\(\d{2,5}\)\s*\d[\d\s.-]{4,}\d/g, '[redacted]')
+    .replace(
+      /\b(?:price|pricing|rate|fee|budget|revenue|invoice|billing)\s*[:=]?\s*(?:€|\$|£)?\s*\d[\d.,]*(?:\s?(?:eur|usd|gbp|dkk))?\b/gi,
+      '[redacted]',
+    )
+    .replace(/(?:€|\$|£)\s?\d[\d.,]*|\b\d[\d.,]*\s?(?:eur|usd|gbp|dkk)\b/gi, '[redacted]');
+}
+
 function cleanString(value: unknown, max = 160): string | null {
   if (typeof value !== 'string') return null;
-  const cleaned = value.replace(/\s+/g, ' ').trim();
+  const cleaned = redactSensitiveText(value).replace(/\s+/g, ' ').trim();
   if (!cleaned) return null;
   return cleaned.slice(0, max);
 }
@@ -979,7 +1050,7 @@ export function forbiddenIntentAnswer(
       return 'I can’t access or manage team members or invitations here. Please use the Team area if it is available for your role.';
     case 'admin_security':
     case 'database_schema':
-      return 'I can’t help with internal security, database, schema, RLS, or implementation details.';
+      return 'I can’t help with internal security or implementation details.';
     case 'raw_messages':
       return 'I can’t show raw messages or chat history here. Please use Messages in IndexCasting.';
     case 'cross_org':
