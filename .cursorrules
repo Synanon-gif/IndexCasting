@@ -876,8 +876,15 @@ Ergänzt Kalender-Farb-Disziplin (§28.2) und feste Domänen aus dem Release-Tag
 
 ### 29.4 Billing Hub (B2B)
 
-- **Billing Hub** (Rechnungen, Settlements, Presets, Smart-Attention im Billing-Bereich): **Owner-only**-Pflichten und **Model-Billing-Firewall** unverändert — siehe `.cursor/rules/billing-payment-invariants.mdc` (**I-PAY-1 … I-PAY-11**).
+- **Billing Hub** (Rechnungen, Settlements, Presets, Smart-Attention im Billing-Bereich): **Owner-only**-Pflichten und **Model-Billing-Firewall** unverändert — siehe `.cursor/rules/billing-payment-invariants.mdc` (**I-PAY-1 … I-PAY-12**).
 - Banner/Attention im Hub: bei **Sub-Tab-Wechsel** neu laden, wenn der Zustand von der aktiven Registerkarte abhängt (kein veralteter Smart-Attention-Stand).
+
+### 29.4a Manual invoices — wizard payload & PDF (agency manual billing)
+
+- **Postgres `date` columns:** Werte **niemals** als frei getippte Locale-Strings (`22.5.2026`, `DD/MM/YYYY` ohne Normalisierung) an Supabase senden — das löst **22008** `date/time field value out of range`. Persistenzgrenze: vor `createManualInvoiceDraft` / `updateManualInvoiceHeader` / `replaceManualInvoiceLineItems` müssen **`issue_date`**, **`supply_date`** (kein separates „service_date“ im Schema), **`due_date`** und Positions-**`performed_on`** auf **ISO `YYYY-MM-DD`** gebracht oder bei leerem Feld **`null`** gesetzt werden; ungültige nicht-leere Eingaben → Save blockieren mit der festen englischen Hinweis-Copy (kein „silent wrong date“).
+- **Implementierung:** Normalisierung nur im UI/Payload (`ManualInvoiceBuilderPanel` — `normalizeDraftForPersistence` / `parseManualInvoiceDateToIso`); keine stillen Rechenänderungen an Steuern oder Summen.
+- **PDF / Preview (`manualInvoicePdf.ts`):** VAT-Spalte und VAT-Zeilen in der Summenbox zeigen **nur den Satz in Prozent** (z. B. `19%`), **keine** Roh-Treatment-Keys wie `reverse_charge` in Tabellen- oder Labeltext; Freitextfelder dürfen bekannte Snake-Case-Treatment-Tokens aus der Darstellung strippen, ohne Total-/Steuer-Mathe zu ändern (`manualInvoiceTotals` unangetastet).
+- **React Hook deps:** `useMemo`/`useCallback` — keine Dependencies eintragen, die im Callback **nicht** gelesen werden (ESLint `react-hooks/exhaustive-deps`); sonst falsche Recompute-Erwartung und Warnungen.
 
 ### 29.5 Mediaslide / Netwalk Sync (Erinnerung)
 

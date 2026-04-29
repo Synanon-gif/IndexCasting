@@ -1,11 +1,11 @@
 ---
-description: B2B billing prep, invoices (future), and model billing firewall — must not regress.
+description: B2B billing prep, manual invoices (agency), Stripe-routed invoices (future), and model billing firewall — must not regress.
 alwaysApply: false
 ---
 
-# Billing & Payment Invariants (I-PAY-1 … I-PAY-10)
+# Billing & Payment Invariants (I-PAY-1 … I-PAY-12)
 
-Scope: organization billing profiles/defaults, future invoice drafts, platform fees (future), and **strict separation from model-facing surfaces**.
+Scope: organization billing profiles/defaults, manual invoice drafts (agency manual billing), future Stripe-routed invoice drafts, platform fees (future), and **strict separation from model-facing surfaces**.
 
 ## I-PAY-1 — Canonical booking state as invoice basis
 
@@ -56,8 +56,16 @@ The product does not hold client↔agency booking proceeds in custody. Subscript
 - **Smart Attention** (or status banners) inside the Hub **must** stay in sync when the user switches **sub-tabs** if the signal depends on the active tab (reload or keyed refetch — no stale banner after navigation).
 - **Commercial truth** for amounts still comes from canonical DB state (**I-PAY-1**); Hub is presentation + drafts over that truth.
 
+## I-PAY-12 — Manual invoices (agency manual billing) — dates & PDF display
+
+- **DB payload:** All persisted date fields on `manual_invoices` / `manual_invoice_line_items` that map to Postgres **`date`** types must be sent as **`YYYY-MM-DD`** or **`null`**. Normalize flexible user input **only at the UI persistence boundary** (`ManualInvoiceBuilderPanel` → services); do not rely on Postgres accepting locale strings (`22.5.2026` → **22008**).
+- **Validation:** Non-empty values that fail parse → **do not** call insert/update for that save attempt; show the fixed English validation message (same family as other manual-billing alerts). Empty optional fields → **`null`**, not invented defaults.
+- **Separation:** Changing date parsing or PDF labels must **not** alter **tax math**, **line totals**, or **`computeManualInvoiceTotals`** — display and payload shaping only unless product explicitly adds a tax engine.
+- **PDF / preview:** VAT column and VAT breakdown labels show **percentage only**; raw enum-style treatment keys (`reverse_charge`, etc.) must **not** appear as user-visible PDF text (table, totals labels, or pasted into scrubbed note fields per product rules in `.cursorrules` §29.4a).
+
 ## Regression checklist (when touching billing)
 
 - [ ] No new model-facing surface exposes billing/fee/invoice/payment fields.
 - [ ] No weakening of `OPTION_REQUEST_SELECT_MODEL_SAFE` for commercial columns.
 - [ ] Owner-only billing writes remain enforced in RLS.
+- [ ] Manual invoice saves: date payload remains ISO-or-null at persist boundary; PDF still hides raw treatment keys in VAT UI (**I-PAY-12**).

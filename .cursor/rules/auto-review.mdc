@@ -23,7 +23,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 | **Guest / Shared / Client Web Gallery** | `GuestView`, `SharedSelectionView`, `PackageGalleryView`, `ActiveOptionsView` — Bild-Pipeline (`StorageImage`), Messwerte (`—` / `??`), externes Gating, keine Discovery-Fallbacks; **PDF Export** nur Web, nur Scope der geöffneten Entität, dynamischer `jspdf`-Import — siehe [.cursor/rules/client-web-gallery-guest-shared-audit.mdc](client-web-gallery-guest-shared-audit.mdc) **§12** |
 | **Invariant audit / dev checks** | Nach Änderungen an Roster, MAT, Kalender-Dedupe, Agency↔Model-Chat, Dissolve-Caches: [docs/INVARIANT_AUDIT_REPORT.md](../../docs/INVARIANT_AUDIT_REPORT.md), `src/utils/invariantValidationDev.ts`, grep-Präfixe `[roster][integrity]` / `[calendar][dedupe]` / `[chat][mat]` |
 | **Trust / Status / Observability** | Öffentliche Routen `/trust`, `/trust/*`, `/status` — `normalizeTrustPath` + `publicLegalRoutes.test.ts` bei neuen Pfaden; Admin `system_events` / Logger: UI-Queries an **live** Schema; siehe `.cursorrules` **§29** |
-| **Agency Share / Billing Hub** | Agency-to-Agency Roster Share (MAT-Import, keine MAT-Überschreibung); Billing Hub — [.cursor/rules/billing-payment-invariants.mdc](billing-payment-invariants.mdc) **I-PAY-11** + Owner/Model-Firewall |
+| **Agency Share / Billing Hub** | Agency-to-Agency Roster Share (MAT-Import, keine MAT-Überschreibung); Billing Hub — [.cursor/rules/billing-payment-invariants.mdc](billing-payment-invariants.mdc) **I-PAY-11** + Owner/Model-Firewall; **Manual invoices** — ISO date payload + PDF VAT display **I-PAY-12** / `.cursorrules` §29.4a |
 
 ---
 
