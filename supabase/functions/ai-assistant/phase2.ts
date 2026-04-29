@@ -24,7 +24,7 @@ export type CalendarDateRange = {
 export type IntentClassification =
   | { intent: 'help_static' }
   | { intent: 'calendar_summary'; dateRange: CalendarDateRange }
-  | { intent: 'model_visible_profile_facts'; searchText: string }
+  | { intent: 'model_visible_profile_facts'; searchText: string; needsClarification?: boolean }
   | { intent: Exclude<AssistantIntent, 'help_static' | 'calendar_summary' | 'model_visible_profile_facts'> };
 
 export type CalendarSummaryItem = {
@@ -95,6 +95,12 @@ export type ModelFactsExecutionResult =
   | { type: 'answer'; answer: string }
   | { type: 'mistral'; facts: ModelVisibleProfileFacts };
 
+export const CALENDAR_UNSUPPORTED_RANGE_ANSWER =
+  'I can answer limited calendar questions for a specific date range. Try asking what is on your calendar today, tomorrow, or next week.';
+export const MODEL_CLARIFICATION_ANSWER = 'Which model do you mean?';
+export const CLIENT_MODEL_FACTS_REFUSAL =
+  'I can’t access agency-only model profile facts from the Client workspace.';
+
 export const MAX_CALENDAR_RANGE_DAYS = 31;
 export const MAX_CALENDAR_RESULTS = 25;
 export const MAX_MODEL_FACT_CANDIDATES = 5;
@@ -130,6 +136,7 @@ const CALENDAR_PATTERNS = [
   /\b(what|show|list|tell me|do i|do we|have|what's|what is)\b.*\b(today|tomorrow|this week|next week|next \d+ days?|month)\b.*\b(options?|castings?|jobs?|bookings?|requests?)\b/i,
   /\b(options?|castings?|jobs?|bookings?|requests?)\b.*\b(today|tomorrow|this week|next week|next \d+ days?|month)\b/i,
   /\bwhat (is|do we have|do i have).*\b(today|tomorrow|next week|this week)\b/i,
+  /\bwhen\s+was\s+(?:my\s+)?(?:the\s+)?last\s+(?:job|booking|casting|option)\b/i,
 ];
 
 const MODEL_PROFILE_PATTERNS = [
@@ -139,6 +146,8 @@ const MODEL_PROFILE_PATTERNS = [
   /\bdoes\b.*\b[a-z][\p{L}\p{N}'’.\-\s]{1,80}\b.*\bhave an account\b/iu,
   /\bmodel\s+dimensions?\b.*\b[a-z][\p{L}\p{N}'’.\-\s]{1,80}\b/iu,
   /\bdo(?:es)?\b.*\b(measurements?|dimensions?)\b.*\bmatch\b/iu,
+  /\b(?:her|his|their)\s+(?:measurements?|dimensions?|height|city|location|shoes?|shoe size|chest|bust|waist|hips|hair|eyes?)\b/i,
+  /\b(?:this|that)\s+model\b.*\b(?:measurements?|dimensions?|height|city|location|shoes?|shoe size|chest|bust|waist|hips|hair|eyes?|account)\b/i,
 ];
 
 const WRITE_ACTION_PATTERN =
@@ -170,6 +179,17 @@ function stripModelSearchNoise(value: string): string {
     .slice(0, MAX_MODEL_SEARCH_CHARS);
 }
 
+function isPronounModelFactsQuestion(message: string): boolean {
+  return (
+    /\b(?:her|his|their)\s+(?:measurements?|dimensions?|height|city|location|shoes?|shoe size|chest|bust|waist|hips|hair|eyes?)\b/i.test(
+      message,
+    ) ||
+    /\b(?:this|that)\s+model\b.*\b(?:measurements?|dimensions?|height|city|location|shoes?|shoe size|chest|bust|waist|hips|hair|eyes?|account)\b/i.test(
+      message,
+    )
+  );
+}
+
 export function extractModelProfileSearchText(message: string): string {
   const normalized = message.replace(/\s+/g, ' ').trim();
   const bracketMatch = normalized.match(/\[([^\]]{2,80})\]/);
@@ -194,7 +214,10 @@ export function resolveCalendarDateRange(message: string, now = new Date()): Cal
   let days = 7;
 
   const nextDaysMatch = normalized.match(/\bnext\s+(\d{1,3})\s+days?\b/);
-  if (normalized.includes('tomorrow')) {
+  if (/\bwhen\s+was\s+(?:my\s+)?(?:the\s+)?last\s+(?:job|booking|casting|option)\b/i.test(normalized)) {
+    start = addDays(today, -(MAX_CALENDAR_RANGE_DAYS - 1));
+    days = MAX_CALENDAR_RANGE_DAYS;
+  } else if (normalized.includes('tomorrow')) {
     start = addDays(today, 1);
     days = 1;
   } else if (normalized.includes('today')) {
@@ -241,6 +264,9 @@ export function classifyAssistantIntent(
   }
 
   if (modelProfileQuestion) {
+    if (isPronounModelFactsQuestion(normalized)) {
+      return { intent: 'model_visible_profile_facts', searchText: '', needsClarification: true };
+    }
     const searchText = extractModelProfileSearchText(normalized);
     if (!searchText || searchText.length < 2) return { intent: 'unknown_live_data' };
     return { intent: 'model_visible_profile_facts', searchText };
@@ -391,8 +417,11 @@ export function resolveModelFactsExecutionResult(input: {
   role: ViewerRole;
   facts: ModelVisibleProfileFacts;
 }): ModelFactsExecutionResult {
+  if (input.role === 'client') {
+    return { type: 'answer', answer: CLIENT_MODEL_FACTS_REFUSAL };
+  }
   if (input.role !== 'agency') {
-    return { type: 'answer', answer: 'I can’t access agency model profile facts from this workspace.' };
+    return { type: 'answer', answer: 'I can’t access agency-only model profile facts from this workspace.' };
   }
 
   if (input.facts.matchStatus === 'none') {
@@ -439,7 +468,7 @@ export function forbiddenIntentAnswer(intent: Exclude<AssistantIntent, 'help_sta
     case 'write_action':
       return 'I can’t perform actions or change data. I can explain where to do this in IndexCasting.';
     case 'model_hidden_data':
-      return 'I can’t reveal hidden or private model data. I can only help Agency users with basic visible model profile facts.';
+      return 'I can’t reveal hidden or private model data. I can only help with basic visible model profile facts.';
     case 'gdpr_export_delete':
       return 'I can’t process account deletion or personal data exports here. Please use the privacy/account settings flow.';
     case 'unknown_live_data':

@@ -13,7 +13,11 @@ import {
 import { uiCopy } from '../../constants/uiCopy';
 import { colors, spacing, typography } from '../../theme/theme';
 import { askAiAssistant, type AiAssistantMessage } from '../../services/aiAssistantSupabase';
-import { getAiAssistantSubtitle, type AiAssistantViewerRole } from './aiAssistantCopy';
+import {
+  getAiAssistantDisclaimer,
+  getAiAssistantSubtitle,
+  type AiAssistantViewerRole,
+} from './aiAssistantCopy';
 
 type AiAssistantPanelProps = {
   visible: boolean;
@@ -24,6 +28,7 @@ type AiAssistantPanelProps = {
 export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPanelProps) {
   const copy = uiCopy.aiAssistant;
   const subtitle = getAiAssistantSubtitle(viewerRole);
+  const disclaimer = getAiAssistantDisclaimer(viewerRole);
   const scrollRef = useRef<ScrollView | null>(null);
   const [messages, setMessages] = useState<AiAssistantMessage[]>([
     { role: 'assistant', content: copy.initialMessage },
@@ -95,7 +100,7 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
             </Pressable>
           </View>
 
-          <Text style={styles.disclaimer}>{copy.disclaimer}</Text>
+          <Text style={styles.disclaimer}>{disclaimer}</Text>
 
           <ScrollView
             ref={scrollRef}

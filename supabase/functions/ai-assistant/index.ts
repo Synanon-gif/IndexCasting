@@ -13,10 +13,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   buildCalendarFacts,
   buildModelVisibleProfileFacts,
+  CLIENT_MODEL_FACTS_REFUSAL,
   classifyAssistantIntent,
   forbiddenIntentAnswer,
   MAX_CALENDAR_RESULTS,
   MAX_MODEL_FACT_CANDIDATES,
+  MODEL_CLARIFICATION_ANSWER,
   resolveModelFactsExecutionResult,
   type CalendarFacts,
   type ModelVisibleProfileFacts,
@@ -547,8 +549,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       if (role !== 'agency') {
         return jsonResponse({
           ok: true,
-          answer: 'I can’t access agency model profile facts from this workspace.',
+          answer: CLIENT_MODEL_FACTS_REFUSAL,
         }, 200, cors);
+      }
+      if (classification.needsClarification) {
+        return jsonResponse({ ok: true, answer: MODEL_CLARIFICATION_ANSWER }, 200, cors);
       }
       if (serverContext.state !== 'ok' || !serverContext.organizationId) {
         return jsonResponse({

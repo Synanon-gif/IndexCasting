@@ -3201,8 +3201,14 @@ export const uiCopy = {
     inputPlaceholder: 'Ask about using IndexCasting...',
     send: 'Send',
     sending: 'Sending...',
-    disclaimer:
-      'I can help explain how IndexCasting works. I do not have access to live account data yet.',
+    disclaimers: {
+      agency:
+        'I can help with IndexCasting workflows, limited calendar questions, and visible facts for your agency models. I can’t perform actions or access billing, messages, admin, or hidden data.',
+      client:
+        'I can help with IndexCasting workflows and limited calendar questions. I can’t access agency-only model data, messages, billing, admin, or hidden data.',
+      model:
+        'I can help with IndexCasting workflows and basic model account guidance. I can’t perform actions or access billing, messages, admin, or hidden data.',
+    },
     initialMessage: 'Hi, I can explain IndexCasting workflows and where to find things in the app.',
     unavailable: 'AI Help is temporarily unavailable. Please try again later or contact support.',
     emptyQuestion: 'Enter a question first.',

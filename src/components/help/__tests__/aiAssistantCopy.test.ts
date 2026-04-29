@@ -1,4 +1,5 @@
 import {
+  getAiAssistantDisclaimer,
   getAiAssistantRoleKnowledge,
   getAiAssistantSubtitle,
   getAiAssistantTerminologyContract,
@@ -11,6 +12,19 @@ describe('aiAssistantCopy helpers', () => {
     expect(getAiAssistantSubtitle('agency')).toBe('You are using IndexCasting as an Agency.');
     expect(getAiAssistantSubtitle('client')).toBe('You are using IndexCasting as a Client.');
     expect(getAiAssistantSubtitle('model')).toBe('Model account guidance');
+  });
+
+  it('uses accurate role-specific Phase 2 disclaimer copy', () => {
+    const agency = getAiAssistantDisclaimer('agency');
+    const client = getAiAssistantDisclaimer('client');
+
+    expect(agency).toContain('limited calendar questions');
+    expect(agency).toContain('visible facts for your agency models');
+    expect(agency).toContain('I can’t perform actions');
+    expect(client).toContain('limited calendar questions');
+    expect(client).toContain('I can’t access agency-only model data');
+    expect(client).not.toContain('visible facts for your agency models');
+    expect(client).not.toContain('Agency-only visible model profile facts');
   });
 
   it('classifies live-data questions that must be refused', () => {

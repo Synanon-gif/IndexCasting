@@ -3,11 +3,14 @@ import * as path from 'path';
 import {
   buildCalendarFacts,
   buildModelVisibleProfileFacts,
+  CALENDAR_UNSUPPORTED_RANGE_ANSWER,
+  CLIENT_MODEL_FACTS_REFUSAL,
   classifyAssistantIntent,
   extractModelProfileSearchText,
   forbiddenIntentAnswer,
   MAX_CALENDAR_RANGE_DAYS,
   MAX_MODEL_SEARCH_CHARS,
+  MODEL_CLARIFICATION_ANSWER,
   resolveModelFactsExecutionResult,
 } from '../../../supabase/functions/ai-assistant/phase2';
 
@@ -41,8 +44,13 @@ describe('AI Assistant Phase 2 intent router', () => {
     const questions = [
       'what is on my calendar',
       'what do I have tomorrow',
+      'What do I have tomorrow?',
+      'What is on my calendar tomorrow?',
+      'What do I have next week?',
       'show my calendar',
       'what bookings do I have',
+      'Do I have any jobs tomorrow?',
+      'Do I have any castings tomorrow?',
       'do I have any options tomorrow?',
     ];
 
@@ -51,6 +59,21 @@ describe('AI Assistant Phase 2 intent router', () => {
       expect(result.intent).toBe('calendar_summary');
       expect(result.intent).not.toBe('help_static');
       expect(result.intent).not.toBe('unknown_live_data');
+    }
+  });
+
+  it('routes bounded last-job calendar questions without static fallback', () => {
+    const result = classifyAssistantIntent('When was the last job?', 'agency', BASE_DATE);
+
+    expect(result.intent).toBe('calendar_summary');
+    expect(result.intent).not.toBe('help_static');
+    expect(result.intent).not.toBe('unknown_live_data');
+    if (result.intent === 'calendar_summary') {
+      expect(result.dateRange).toEqual({
+        startDate: '2026-03-30',
+        endDate: '2026-04-29',
+        wasCapped: false,
+      });
     }
   });
 
@@ -101,6 +124,18 @@ describe('AI Assistant Phase 2 intent router', () => {
       expect(result.intent).toBe('model_visible_profile_facts');
       expect(result.intent).not.toBe('help_static');
       expect(result.intent).not.toBe('unknown_live_data');
+    }
+  });
+
+  it('routes pronoun-based model facts to clarification instead of static fallback', () => {
+    const result = classifyAssistantIntent('What are her measurements?', 'agency', BASE_DATE);
+
+    expect(result.intent).toBe('model_visible_profile_facts');
+    expect(result.intent).not.toBe('help_static');
+    expect(result.intent).not.toBe('unknown_live_data');
+    if (result.intent === 'model_visible_profile_facts') {
+      expect(result.needsClarification).toBe(true);
+      expect(result.searchText).toBe('');
     }
   });
 
@@ -422,8 +457,24 @@ describe('AI Assistant Phase 2 model visible profile facts', () => {
 
     expect(execution).toEqual({
       type: 'answer',
-      answer: 'I can’t access agency model profile facts from this workspace.',
+      answer: CLIENT_MODEL_FACTS_REFUSAL,
     });
+    if (execution.type === 'answer') {
+      expect(execution.answer).toBe(
+        'I can’t access agency-only model profile facts from the Client workspace.',
+      );
+      expect(execution.answer).not.toContain('Agency-only visible model profile facts');
+      expect(execution.answer).not.toMatch(
+        /\b(My Models|Clients|Recruiting|Links|ADD OPTION|ADD CASTING)\b/,
+      );
+    }
+  });
+
+  it('asks which model for ambiguous pronoun follow-up without Phase 1 fallback', () => {
+    const execution = { type: 'answer' as const, answer: MODEL_CLARIFICATION_ANSWER };
+
+    expect(execution.answer).toBe('Which model do you mean?');
+    expect(execution.answer).not.toMatch(/I don't have access to your live data yet/i);
   });
 
   it('continues to Mistral only for found Agency model facts', () => {
@@ -496,5 +547,16 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     );
     const modelBranch = edge.slice(modelBranchStart, staticFallbackStart);
     expect(modelBranch).not.toMatch(/I don\\'t have access to your live data yet/i);
+  });
+
+  it('keeps recognized live-data branches away from generic Phase 1 fallback wording', () => {
+    const genericFallback = "I don't have access to your live data yet";
+    expect(CALENDAR_UNSUPPORTED_RANGE_ANSWER).not.toContain(genericFallback);
+    expect(MODEL_CLARIFICATION_ANSWER).not.toContain(genericFallback);
+    expect(CLIENT_MODEL_FACTS_REFUSAL).not.toContain(genericFallback);
+    expect(forbiddenIntentAnswer('billing')).not.toContain(genericFallback);
+    expect(forbiddenIntentAnswer('raw_messages')).not.toContain(genericFallback);
+    expect(forbiddenIntentAnswer('database_schema')).not.toContain(genericFallback);
+    expect(forbiddenIntentAnswer('write_action')).not.toContain(genericFallback);
   });
 });

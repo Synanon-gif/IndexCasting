@@ -40,6 +40,10 @@ export function getAiAssistantSubtitle(role: AiAssistantViewerRole): string {
   return uiCopy.aiAssistant.subtitles[role];
 }
 
+export function getAiAssistantDisclaimer(role: AiAssistantViewerRole): string {
+  return uiCopy.aiAssistant.disclaimers[role];
+}
+
 export function isAiAssistantLiveDataQuestion(input: string): boolean {
   const normalized = input.trim();
   if (!normalized) return false;
