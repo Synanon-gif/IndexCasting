@@ -91,6 +91,10 @@ export type ModelVisibleProfileFacts = {
   };
 };
 
+export type ModelFactsExecutionResult =
+  | { type: 'answer'; answer: string }
+  | { type: 'mistral'; facts: ModelVisibleProfileFacts };
+
 export const MAX_CALENDAR_RANGE_DAYS = 31;
 export const MAX_CALENDAR_RESULTS = 25;
 export const MAX_MODEL_FACT_CANDIDATES = 5;
@@ -133,6 +137,7 @@ const MODEL_PROFILE_PATTERNS = [
   /\b(?:height|city|base|based|location|located|hair|eyes?|shoes?|shoe size|chest|bust|waist|hips)\b.*\b(?:of|for|does|is|has|have)\b.*\b[a-z][\p{L}\p{N}'’.\-\s]{1,80}\b/iu,
   /\b(?:what|show|tell me|give me)\b.*\b(?:profile facts?|basic facts?|model facts?)\b.*\b[a-z][\p{L}\p{N}'’.\-\s]{1,80}\b/iu,
   /\bdoes\b.*\b[a-z][\p{L}\p{N}'’.\-\s]{1,80}\b.*\bhave an account\b/iu,
+  /\bmodel\s+dimensions?\b.*\b[a-z][\p{L}\p{N}'’.\-\s]{1,80}\b/iu,
   /\bdo(?:es)?\b.*\b(measurements?|dimensions?)\b.*\bmatch\b/iu,
 ];
 
@@ -236,7 +241,6 @@ export function classifyAssistantIntent(
   }
 
   if (modelProfileQuestion) {
-    if (role !== 'agency') return { intent: 'model_hidden_data' };
     const searchText = extractModelProfileSearchText(normalized);
     if (!searchText || searchText.length < 2) return { intent: 'unknown_live_data' };
     return { intent: 'model_visible_profile_facts', searchText };
@@ -380,6 +384,42 @@ export function buildModelVisibleProfileFacts(input: {
     role: 'agency',
     matchStatus: 'found',
     model: safeRows[0],
+  };
+}
+
+export function resolveModelFactsExecutionResult(input: {
+  role: ViewerRole;
+  facts: ModelVisibleProfileFacts;
+}): ModelFactsExecutionResult {
+  if (input.role !== 'agency') {
+    return { type: 'answer', answer: 'I can’t access agency model profile facts from this workspace.' };
+  }
+
+  if (input.facts.matchStatus === 'none') {
+    return {
+      type: 'answer',
+      answer: 'I can’t find a visible model matching that name in your agency workspace.',
+    };
+  }
+
+  if (input.facts.matchStatus === 'ambiguous') {
+    const names = (input.facts.candidates ?? [])
+      .map((candidate) => {
+        const location = [candidate.city, candidate.country].filter(Boolean).join(', ');
+        return location ? `${candidate.display_name} (${location})` : candidate.display_name;
+      })
+      .join('; ');
+    return {
+      type: 'answer',
+      answer: names
+        ? `I found multiple visible models matching that. Which one do you mean? ${names}`
+        : 'I found multiple visible models matching that. Which one do you mean?',
+    };
+  }
+
+  return {
+    type: 'mistral',
+    facts: input.facts,
   };
 }
 

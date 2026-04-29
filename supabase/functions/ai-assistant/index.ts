@@ -17,6 +17,7 @@ import {
   forbiddenIntentAnswer,
   MAX_CALENDAR_RESULTS,
   MAX_MODEL_FACT_CANDIDATES,
+  resolveModelFactsExecutionResult,
   type CalendarFacts,
   type ModelVisibleProfileFacts,
   type ViewerRole,
@@ -541,8 +542,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     if (classification.intent === 'model_visible_profile_facts') {
+      console.log('[ai-assistant] intent=model_visible_profile_facts triggered');
+
       if (role !== 'agency') {
-        return jsonResponse({ ok: true, answer: forbiddenIntentAnswer('model_hidden_data') }, 200, cors);
+        return jsonResponse({
+          ok: true,
+          answer: 'I can’t access agency model profile facts from this workspace.',
+        }, 200, cors);
       }
       if (serverContext.state !== 'ok' || !serverContext.organizationId) {
         return jsonResponse({
@@ -563,38 +569,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
       });
 
       if (!result.ok) {
-        const answer =
-          result.reason === 'org_context'
-            ? 'I can’t access model facts because your organization context is missing or ambiguous.'
-            : 'I can’t access visible model facts right now.';
-        return jsonResponse({ ok: true, answer }, 200, cors);
+        return jsonResponse({ ok: true, answer: 'I can’t access visible model facts right now.' }, 200, cors);
       }
 
-      if (result.facts.matchStatus === 'none') {
-        return jsonResponse({
-          ok: true,
-          answer: 'I can’t find a visible model matching that.',
-        }, 200, cors);
-      }
+      const resultCount =
+        result.facts.matchStatus === 'found'
+          ? 1
+          : result.facts.matchStatus === 'ambiguous'
+            ? (result.facts.candidates ?? []).length
+            : 0;
+      console.log('[ai-assistant] model facts result count:', resultCount);
 
-      if (result.facts.matchStatus === 'ambiguous') {
-        const names = (result.facts.candidates ?? [])
-          .map((candidate) => {
-            const location = [candidate.city, candidate.country].filter(Boolean).join(', ');
-            return location ? `${candidate.display_name} (${location})` : candidate.display_name;
-          })
-          .join('; ');
-        return jsonResponse({
-          ok: true,
-          answer: names
-            ? `I found multiple visible models matching that. Which one do you mean? ${names}`
-            : 'I found multiple visible models matching that. Which one do you mean?',
-        }, 200, cors);
+      const execution = resolveModelFactsExecutionResult({ role, facts: result.facts });
+      if (execution.type === 'answer') {
+        return jsonResponse({ ok: true, answer: execution.answer }, 200, cors);
       }
 
       const answer = await callMistral({
         systemPrompt: buildModelFactsSystemPrompt(),
-        messages: [{ role: 'user', content: buildModelFactsUserPrompt(message, result.facts) }],
+        messages: [{ role: 'user', content: buildModelFactsUserPrompt(message, execution.facts) }],
         maxTokens: MODEL_FACT_OUTPUT_TOKENS,
         signal: controller.signal,
       });

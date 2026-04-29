@@ -8,6 +8,7 @@ import {
   forbiddenIntentAnswer,
   MAX_CALENDAR_RANGE_DAYS,
   MAX_MODEL_SEARCH_CHARS,
+  resolveModelFactsExecutionResult,
 } from '../../../supabase/functions/ai-assistant/phase2';
 
 const BASE_DATE = new Date('2026-04-29T12:00:00.000Z');
@@ -62,31 +63,55 @@ describe('AI Assistant Phase 2 intent router', () => {
 
   it('routes Agency model measurement questions to model_visible_profile_facts', () => {
     const result = classifyAssistantIntent(
-      'What are the measurements of Mia Stone?',
+      'What are the measurements of Ruben E?',
       'agency',
       BASE_DATE,
     );
 
     expect(result.intent).toBe('model_visible_profile_facts');
     if (result.intent === 'model_visible_profile_facts') {
-      expect(result.searchText).toBe('Mia Stone');
+      expect(result.searchText).toBe('Ruben E');
+    }
+  });
+
+  it('routes Agency height questions to model_visible_profile_facts', () => {
+    const result = classifyAssistantIntent('What is the height of Ruben E?', 'agency', BASE_DATE);
+
+    expect(result.intent).toBe('model_visible_profile_facts');
+    if (result.intent === 'model_visible_profile_facts') {
+      expect(result.searchText).toBe('Ruben E');
     }
   });
 
   it('routes Agency model account questions to model_visible_profile_facts', () => {
-    const result = classifyAssistantIntent('Does Mia Stone have an account?', 'agency', BASE_DATE);
+    const result = classifyAssistantIntent('Does Ruben E have an account?', 'agency', BASE_DATE);
 
     expect(result.intent).toBe('model_visible_profile_facts');
   });
 
-  it('forbids Client access to Agency-only model facts', () => {
+  it('routes Agency profile facts, dimensions, and measurement comparison phrases', () => {
+    const questions = [
+      'Show me profile facts for Ruben E',
+      'model dimensions for Ruben E',
+      'Do these measurements match for Ruben E?',
+    ];
+
+    for (const question of questions) {
+      const result = classifyAssistantIntent(question, 'agency', BASE_DATE);
+      expect(result.intent).toBe('model_visible_profile_facts');
+      expect(result.intent).not.toBe('help_static');
+      expect(result.intent).not.toBe('unknown_live_data');
+    }
+  });
+
+  it('routes Client model fact questions to the model facts execution path for role-specific refusal', () => {
     const result = classifyAssistantIntent(
       'What are the measurements of Mia Stone?',
       'client',
       BASE_DATE,
     );
 
-    expect(result.intent).toBe('model_hidden_data');
+    expect(result.intent).toBe('model_visible_profile_facts');
   });
 
   it('forbids cross-org and bulk model wording', () => {
@@ -375,6 +400,43 @@ describe('AI Assistant Phase 2 model visible profile facts', () => {
     ]);
     expect(JSON.stringify(facts)).not.toMatch(/175|180|measurements|account_linked/i);
   });
+
+  it('returns model-specific not-found response without Phase 1 fallback', () => {
+    const facts = buildModelVisibleProfileFacts({ rows: [] });
+    const execution = resolveModelFactsExecutionResult({ role: 'agency', facts });
+
+    expect(execution).toEqual({
+      type: 'answer',
+      answer: 'I can’t find a visible model matching that name in your agency workspace.',
+    });
+    if (execution.type === 'answer') {
+      expect(execution.answer).not.toMatch(/I don't have access to your live data yet/i);
+    }
+  });
+
+  it('returns role-specific refusal for non-Agency model facts requests', () => {
+    const facts = buildModelVisibleProfileFacts({
+      rows: [{ display_name: 'Ruben E', height: 180 }],
+    });
+    const execution = resolveModelFactsExecutionResult({ role: 'client', facts });
+
+    expect(execution).toEqual({
+      type: 'answer',
+      answer: 'I can’t access agency model profile facts from this workspace.',
+    });
+  });
+
+  it('continues to Mistral only for found Agency model facts', () => {
+    const facts = buildModelVisibleProfileFacts({
+      rows: [{ display_name: 'Ruben E', height: 180 }],
+    });
+    const execution = resolveModelFactsExecutionResult({ role: 'agency', facts });
+
+    expect(execution.type).toBe('mistral');
+    if (execution.type === 'mistral') {
+      expect(execution.facts.matchStatus).toBe('found');
+    }
+  });
 });
 
 describe('AI Assistant Phase 2 SQL and edge security contract', () => {
@@ -417,5 +479,22 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     expect(prompt).not.toMatch(
       /ai_read_model_visible_profile_facts|public\.models|model_agency_territories|SELECT|SQL|RPC|RLS/,
     );
+  });
+
+  it('keeps model facts execution out of Phase 1 fallback responses', () => {
+    expect(edge).toMatch(/\[ai-assistant\] intent=model_visible_profile_facts triggered/);
+    expect(edge).toMatch(/\[ai-assistant\] model facts result count:/);
+    expect(edge).toMatch(/resolveModelFactsExecutionResult/);
+    expect(edge).toMatch(/I can’t access visible model facts right now\./);
+
+    const modelBranchStart = edge.indexOf(
+      "classification.intent === 'model_visible_profile_facts'",
+    );
+    const staticFallbackStart = edge.indexOf(
+      'systemPrompt: buildSystemPrompt(role)',
+      modelBranchStart,
+    );
+    const modelBranch = edge.slice(modelBranchStart, staticFallbackStart);
+    expect(modelBranch).not.toMatch(/I don\\'t have access to your live data yet/i);
   });
 });
