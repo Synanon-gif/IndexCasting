@@ -14,6 +14,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   AI_ASSISTANT_LIMIT_REACHED_ANSWER,
   AI_ASSISTANT_UNAVAILABLE_ANSWER,
+  buildAssistantContext,
   buildCalendarItemDetailsFacts,
   buildCalendarFacts,
   buildModelInfoClarificationAnswer,
@@ -30,7 +31,9 @@ import {
   MODEL_CLARIFICATION_ANSWER,
   resolveCalendarDetailDateRange,
   resolveCalendarItemDetailsAnswer,
+  resolveCalendarItemDetailsAnswerFromContext,
   resolveModelFactsExecutionResult,
+  type AiAssistantContext,
   type AssistantIntent,
   type CalendarFacts,
   type CalendarItemDetailsFacts,
@@ -64,6 +67,7 @@ type AssistantPayload = {
   message?: unknown;
   viewerRole?: unknown;
   history?: unknown;
+  context?: unknown;
 };
 
 type SupabaseClientLike = {
@@ -103,8 +107,7 @@ type RateLimitDecision = {
 };
 
 type AssistantResponseContext = {
-  calendarFacts?: CalendarFacts;
-};
+} & AiAssistantContext;
 
 const ALLOWED_ORIGINS = [
   'https://index-casting.com',
@@ -255,6 +258,61 @@ function normalizeCalendarFactsContext(raw: unknown): CalendarFacts | null {
   });
 }
 
+function normalizeAssistantContext(raw: unknown): AiAssistantContext | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Partial<AiAssistantContext>;
+  const lastCalendarItem = record.last_calendar_item;
+  const lastModelName =
+    typeof record.last_model_name === 'string'
+      ? sanitizeText(record.last_model_name, 120)
+      : null;
+  const lastIntent =
+    record.last_intent === 'help_static' ||
+    record.last_intent === 'calendar_summary' ||
+    record.last_intent === 'calendar_item_details' ||
+    record.last_intent === 'model_visible_profile_facts'
+      ? record.last_intent
+      : null;
+
+  let safeCalendarItem: AiAssistantContext['last_calendar_item'] = null;
+  if (lastCalendarItem && typeof lastCalendarItem === 'object') {
+    const item = lastCalendarItem as Record<string, unknown>;
+    const kind = item.kind;
+    const date = typeof item.date === 'string' ? sanitizeText(item.date, 10) : '';
+    const title = typeof item.title === 'string' ? sanitizeText(item.title, 120) : '';
+    if (
+      date &&
+      title &&
+      (kind === 'option' ||
+        kind === 'casting' ||
+        kind === 'job' ||
+        kind === 'private_event' ||
+        kind === 'booking')
+    ) {
+      safeCalendarItem = {
+        date,
+        start_time: typeof item.start_time === 'string' ? sanitizeText(item.start_time, 16) : null,
+        end_time: typeof item.end_time === 'string' ? sanitizeText(item.end_time, 16) : null,
+        kind,
+        title,
+        model_name: typeof item.model_name === 'string' ? sanitizeText(item.model_name, 120) : null,
+        counterparty_name:
+          typeof item.counterparty_name === 'string'
+            ? sanitizeText(item.counterparty_name, 120)
+            : null,
+        note: typeof item.note === 'string' ? sanitizeText(item.note, 200) : null,
+      };
+    }
+  }
+
+  const context = buildAssistantContext({
+    lastCalendarItem: safeCalendarItem,
+    lastModelName,
+    lastIntent,
+  });
+  return context.last_calendar_item || context.last_model_name || context.last_intent ? context : null;
+}
+
 function latestCalendarFactsFromHistory(raw: unknown): CalendarFacts | null {
   if (!Array.isArray(raw)) return null;
   for (let i = raw.length - 1; i >= 0; i -= 1) {
@@ -264,6 +322,28 @@ function latestCalendarFactsFromHistory(raw: unknown): CalendarFacts | null {
     if (facts) return facts;
   }
   return null;
+}
+
+function latestAssistantContextFromHistory(raw: unknown): AiAssistantContext | null {
+  if (!Array.isArray(raw)) return null;
+  for (let i = raw.length - 1; i >= 0; i -= 1) {
+    const message = raw[i] as ChatMessage;
+    if (message?.role !== 'assistant') continue;
+    const context = normalizeAssistantContext(message.context);
+    if (context) return context;
+    const facts = normalizeCalendarFactsContext(message.context);
+    if (facts && facts.items.length === 1) {
+      return buildAssistantContext({
+        lastCalendarItem: facts.items[0],
+        lastIntent: 'calendar_summary',
+      });
+    }
+  }
+  return null;
+}
+
+function resolveRequestAssistantContext(payload: AssistantPayload): AiAssistantContext | null {
+  return normalizeAssistantContext(payload.context) ?? latestAssistantContextFromHistory(payload.history);
 }
 
 function normalizeRateLimitDecision(data: unknown): RateLimitDecision | null {
@@ -354,15 +434,26 @@ async function recordUsageEvent(params: {
 
 function calendarContextFromDetails(facts: CalendarItemDetailsFacts): AssistantResponseContext | undefined {
   if (facts.matchStatus !== 'found' || !facts.item) return undefined;
-  return {
-    calendarFacts: buildCalendarFacts({
-      role: facts.role,
-      startDate: facts.item.date,
-      endDate: facts.item.date,
-      rangeWasCapped: false,
-      rows: [facts.item],
-    }),
-  };
+  return buildAssistantContext({
+    lastCalendarItem: facts.item,
+    lastIntent: 'calendar_item_details',
+  });
+}
+
+function calendarContextFromSummary(facts: CalendarFacts): AssistantResponseContext | undefined {
+  if (facts.items.length !== 1) return undefined;
+  return buildAssistantContext({
+    lastCalendarItem: facts.items[0],
+    lastIntent: 'calendar_summary',
+  });
+}
+
+function modelContextFromFacts(facts: ModelVisibleProfileFacts): AssistantResponseContext | undefined {
+  if (facts.matchStatus !== 'found' || !facts.model) return undefined;
+  return buildAssistantContext({
+    lastModelName: facts.model.display_name,
+    lastIntent: 'model_visible_profile_facts',
+  });
 }
 
 function terminologyContract(role: ViewerRole): string {
@@ -742,6 +833,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const serverContext = await resolveServerContext(supabase, requestedRole);
   const role = serverContext.role;
   const classification = classifyAssistantIntent(routingMessage, role);
+  const assistantContext = resolveRequestAssistantContext(payload);
   const requestId = crypto.randomUUID();
   const requestStartedAt = Date.now();
   const usageIntent = safeIntent(classification.intent);
@@ -825,6 +917,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
       if (classification.requestedField === 'pricing') {
         return await answerWithUsage(CALENDAR_DETAIL_PRICING_REFUSAL, 'blocked_forbidden');
+      }
+      if (classification.reference === 'followup') {
+        const contextAnswer = resolveCalendarItemDetailsAnswerFromContext(
+          assistantContext,
+          classification.requestedField,
+        );
+        if (contextAnswer) {
+          return await answerWithUsage(contextAnswer, 'allowed', assistantContext ?? undefined);
+        }
       }
       if (serverContext.state !== 'ok' || !serverContext.organizationId) {
         return await answerWithUsage(
@@ -939,9 +1040,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
 
       if (result.facts.items.length === 0) {
-        return await answerWithUsage('I can’t find visible calendar items for that period.', 'allowed', {
-          calendarFacts: result.facts,
-        });
+        return await answerWithUsage('I can’t find visible calendar items for that period.', 'allowed');
       }
 
       const answer = await callMistral({
@@ -953,7 +1052,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
       if (!answer) {
         return await answerWithUsage(AI_ASSISTANT_UNAVAILABLE_ANSWER, 'error');
       }
-      return await answerWithUsage(answer, 'allowed', { calendarFacts: result.facts }, 'mistral', MISTRAL_MODEL);
+      return await answerWithUsage(
+        answer,
+        'allowed',
+        calendarContextFromSummary(result.facts),
+        'mistral',
+        MISTRAL_MODEL,
+      );
     }
 
     if (classification.intent === 'model_visible_profile_facts') {
@@ -963,12 +1068,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return await answerWithUsage(CLIENT_MODEL_FACTS_REFUSAL, 'blocked_forbidden');
       }
       if (classification.needsClarification) {
+        const canUseLastModel =
+          classification.clarificationReason === 'which_model' &&
+          Boolean(assistantContext?.last_model_name);
         if (classification.clarificationReason === 'what_info') {
           return await answerWithUsage(
             buildModelInfoClarificationAnswer(classification.searchText),
           );
         }
-        return await answerWithUsage(MODEL_CLARIFICATION_ANSWER);
+        if (!canUseLastModel) {
+          return await answerWithUsage(MODEL_CLARIFICATION_ANSWER);
+        }
       }
       if (serverContext.state !== 'ok' || !serverContext.organizationId) {
         return await answerWithUsage(
@@ -980,12 +1090,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
       console.log('PHASE2_MODEL_FACTS_TRIGGERED', {
         role,
         hasOrgContext: true,
-        searchLength: classification.searchText.length,
+        searchLength: (classification.searchText || assistantContext?.last_model_name || '').length,
       });
 
       const result = await loadModelVisibleProfileFacts({
         supabase,
-        searchText: classification.searchText,
+        searchText: classification.searchText || assistantContext?.last_model_name || '',
       });
 
       if (!result.ok) {
@@ -1014,7 +1124,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
       if (!answer) {
         return await answerWithUsage(AI_ASSISTANT_UNAVAILABLE_ANSWER, 'error');
       }
-      return await answerWithUsage(answer, 'allowed', undefined, 'mistral', MISTRAL_MODEL);
+      return await answerWithUsage(
+        answer,
+        'allowed',
+        modelContextFromFacts(execution.facts),
+        'mistral',
+        MISTRAL_MODEL,
+      );
     }
 
     const answer = await callMistral({

@@ -44,6 +44,7 @@ describe('askAiAssistant', () => {
         message: 'How do I create a project?',
         viewerRole: 'client',
         history: [{ role: 'assistant', content: 'Hi' }],
+        context: null,
       },
     });
   });
@@ -76,17 +77,42 @@ describe('askAiAssistant', () => {
   });
 
   it('preserves safe assistant context for follow-up routing', async () => {
-    const context = { calendarFacts: { intent: 'calendar_summary', items: [] } };
+    const context = {
+      last_calendar_item: {
+        date: '2026-04-28',
+        start_time: '10:00',
+        end_time: '14:00',
+        kind: 'job',
+        title: 'Job',
+        model_name: 'Rémi Lovisolo',
+        counterparty_name: 'Acme Client',
+        note: 'Visible shoot description',
+      },
+      last_intent: 'calendar_item_details',
+    };
     mockInvoke.mockResolvedValue({
-      data: { ok: true, answer: 'No visible calendar items.', context },
+      data: { ok: true, answer: 'The visible counterparty is Acme Client.', context },
       error: null,
     });
 
     const result = await askAiAssistant({
-      message: 'What is on my calendar?',
+      message: 'Who was the client?',
       viewerRole: 'agency',
+      context,
     });
 
-    expect(result).toEqual({ ok: true, answer: 'No visible calendar items.', context });
+    expect(result).toEqual({
+      ok: true,
+      answer: 'The visible counterparty is Acme Client.',
+      context,
+    });
+    expect(mockInvoke).toHaveBeenCalledWith('ai-assistant', {
+      body: {
+        message: 'Who was the client?',
+        viewerRole: 'agency',
+        history: [],
+        context,
+      },
+    });
   });
 });

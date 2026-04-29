@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import * as path from 'path';
 import {
+  buildAssistantContext,
   buildCalendarItemDetailsFacts,
   buildCalendarFacts,
   buildModelInfoClarificationAnswer,
@@ -18,6 +19,7 @@ import {
   MODEL_CLARIFICATION_ANSWER,
   MODEL_INFO_CLARIFICATION_PREFIX,
   resolveCalendarDetailDateRange,
+  resolveCalendarItemDetailsAnswerFromContext,
   resolveCalendarItemDetailsAnswer,
   resolveModelFactsExecutionResult,
 } from '../../../supabase/functions/ai-assistant/phase2';
@@ -200,9 +202,13 @@ describe('AI Assistant Phase 2 intent router', () => {
     const questions = [
       'Give me details about that job',
       'Who was the client for the last job?',
+      'Who was the client?',
       'Which model was in that casting?',
+      'Which model was booked?',
+      'What time was it?',
       'When was that job?',
       'What was the description?',
+      'What was the title?',
       'Who was it with?',
     ];
 
@@ -454,7 +460,7 @@ describe('AI Assistant Phase 2 calendar item details', () => {
     date: '2026-04-28',
     start_time: '10:00',
     end_time: '14:00',
-    kind: 'job',
+    kind: 'job' as const,
     title: 'Job',
     model_name: 'Rémi Lovisolo',
     counterparty_name: 'Acme Client',
@@ -561,13 +567,64 @@ describe('AI Assistant Phase 2 calendar item details', () => {
 
     expect(findSingleCalendarReferenceFromFacts(oneItemFacts)).toEqual({
       date: '2026-04-28',
+      start_time: '10:00',
+      end_time: '14:00',
       kind: 'job',
       title: 'Job',
       model_name: 'Rémi Lovisolo',
       counterparty_name: 'Acme Client',
       status_label: 'Job confirmed',
+      note: 'Visible shoot description',
     });
     expect(findSingleCalendarReferenceFromFacts(ambiguousFacts)).toBe('ambiguous');
+  });
+
+  it('answers follow-up client/model/time questions from safe last-calendar context', () => {
+    const context = buildAssistantContext({
+      lastCalendarItem: safeJobRow,
+      lastIntent: 'calendar_item_details',
+    });
+
+    expect(resolveCalendarItemDetailsAnswerFromContext(context, 'counterparty')).toBe(
+      'The visible counterparty is Acme Client.',
+    );
+    expect(resolveCalendarItemDetailsAnswerFromContext(context, 'model')).toBe(
+      'The visible model is Rémi Lovisolo.',
+    );
+    expect(resolveCalendarItemDetailsAnswerFromContext(context, 'date')).toBe(
+      'It is on 2026-04-28, 10:00–14:00.',
+    );
+  });
+
+  it('does not answer calendar follow-ups without context', () => {
+    expect(resolveCalendarItemDetailsAnswerFromContext(null, 'counterparty')).toBeNull();
+  });
+
+  it('keeps context minimized and excludes forbidden fields', () => {
+    const context = buildAssistantContext({
+      lastCalendarItem: safeJobRow,
+      lastModelName: 'Rémi Lovisolo',
+      lastIntent: 'calendar_item_details',
+    });
+
+    expect(context).toEqual({
+      last_calendar_item: {
+        date: '2026-04-28',
+        start_time: '10:00',
+        end_time: '14:00',
+        kind: 'job',
+        title: 'Job',
+        model_name: 'Rémi Lovisolo',
+        counterparty_name: 'Acme Client',
+        status_label: 'Job confirmed',
+        note: 'Visible shoot description',
+      },
+      last_model_name: 'Rémi Lovisolo',
+      last_intent: 'calendar_item_details',
+    });
+    expect(JSON.stringify(context)).not.toMatch(
+      /hidden-id|hidden@example\.com|\+491234|proposed_price|agency_counter_price|client_price_status|model_approval|waiting_for|select \*|option_requests|calendar_entries|file\.pdf|raw message/i,
+    );
   });
 });
 
@@ -772,6 +829,13 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     ),
     'utf8',
   );
+  const tokenTrgmMigration = readFileSync(
+    path.join(
+      process.cwd(),
+      'supabase/migrations/20261217_ai_assistant_token_trgm_model_matching.sql',
+    ),
+    'utf8',
+  );
 
   it('defines the model facts RPC with row_security off and explicit Agency scope guards', () => {
     expect(migration).toMatch(/SECURITY DEFINER/i);
@@ -818,6 +882,22 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     expect(hardeningMigration).toMatch(/scoped_display_name_folded LIKE v_search_pattern/i);
   });
 
+  it('adds scoped token and trigram matching without broadening model visibility', () => {
+    expect(tokenTrgmMigration).toMatch(/CREATE EXTENSION IF NOT EXISTS pg_trgm/i);
+    expect(tokenTrgmMigration).toMatch(/v_search_tokens := regexp_split_to_array/i);
+    expect(tokenTrgmMigration).toMatch(/scoped_name_tokens/i);
+    expect(tokenTrgmMigration).toMatch(
+      /similarity\(vm\.scoped_display_name_folded, v_search_folded\) >= 0\.35/i,
+    );
+    expect(tokenTrgmMigration).toMatch(/mat\.agency_id = v_agency_id/i);
+    expect(tokenTrgmMigration.indexOf('WHERE mat.agency_id = v_agency_id')).toBeLessThan(
+      tokenTrgmMigration.indexOf('ranked_matches AS'),
+    );
+    expect(tokenTrgmMigration).not.toMatch(
+      /\bm\.(email|phone)|proposed_price|agency_counter_price|client_price_status|waiting_for|model_approval|file_url|message_text/i,
+    );
+  });
+
   it('folds model search text after lowercasing so uppercase accents match unaccented input', () => {
     expect(accentFoldMigration).toMatch(
       /CREATE OR REPLACE FUNCTION public\.ai_assistant_fold_search_text/i,
@@ -832,11 +912,19 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
   it('keeps last-job detail follow-up context minimized in the edge response', () => {
     expect(edge).toMatch(/function calendarContextFromDetails/);
     expect(edge).toMatch(/facts\.matchStatus !== 'found'/);
-    expect(edge).toMatch(/rows: \[facts\.item\]/);
+    expect(edge).toMatch(/lastCalendarItem: facts\.item/);
     expect(edge).toMatch(/calendarContextFromDetails\(result\.facts\)/);
     expect(edge).not.toMatch(
       /proposed_price|agency_counter_price|client_price_status|model_approval|waiting_for/i,
     );
+  });
+
+  it('uses safe request context before re-querying calendar details', () => {
+    const contextIndex = edge.indexOf('resolveCalendarItemDetailsAnswerFromContext');
+    expect(contextIndex).toBeGreaterThan(-1);
+    expect(contextIndex).toBeLessThan(edge.indexOf('loadCalendarItemDetails({'));
+    expect(edge).toMatch(/resolveRequestAssistantContext\(payload\)/);
+    expect(edge).not.toMatch(/payload\.context.*organization_id|payload\.context.*id/i);
   });
 
   it('does not use service_role or send raw SQL/table/RPC names in model facts prompts', () => {

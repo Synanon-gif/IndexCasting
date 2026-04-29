@@ -3,16 +3,31 @@ import type { AiAssistantViewerRole } from '../components/help/aiAssistantCopy';
 
 const FUNCTION_NAME = 'ai-assistant';
 
+export type AiAssistantContext = {
+  last_calendar_item?: {
+    date: string;
+    start_time?: string | null;
+    end_time?: string | null;
+    kind: string;
+    title: string | null;
+    model_name: string | null;
+    counterparty_name: string | null;
+    note?: string | null;
+  } | null;
+  last_model_name?: string | null;
+  last_intent?: string | null;
+};
+
 export type AiAssistantMessage = {
   role: 'user' | 'assistant';
   content: string;
-  context?: unknown;
+  context?: AiAssistantContext;
 };
 
 type EdgeOk = {
   ok: true;
   answer: string;
-  context?: unknown;
+  context?: AiAssistantContext;
 };
 
 type EdgeErr = {
@@ -23,13 +38,14 @@ type EdgeErr = {
 type EdgeResponse = EdgeOk | EdgeErr;
 
 export type AiAssistantResult =
-  | { ok: true; answer: string; context?: unknown }
+  | { ok: true; answer: string; context?: AiAssistantContext }
   | { ok: false; error: string };
 
 export async function askAiAssistant(input: {
   message: string;
   viewerRole: AiAssistantViewerRole;
   history?: AiAssistantMessage[];
+  context?: AiAssistantContext | null;
 }): Promise<AiAssistantResult> {
   const message = input.message.trim();
   if (!message) return { ok: false, error: 'empty_message' };
@@ -40,6 +56,7 @@ export async function askAiAssistant(input: {
         message,
         viewerRole: input.viewerRole,
         history: (input.history ?? []).slice(-6),
+        context: input.context ?? null,
       },
     });
 

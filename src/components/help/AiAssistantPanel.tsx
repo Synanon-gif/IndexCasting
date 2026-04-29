@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -12,7 +12,11 @@ import {
 } from 'react-native';
 import { uiCopy } from '../../constants/uiCopy';
 import { colors, spacing, typography } from '../../theme/theme';
-import { askAiAssistant, type AiAssistantMessage } from '../../services/aiAssistantSupabase';
+import {
+  askAiAssistant,
+  type AiAssistantContext,
+  type AiAssistantMessage,
+} from '../../services/aiAssistantSupabase';
 import {
   getAiAssistantDisclaimer,
   getAiAssistantSubtitle,
@@ -36,6 +40,11 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [assistantContext, setAssistantContext] = useState<AiAssistantContext | null>(null);
+
+  useEffect(() => {
+    setAssistantContext(null);
+  }, [viewerRole]);
 
   const canSend = useMemo(() => draft.trim().length > 0 && !pending, [draft, pending]);
 
@@ -63,8 +72,10 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
         message: question,
         viewerRole,
         history: nextMessages.slice(-6),
+        context: assistantContext,
       });
       if (result.ok) {
+        if (result.context) setAssistantContext(result.context);
         setMessages((current) => [
           ...current,
           { role: 'assistant', content: result.answer, context: result.context },

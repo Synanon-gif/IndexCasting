@@ -77,11 +77,23 @@ export type CalendarDetailRequestedField =
 
 export type CalendarItemReference = {
   date: string;
+  start_time?: string | null;
+  end_time?: string | null;
   kind: CalendarSummaryItem['kind'];
   title: string;
   model_name: string | null;
   counterparty_name: string | null;
   status_label: string | null;
+  note?: string | null;
+};
+
+export type AiAssistantContext = {
+  last_calendar_item?: CalendarItemReference | null;
+  last_model_name?: string | null;
+  last_intent?: Extract<
+    AssistantIntent,
+    'help_static' | 'calendar_summary' | 'calendar_item_details' | 'model_visible_profile_facts'
+  > | null;
 };
 
 export type CalendarItemDetailsFacts = {
@@ -231,10 +243,15 @@ const CALENDAR_PATTERNS = [
 const CALENDAR_DETAIL_PATTERNS = [
   /\b(details?|more|tell me more)\b.*\b(that|this|last|job|booking|casting|option|calendar item|event)\b/i,
   /\b(that|this|last)\s+(job|booking|casting|option|calendar item|event)\b/i,
+  /\bwho\s+was\s+(?:the\s+)?(?:client|agency|counterparty)\??\s*$/i,
   /\bwho\s+was\s+(?:the\s+)?(?:client|agency|counterparty)\b.*\b(that|this|last|job|booking|casting|option)\b/i,
   /\bwho\s+was\s+it\s+with\b/i,
+  /\bwhich\s+model\s+was\s+(?:booked|it|that)?\??\s*$/i,
   /\bwhich\s+model\b.*\b(that|this|last|job|booking|casting|option)\b/i,
+  /\bwhat\s+time\s+was\s+(?:it|that|this)\??\s*$/i,
+  /\bwhen\s+was\s+(?:it|that|this)\??\s*$/i,
   /\bwhen\s+was\s+(?:that|this|the\s+last)\s+(?:job|booking|casting|option|calendar item|event)\b/i,
+  /\bwhat\s+was\s+(?:the\s+)?title\??\s*$/i,
   /\bwhat\s+was\s+(?:the\s+)?(?:description|note)\b/i,
 ];
 
@@ -609,11 +626,14 @@ export function buildCalendarFacts(input: {
 export function buildCalendarItemReference(item: CalendarSummaryItem): CalendarItemReference {
   return {
     date: item.date,
+    start_time: item.start_time,
+    end_time: item.end_time,
     kind: item.kind,
     title: item.title,
     model_name: item.model_name,
     counterparty_name: item.counterparty_name,
     status_label: item.status_label,
+    note: item.note,
   };
 }
 
@@ -744,6 +764,70 @@ export function resolveCalendarItemDetailsAnswer(facts: CalendarItemDetailsFacts
     }
   }
   return CALENDAR_DETAIL_PRICING_REFUSAL;
+}
+
+export function buildAssistantContext(input: {
+  lastCalendarItem?: CalendarSummaryItem | CalendarItemReference | null;
+  lastModelName?: string | null;
+  lastIntent?: AiAssistantContext['last_intent'];
+}): AiAssistantContext {
+  const context: AiAssistantContext = {};
+  if (input.lastCalendarItem) {
+    const item = input.lastCalendarItem;
+    const kind = asCalendarKind(item.kind);
+    const date = cleanString(item.date, 10);
+    const title = cleanString(item.title, 120);
+    if (kind && date && title) {
+      context.last_calendar_item = {
+        date,
+        start_time: cleanString(item.start_time, 16),
+        end_time: cleanString(item.end_time, 16),
+        kind,
+        title,
+        model_name: cleanString(item.model_name, 120),
+        counterparty_name: cleanString(item.counterparty_name, 120),
+        status_label: cleanString(item.status_label, 80),
+        note: cleanString(item.note, 200),
+      };
+    }
+  }
+  const modelName = cleanString(input.lastModelName, 120);
+  if (modelName) context.last_model_name = modelName;
+  if (
+    input.lastIntent === 'help_static' ||
+    input.lastIntent === 'calendar_summary' ||
+    input.lastIntent === 'calendar_item_details' ||
+    input.lastIntent === 'model_visible_profile_facts'
+  ) {
+    context.last_intent = input.lastIntent;
+  }
+  return context;
+}
+
+export function resolveCalendarItemDetailsAnswerFromContext(
+  context: AiAssistantContext | null,
+  requestedField: CalendarDetailRequestedField,
+): string | null {
+  if (requestedField === 'pricing') return CALENDAR_DETAIL_PRICING_REFUSAL;
+  const item = context?.last_calendar_item;
+  if (!item) return null;
+  return resolveCalendarItemDetailsAnswer({
+    intent: 'calendar_item_details',
+    role: 'agency',
+    matchStatus: 'found',
+    requestedField,
+    item: {
+      date: item.date,
+      start_time: item.start_time ?? null,
+      end_time: item.end_time ?? null,
+      kind: item.kind,
+      title: item.title,
+      model_name: item.model_name,
+      counterparty_name: item.counterparty_name,
+      status_label: item.status_label ?? 'Visible calendar item',
+      note: item.note ?? null,
+    },
+  });
 }
 
 export function buildModelVisibleProfileFacts(input: {

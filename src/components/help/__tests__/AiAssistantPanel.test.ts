@@ -32,4 +32,11 @@ describe('AiAssistantPanel UI safety', () => {
     expect(panelSource).toMatch(/setPending\(false\)/);
     expect(panelSource).toMatch(/setMessages\(\(current\) => \[/);
   });
+
+  it('keeps assistant context in panel session state and passes it with requests', () => {
+    expect(panelSource).toMatch(/useState<AiAssistantContext \| null>\(null\)/);
+    expect(panelSource).toMatch(/context: assistantContext/);
+    expect(panelSource).toMatch(/if \(result\.context\) setAssistantContext\(result\.context\)/);
+    expect(panelSource).toMatch(/setAssistantContext\(null\)/);
+  });
 });
