@@ -214,6 +214,16 @@ function roleKnowledge(role: ViewerRole): string {
   ].join('\n');
 }
 
+function phase2Boundary(role: ViewerRole): string {
+  if (role === 'agency') {
+    return 'Phase 2 boundary: Agency users may receive limited calendar summaries and basic visible facts for their own agency models when the server provides facts. No messages, billing, team/invite, admin/security, hidden model data, database details, or actions.';
+  }
+  if (role === 'client') {
+    return 'Phase 2 boundary: Client users may receive limited calendar summaries when the server provides facts. Agency-only model profile facts, messages, billing, team/invite, admin/security, hidden data, database details, and actions are not available from the Client workspace.';
+  }
+  return 'Phase 2 boundary: Model users receive static product guidance only unless a specific allowlisted model workspace facts contract is added later. No private organization data, messages, billing, admin/security, database details, or actions.';
+}
+
 function buildSystemPrompt(role: ViewerRole): string {
   return [
     'You are IndexCasting AI Help.',
@@ -221,7 +231,7 @@ function buildSystemPrompt(role: ViewerRole): string {
     'Live data is only available when the server provides a small allowlisted facts object. Otherwise, do not invent live data.',
     'You cannot perform actions.',
     'You must not invent bookings, models, requests, invoices, messages, organization data, people, dates, statuses, or availability.',
-    'If a question requires live/private data, say: "I don\'t have access to your live data yet. I can explain where to find this in IndexCasting." Then give brief navigation guidance.',
+    'If a question requires live/private data that was not provided as facts, refuse briefly using the viewer role boundary. Do not suggest that another role-only data source is available in this workspace.',
     'Keep answers concise and practical.',
     'Use role-specific guidance for the viewer role and visible UI labels. Prefer short step-by-step answers.',
     'Do not invent navigation labels, buttons, screens, status values, or workflow steps.',
@@ -233,7 +243,7 @@ function buildSystemPrompt(role: ViewerRole): string {
     '',
     'Global help: Settings contains account and organization settings where available. Options are tentative holds or availability checks; castings are request/workflow contexts for evaluating talent; bookings are confirmed work or confirmed schedule items at a high level. For upload issues, check file type/size, refresh the browser, and retry. For invite issues, check the email address, invite permissions, and ask the owner/admin if needed. For persistent issues, contact support.',
     '',
-    'Phase 2 boundary: only limited calendar summary data and Agency-only visible model profile facts may be answered when the server provides facts. No other live account data, private organization data, database details, or actions.',
+    phase2Boundary(role),
   ].join('\n');
 }
 
@@ -477,7 +487,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     classification.intent !== 'calendar_summary' &&
     classification.intent !== 'model_visible_profile_facts'
   ) {
-    return jsonResponse({ ok: true, answer: forbiddenIntentAnswer(classification.intent) }, 200, cors);
+    return jsonResponse({ ok: true, answer: forbiddenIntentAnswer(classification.intent, role) }, 200, cors);
   }
 
   if (!MISTRAL_API_KEY) {
@@ -492,7 +502,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // TODO Phase 2: add persistent per-user/org rate limits without reading business data.
     if (classification.intent === 'calendar_summary') {
       if (role !== 'agency' && role !== 'client') {
-        return jsonResponse({ ok: true, answer: forbiddenIntentAnswer('unknown_live_data') }, 200, cors);
+        return jsonResponse({ ok: true, answer: forbiddenIntentAnswer('unknown_live_data', role) }, 200, cors);
       }
       if (serverContext.state !== 'ok' || !serverContext.organizationId) {
         return jsonResponse({

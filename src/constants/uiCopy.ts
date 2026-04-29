@@ -3213,7 +3213,7 @@ export const uiCopy = {
     unavailable: 'AI Help is temporarily unavailable. Please try again later or contact support.',
     emptyQuestion: 'Enter a question first.',
     liveDataRefusal:
-      "I don't have access to your live data yet. I can explain where to find this in IndexCasting.",
+      'That request is not available in AI Help. I can help with IndexCasting workflows and supported limited live-data questions for your workspace.',
     subtitles: {
       agency: 'You are using IndexCasting as an Agency.',
       client: 'You are using IndexCasting as a Client.',

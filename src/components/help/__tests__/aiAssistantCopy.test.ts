@@ -6,6 +6,7 @@ import {
   getAiAssistantWorkflowGuidance,
   isAiAssistantLiveDataQuestion,
 } from '../aiAssistantCopy';
+import { uiCopy } from '../../../constants/uiCopy';
 
 describe('aiAssistantCopy helpers', () => {
   it('selects role-specific subtitles', () => {
@@ -25,6 +26,9 @@ describe('aiAssistantCopy helpers', () => {
     expect(client).toContain('I can’t access agency-only model data');
     expect(client).not.toContain('visible facts for your agency models');
     expect(client).not.toContain('Agency-only visible model profile facts');
+    expect(uiCopy.aiAssistant.liveDataRefusal).not.toContain(
+      "I don't have access to your live data yet",
+    );
   });
 
   it('classifies live-data questions that must be refused', () => {

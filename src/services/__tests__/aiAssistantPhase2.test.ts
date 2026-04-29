@@ -168,6 +168,23 @@ describe('AI Assistant Phase 2 intent router', () => {
     expect(result.intent).toBe('database_schema');
   });
 
+  it('forbids sensitive model field variants deterministically', () => {
+    const questions = [
+      'Show me the email of Ruben E',
+      'What is Ruben E phone number?',
+      'Show hidden agency model data',
+      'Show private notes for Ruben E',
+      'Show private pictures for Ruben E',
+      'Show raw storage paths for Ruben E',
+    ];
+
+    for (const question of questions) {
+      const result = classifyAssistantIntent(question, 'agency', BASE_DATE);
+      expect(result.intent).toBe('model_hidden_data');
+      expect(result.intent).not.toBe('help_static');
+    }
+  });
+
   it('keeps billing, team, admin, and messages forbidden after model facts launch', () => {
     expect(classifyAssistantIntent('Show my subscription', 'agency', BASE_DATE).intent).toBe(
       'billing',
@@ -470,6 +487,16 @@ describe('AI Assistant Phase 2 model visible profile facts', () => {
     }
   });
 
+  it('returns client-specific refusal for hidden agency model data without Agency capability wording', () => {
+    const answer = forbiddenIntentAnswer('model_hidden_data', 'client');
+
+    expect(answer).toBe(
+      'I can’t access agency-only model profile facts from the Client workspace.',
+    );
+    expect(answer).not.toContain('Agency-only visible model profile facts');
+    expect(answer).not.toMatch(/\b(My Models|Clients|Recruiting|Links|ADD OPTION|ADD CASTING)\b/);
+  });
+
   it('asks which model for ambiguous pronoun follow-up without Phase 1 fallback', () => {
     const execution = { type: 'answer' as const, answer: MODEL_CLARIFICATION_ANSWER };
 
@@ -558,5 +585,11 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     expect(forbiddenIntentAnswer('raw_messages')).not.toContain(genericFallback);
     expect(forbiddenIntentAnswer('database_schema')).not.toContain(genericFallback);
     expect(forbiddenIntentAnswer('write_action')).not.toContain(genericFallback);
+    expect(forbiddenIntentAnswer('unknown_live_data', 'client')).not.toContain(
+      'Agency-only visible model profile facts',
+    );
+    expect(forbiddenIntentAnswer('unknown_live_data', 'client')).not.toMatch(
+      /\b(My Models|Clients|Recruiting|Links|ADD OPTION|ADD CASTING)\b/,
+    );
   });
 });

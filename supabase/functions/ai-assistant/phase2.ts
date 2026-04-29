@@ -116,7 +116,9 @@ const FORBIDDEN_PATTERNS: Array<[Exclude<AssistantIntent, 'help_static' | 'calen
   ['admin_security', /\b(admin|security|api key|secret|system prompt|developer instruction|policy|policies|permissions)\b/i],
   ['database_schema', /\b(service[_\s-]?role|sql|query the database|database|schema|table|tables|rpc|rls|migration|supabase internals?)\b/i],
   ['raw_messages', /\b(raw messages?|chat history|message dump|all messages?|what did .* (say|write|send)|show .* messages?)\b/i],
-  ['model_hidden_data', /\b(hidden model|hidden models|private model|private models|model email|model emails|email address|phone|phone number|all models from|not visible model|invisible model|private notes?|hidden notes?|admin notes?|private pictures?|private photos?|hidden pictures?|hidden photos?|raw storage|file urls?|storage paths?|mediaslide|sync id|internal ids?)\b/i],
+  ['model_hidden_data', /\b(hidden|private|invisible|not visible)\b.*\b(agency\s+)?models?\b/i],
+  ['model_hidden_data', /\b(show|give|tell|list|what(?:'s| is)?)\b.*\b(email|e-mail|phone|phone number|private notes?|hidden notes?|admin notes?|private pictures?|private photos?|hidden pictures?|hidden photos?|raw storage|file urls?|storage paths?|mediaslide|sync id|internal ids?)\b/i],
+  ['model_hidden_data', /\b(model email|model emails|email address|all models from|private model|private models|hidden model|hidden models|not visible model|invisible model)\b/i],
 ];
 
 const LIVE_DATA_PATTERNS = [
@@ -452,7 +454,10 @@ export function resolveModelFactsExecutionResult(input: {
   };
 }
 
-export function forbiddenIntentAnswer(intent: Exclude<AssistantIntent, 'help_static' | 'calendar_summary' | 'model_visible_profile_facts'>): string {
+export function forbiddenIntentAnswer(
+  intent: Exclude<AssistantIntent, 'help_static' | 'calendar_summary' | 'model_visible_profile_facts'>,
+  role?: ViewerRole,
+): string {
   switch (intent) {
     case 'billing':
       return 'I can’t access billing, invoices, payments, or subscription details here. Please use the Billing area in IndexCasting.';
@@ -468,10 +473,17 @@ export function forbiddenIntentAnswer(intent: Exclude<AssistantIntent, 'help_sta
     case 'write_action':
       return 'I can’t perform actions or change data. I can explain where to do this in IndexCasting.';
     case 'model_hidden_data':
+      if (role === 'client') return CLIENT_MODEL_FACTS_REFUSAL;
       return 'I can’t reveal hidden or private model data. I can only help with basic visible model profile facts.';
     case 'gdpr_export_delete':
       return 'I can’t process account deletion or personal data exports here. Please use the privacy/account settings flow.';
     case 'unknown_live_data':
-      return 'That live-data question is not available in the assistant yet. For now I can only answer limited calendar questions and Agency-only visible model profile facts.';
+      if (role === 'agency') {
+        return 'That live-data question is not available in the assistant. I can answer limited calendar questions and basic visible model profile facts for your agency workspace.';
+      }
+      if (role === 'client') {
+        return 'That live-data question is not available in the Client workspace. I can answer limited calendar questions.';
+      }
+      return 'That live-data question is not available in this workspace.';
   }
 }
