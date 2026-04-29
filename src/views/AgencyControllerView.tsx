@@ -88,6 +88,7 @@ import {
 import { getApplicationById, refreshApplications } from '../store/applicationsStore';
 import { OrgMessengerInline, type ThreadContext } from '../components/OrgMessengerInline';
 import { AgencySettingsTab } from '../components/AgencySettingsTab';
+import { AiAssistantButton } from '../components/help/AiAssistantButton';
 // Recruiting chats (BookingChatView) live under Messages → Recruiting chats.
 import {
   uploadModelPhoto,
@@ -845,6 +846,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       <View style={s.topShell}>
         {!mobileChatOverlayActive && <Text style={s.brand}>INDEX CASTING</Text>}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+          {!mobileChatOverlayActive && <AiAssistantButton viewerRole="agency" />}
           <TouchableOpacity
             onPress={() => {
               const subject = encodeURIComponent('Help Request – Agency – Casting Index');

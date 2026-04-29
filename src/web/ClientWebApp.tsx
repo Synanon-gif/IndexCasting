@@ -12,6 +12,7 @@ import { useDeviceType } from '../hooks/useDeviceType';
 import { useBillingTabBadge } from '../hooks/useBillingTabBadge';
 import type { BillingAttentionRole } from '../utils/billingAttention';
 import { BillingAttentionWidget } from '../components/billing/BillingAttentionWidget';
+import { AiAssistantButton } from '../components/help/AiAssistantButton';
 import { isMobileWidth } from '../theme/breakpoints';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
 import {
@@ -2685,6 +2686,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               )}
             </View>
             <View style={[styles.topBarSide, styles.topBarSideRight]}>
+              {!clientChatFullscreen ? <AiAssistantButton viewerRole="client" /> : null}
               {clientIsMobile ? (
                 <TouchableOpacity
                   onPress={() => setMobileWorkspaceMenuOpen(true)}

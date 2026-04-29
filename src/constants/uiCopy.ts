@@ -3194,6 +3194,26 @@ export const uiCopy = {
     footerText: 'Generated via Index Casting',
     imageCountSuffix: (count: number) => `${count} img`,
   },
+  aiAssistant: {
+    buttonLabel: 'AI Help',
+    title: 'AI Help',
+    closeLabel: 'Close AI Help',
+    inputPlaceholder: 'Ask about using IndexCasting...',
+    send: 'Send',
+    sending: 'Sending...',
+    disclaimer:
+      'I can help explain how IndexCasting works. I do not have access to live account data yet.',
+    initialMessage: 'Hi, I can explain IndexCasting workflows and where to find things in the app.',
+    unavailable: 'AI Help is temporarily unavailable. Please try again later or contact support.',
+    emptyQuestion: 'Enter a question first.',
+    liveDataRefusal:
+      "I don't have access to your live data yet. I can explain where to find this in IndexCasting.",
+    subtitles: {
+      agency: 'Agency workflow guidance',
+      client: 'Client workflow guidance',
+      model: 'Model account guidance',
+    },
+  },
   agencyShare: {
     // Sender — entry point in AgencyControllerView
     sectionTitle: 'Share Roster with Another Agency',
