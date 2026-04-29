@@ -4,7 +4,7 @@
  * Phase 2 foundation:
  * - authenticated callers only
  * - static IndexCasting help knowledge
- * - one allowlisted live-data intent: calendar_summary
+ * - allowlisted live-data intents: calendar_summary, model_visible_profile_facts
  * - no service_role
  * - no free SQL, arbitrary RPCs, writes, or broad private org data access
  */
@@ -12,10 +12,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   buildCalendarFacts,
+  buildModelVisibleProfileFacts,
   classifyAssistantIntent,
   forbiddenIntentAnswer,
   MAX_CALENDAR_RESULTS,
+  MAX_MODEL_FACT_CANDIDATES,
   type CalendarFacts,
+  type ModelVisibleProfileFacts,
   type ViewerRole,
 } from './phase2.ts';
 
@@ -30,6 +33,7 @@ const MAX_HISTORY_MESSAGES = 6;
 const MAX_HISTORY_CHARS = 500;
 const MAX_OUTPUT_TOKENS = 450;
 const LIVE_OUTPUT_TOKENS = 360;
+const MODEL_FACT_OUTPUT_TOKENS = 320;
 const REQUEST_TIMEOUT_MS = 15_000;
 
 type ChatMessage = {
@@ -211,7 +215,7 @@ function buildSystemPrompt(role: ViewerRole): string {
   return [
     'You are IndexCasting AI Help.',
     'You explain how the product works using the static help knowledge below.',
-    'Live data is only available when the server provides a small calendar facts object. Otherwise, do not invent live data.',
+    'Live data is only available when the server provides a small allowlisted facts object. Otherwise, do not invent live data.',
     'You cannot perform actions.',
     'You must not invent bookings, models, requests, invoices, messages, organization data, people, dates, statuses, or availability.',
     'If a question requires live/private data, say: "I don\'t have access to your live data yet. I can explain where to find this in IndexCasting." Then give brief navigation guidance.',
@@ -226,7 +230,7 @@ function buildSystemPrompt(role: ViewerRole): string {
     '',
     'Global help: Settings contains account and organization settings where available. Options are tentative holds or availability checks; castings are request/workflow contexts for evaluating talent; bookings are confirmed work or confirmed schedule items at a high level. For upload issues, check file type/size, refresh the browser, and retry. For invite issues, check the email address, invite permissions, and ask the owner/admin if needed. For persistent issues, contact support.',
     '',
-    'Phase 2 boundary: only limited calendar summary data may be answered when the server provides facts. No other live account data, private organization data, database details, or actions.',
+    'Phase 2 boundary: only limited calendar summary data and Agency-only visible model profile facts may be answered when the server provides facts. No other live account data, private organization data, database details, or actions.',
   ].join('\n');
 }
 
@@ -251,6 +255,33 @@ function buildCalendarUserPrompt(message: string, facts: CalendarFacts): string 
   return [
     `User question: ${message}`,
     'Calendar facts:',
+    JSON.stringify(facts),
+    '',
+    'Write a concise answer in the same language as the user when possible.',
+  ].join('\n');
+}
+
+function buildModelFactsSystemPrompt(): string {
+  return [
+    'You are IndexCasting AI Help.',
+    'Answer the Agency user using ONLY the provided visible model profile facts object.',
+    'Never invent model facts, measurements, account status, location, categories, media, emails, phone numbers, IDs, notes, messages, billing, team, invite, admin, security, storage, or file details.',
+    'Never mention internal implementation details.',
+    'Use product wording: "has an account" only from account_linked.',
+    'Use "Chest" for the chest measurement. Do not use the legacy word "Bust" in the answer.',
+    'If a visible field is null or missing, say that field is not filled in the visible profile facts.',
+    'If the user supplied measurements, compare only the supplied fields against the visible facts and state exact differences. Missing visible fields cannot be checked.',
+    'Do not claim you saved, updated, exported, or changed anything.',
+    '',
+    'Viewer role: agency',
+    terminologyContract('agency'),
+  ].join('\n');
+}
+
+function buildModelFactsUserPrompt(message: string, facts: ModelVisibleProfileFacts): string {
+  return [
+    `User question: ${message}`,
+    'Visible model profile facts:',
     JSON.stringify(facts),
     '',
     'Write a concise answer in the same language as the user when possible.',
@@ -355,6 +386,30 @@ async function loadCalendarFacts(params: {
   };
 }
 
+async function loadModelVisibleProfileFacts(params: {
+  supabase: SupabaseClientLike;
+  searchText: string;
+}): Promise<{ ok: true; facts: ModelVisibleProfileFacts } | { ok: false; reason: 'org_context' | 'failed' }> {
+  const { data, error } = await params.supabase.rpc('ai_read_model_visible_profile_facts', {
+    p_search_text: params.searchText,
+    p_limit: MAX_MODEL_FACT_CANDIDATES,
+  });
+
+  if (error) {
+    const msg = error.message ?? '';
+    if (/not_authenticated|org_context_(missing|ambiguous)|not_in_agency|invalid_search/i.test(msg)) {
+      return { ok: false, reason: 'org_context' };
+    }
+    console.warn('[ai-assistant] model facts rpc failed', { code: error.code });
+    return { ok: false, reason: 'failed' };
+  }
+
+  return {
+    ok: true,
+    facts: buildModelVisibleProfileFacts({ rows: Array.isArray(data) ? data : [] }),
+  };
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const cors = getCorsHeaders(req);
 
@@ -414,7 +469,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const role = serverContext.role;
   const classification = classifyAssistantIntent(routingMessage, role);
 
-  if (classification.intent !== 'help_static' && classification.intent !== 'calendar_summary') {
+  if (
+    classification.intent !== 'help_static' &&
+    classification.intent !== 'calendar_summary' &&
+    classification.intent !== 'model_visible_profile_facts'
+  ) {
     return jsonResponse({ ok: true, answer: forbiddenIntentAnswer(classification.intent) }, 200, cors);
   }
 
@@ -473,6 +532,70 @@ Deno.serve(async (req: Request): Promise<Response> => {
         systemPrompt: buildCalendarSystemPrompt(role),
         messages: [{ role: 'user', content: buildCalendarUserPrompt(message, result.facts) }],
         maxTokens: LIVE_OUTPUT_TOKENS,
+        signal: controller.signal,
+      });
+      if (!answer) {
+        return jsonResponse({ ok: false, error: 'assistant_unavailable' }, 503, cors);
+      }
+      return jsonResponse({ ok: true, answer }, 200, cors);
+    }
+
+    if (classification.intent === 'model_visible_profile_facts') {
+      if (role !== 'agency') {
+        return jsonResponse({ ok: true, answer: forbiddenIntentAnswer('model_hidden_data') }, 200, cors);
+      }
+      if (serverContext.state !== 'ok' || !serverContext.organizationId) {
+        return jsonResponse({
+          ok: true,
+          answer: 'I can’t access model facts because your organization context is missing or ambiguous.',
+        }, 200, cors);
+      }
+
+      console.log('PHASE2_MODEL_FACTS_TRIGGERED', {
+        role,
+        hasOrgContext: true,
+        searchLength: classification.searchText.length,
+      });
+
+      const result = await loadModelVisibleProfileFacts({
+        supabase,
+        searchText: classification.searchText,
+      });
+
+      if (!result.ok) {
+        const answer =
+          result.reason === 'org_context'
+            ? 'I can’t access model facts because your organization context is missing or ambiguous.'
+            : 'I can’t access visible model facts right now.';
+        return jsonResponse({ ok: true, answer }, 200, cors);
+      }
+
+      if (result.facts.matchStatus === 'none') {
+        return jsonResponse({
+          ok: true,
+          answer: 'I can’t find a visible model matching that.',
+        }, 200, cors);
+      }
+
+      if (result.facts.matchStatus === 'ambiguous') {
+        const names = (result.facts.candidates ?? [])
+          .map((candidate) => {
+            const location = [candidate.city, candidate.country].filter(Boolean).join(', ');
+            return location ? `${candidate.display_name} (${location})` : candidate.display_name;
+          })
+          .join('; ');
+        return jsonResponse({
+          ok: true,
+          answer: names
+            ? `I found multiple visible models matching that. Which one do you mean? ${names}`
+            : 'I found multiple visible models matching that. Which one do you mean?',
+        }, 200, cors);
+      }
+
+      const answer = await callMistral({
+        systemPrompt: buildModelFactsSystemPrompt(),
+        messages: [{ role: 'user', content: buildModelFactsUserPrompt(message, result.facts) }],
+        maxTokens: MODEL_FACT_OUTPUT_TOKENS,
         signal: controller.signal,
       });
       if (!answer) {

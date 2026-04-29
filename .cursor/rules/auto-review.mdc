@@ -24,6 +24,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 | **Invariant audit / dev checks** | Nach Änderungen an Roster, MAT, Kalender-Dedupe, Agency↔Model-Chat, Dissolve-Caches: [docs/INVARIANT_AUDIT_REPORT.md](../../docs/INVARIANT_AUDIT_REPORT.md), `src/utils/invariantValidationDev.ts`, grep-Präfixe `[roster][integrity]` / `[calendar][dedupe]` / `[chat][mat]` |
 | **Trust / Status / Observability** | Öffentliche Routen `/trust`, `/trust/*`, `/status` — `normalizeTrustPath` + `publicLegalRoutes.test.ts` bei neuen Pfaden; Admin `system_events` / Logger: UI-Queries an **live** Schema; siehe `.cursorrules` **§29** |
 | **Agency Share / Billing Hub** | Agency-to-Agency Roster Share (MAT-Import, keine MAT-Überschreibung); Billing Hub — [.cursor/rules/billing-payment-invariants.mdc](billing-payment-invariants.mdc) **I-PAY-11** + Owner/Model-Firewall; **Manual invoices** — ISO date payload + PDF VAT display **I-PAY-12** / `.cursorrules` §29.4a |
+| **AI Help Assistant** | Änderungen an `src/components/help/**`, `src/services/aiAssistantSupabase.ts`, `supabase/functions/ai-assistant/**` oder `uiCopy.aiAssistant`: Rollen-Terminologie darf NIE gemischt werden — siehe `ai-help-role-terminology.mdc` |
 
 ---
 
@@ -35,6 +36,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
   - `FOR ALL`-Policy mit SELECT-Subquery auf `profiles` oder `models`? → Split in INSERT/UPDATE/DELETE
   - SECURITY DEFINER ohne `SET row_security TO off`? → Blocker
 - **Broken Role Logic:** `effectiveRole` für Admin-Routing genutzt? → Blocker (Admin hat `role='admin'`, kein effectiveRole)
+- **AI Help role terminology mix:** AI-Assistant-Copy/System-Prompt nutzt Client-Navigation in Agency-Antworten oder Agency-Navigation in Client-Antworten? → Blocker. Agency: `Calendar` -> `ADD OPTION`/`ADD CASTING`; Client: `Discover`/`My Projects` -> `Request option`/`Request casting`. Tests müssen Cross-Role-Begriffe ausschließen.
 - **Admin-Zugang:** `assert_is_admin()` in neuen Admin-RPCs vergessen? → Blocker
 - **Admin Org-Typ:** `ALTER TABLE … DISABLE TRIGGER` in PostgREST-RPC für Org-Konvertierung? → Blocker — kanonisch Reihenfolge `organizations.type` dann `organization_members` (`admin-security.mdc` **Regel 9**). Ghost-Badge für `type=agency`? → Blocker (**Regel 10**).
 - **profiles.role in RLS:** Direkte `profiles.role = 'client'/'model'`-Subquery in RLS-Policy? → Blocker (Risiko 8) — SECURITY DEFINER Funktion verwenden

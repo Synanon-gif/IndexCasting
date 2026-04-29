@@ -1565,6 +1565,24 @@ Vollständige Produkt- und Routing-Regeln stehen in **`.cursorrules` §29** (kei
 
 ---
 
+## AI HELP ASSISTANT — ROLE TERMINOLOGY & PHASE 2 LIVE DATA
+
+Der AI Help Assistant MUSS Rollenterminologie strikt trennen:
+
+- Agency-Antworten verwenden nur Agency-Workspace-Labels: `Dashboard`, `My Models`, `Clients`, `Messages`, `Calendar`, `Recruiting`, `Team`, `Links`, `Billing`, `Settings`.
+- Client-Antworten verwenden nur Client-Workspace-Labels: `Dashboard`, `Discover`, `My Projects`, `Messages`, `Calendar`, `Agencies`, `Team`, `Billing`, `Profile`.
+- Agency Option/Casting: `Calendar` -> `ADD OPTION` / `ADD CASTING`; niemals `Roster`, `Discover`, `My Projects`, `Request option`, `Request casting`.
+- Client Option/Casting: `Discover` oder `My Projects` -> `Request option` / `Request casting`; niemals `My Models`, `Clients`, `Recruiting`, `Links`, `ADD OPTION`, `ADD CASTING`.
+- Live-Data-Allowlist: nur `help_static`, `calendar_summary`, `model_visible_profile_facts`.
+- `model_visible_profile_facts` ist Agency-only und darf nur sichtbare My-Models-Fakten in einem minimierten Facts-Objekt an das LLM geben: Display-Name, sichtbare Stadt/Land, Height, Chest, Waist, Hips, Shoes, Hair, Eyes, Categories, `account_linked`.
+- Verboten bleiben: Messages, Billing, Team/Invites, Admin/Security, DB/RLS/Schema, Writes, hidden/private Modeldaten, Emails, Telefon, Sync-/interne IDs, Storage-Pfade, File-URLs, private Medien.
+- Kein `service_role`, kein freies SQL, keine LLM-gesteuerten Tools/Table/RPC-Zugriffe. Neue AI-Live-Data-RPCs müssen read-only, org-scoped, limitiert, anon/PUBLIC-revoked und ohne destruktive Migration-Reparatur deployt werden.
+- Jede Änderung an AI-Help-Copy/System-Prompt MUSS Tests enthalten, die Cross-Role-Terminologie ausschließen.
+
+Kanonische Detailregel: `.cursor/rules/ai-help-role-terminology.mdc`.
+
+---
+
 ## INVARIANT AUDIT & DEV CHECKS (2026)
 
 **Living audit (Coverage Map, Shadow Paths, Tests, grep-Präfixe):** [docs/INVARIANT_AUDIT_REPORT.md](../../docs/INVARIANT_AUDIT_REPORT.md)  

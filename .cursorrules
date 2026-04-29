@@ -917,3 +917,15 @@ Ergänzt Kalender-Farb-Disziplin (§28.2) und feste Domänen aus dem Release-Tag
 - **Pane ist collapsible:** Im My-Models-Tab default `false` (`packageImportExpanded`) — die Liste/Galerie ist das Hauptelement; Import wird bei Bedarf aufgeklappt.
 - **Quick-Import-Sektion** ("External services & advanced import" collapsible) bündelt: API-Keys + Sync (für bereits verknüpfte Models), Auto-pair-by-email, generic JSON Link-Import. Diese Pfade sind ALLE *"no preview"* und müssen so gelabelt sein. Die Sektion macht klar: API-Keys sind NICHT für den Package-Preview-Import (die laden öffentliche HTML-Pakete via Edge-Proxy).
 - Vollständig: [.cursor/rules/package-import-invariants.mdc](.cursor/rules/package-import-invariants.mdc) §H1 (Discoverability & UI-Hierarchie).
+
+## 31. AI Help Assistant — Role Terminology & Phase 2 Live Data
+
+- **Keine Rollenvermischung:** AI Help darf Agency-, Client- und Model-Terminologie niemals mischen — unabhängig von der User-Frage. Der serverseitige `viewerRole` ist maßgeblich.
+- **Agency:** Nur sichtbare Agency-Labels verwenden: `Dashboard`, `My Models`, `Clients`, `Messages`, `Calendar`, `Recruiting`, `Team`, `Links`, `Billing`, `Settings`. Option/Casting-Erstellung: `Calendar` -> `ADD OPTION` / `ADD CASTING`.
+- **Client:** Nur sichtbare Client-Labels verwenden: `Dashboard`, `Discover`, `My Projects`, `Messages`, `Calendar`, `Agencies`, `Team`, `Billing`, `Profile`. Option/Casting: `Discover` oder `My Projects` -> `Request option` / `Request casting`.
+- **Live-Data-Allowlist:** Nur `help_static`, `calendar_summary` und Agency-only `model_visible_profile_facts` sind live. Alles andere bleibt verboten, insbesondere Messages, Billing, Team/Invites, Admin/Security, DB/RLS/Schema, Writes, hidden/private Modeldaten, Emails, Telefon, Sync-/interne IDs, Storage-Pfade, File-URLs und private Medien.
+- **AI-Live-Data-Sicherheit:** Kein `service_role`, kein freies SQL, keine LLM-gesteuerten Tools/Table/RPC-Zugriffe. Edge Function ruft nur schmale servereigene Datenquellen auf und gibt dem LLM ausschließlich minimierte Facts-Objekte.
+- **Model-Facts:** Agency-only; nur sichtbare My-Models-Fakten: Display-Name, sichtbare Stadt/Land, Height, Chest, Waist, Hips, Shoes, Hair, Eyes, Categories und `account_linked` als Produktwortlaut. Bei Ambiguität nachfragen; bei nicht sichtbarem Model sichere Not-found-Antwort.
+- **Migration/Deploy:** Neue AI-Live-Data-RPCs müssen read-only, org-scoped, limitiert, ohne anon/PUBLIC Grant und ohne destruktive Migration-Reparatur deployed werden.
+- **Tests Pflicht:** Jede Änderung an AI-Help-Copy/System-Prompt muss Negativtests enthalten: Agency-Knowledge enthält keine Client-only Begriffe, Client-Knowledge enthält keine Agency-only Begriffe.
+- **Vollständig:** [.cursor/rules/ai-help-role-terminology.mdc](.cursor/rules/ai-help-role-terminology.mdc).

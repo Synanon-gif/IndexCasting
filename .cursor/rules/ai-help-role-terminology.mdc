@@ -1,0 +1,47 @@
+---
+description: AI Help Assistant role-specific terminology firewall
+globs: "src/components/help/**/*,src/constants/uiCopy.ts,src/services/aiAssistantSupabase.ts,supabase/functions/ai-assistant/**/*"
+alwaysApply: false
+---
+
+# AI Help Role Terminology Firewall
+
+AI Help Assistant must never mix Agency, Client, and Model terminology.
+
+## Canonical Role Labels
+
+- Agency sessions: "You are using IndexCasting as an Agency."
+- Client sessions: "You are using IndexCasting as a Client."
+- Model sessions: only basic model account/profile/application/calendar guidance.
+
+## Agency-Only Navigation
+
+For Agency answers, only use visible Agency workspace labels:
+`Dashboard`, `My Models`, `Clients`, `Messages`, `Calendar`, `Recruiting`, `Team`, `Links`, `Billing`, `Settings`.
+
+Agency option/casting creation is always:
+- `Calendar` -> `ADD OPTION` for options.
+- `Calendar` -> `ADD CASTING` for castings.
+
+Never tell an Agency user to create options/castings from `Roster`, `Discover`, `My Projects`, `Request option`, or `Request casting`.
+
+## Client-Only Navigation
+
+For Client answers, only use visible Client workspace labels:
+`Dashboard`, `Discover`, `My Projects`, `Messages`, `Calendar`, `Agencies`, `Team`, `Billing`, `Profile`.
+
+Client option/casting flow is request-based:
+- `Discover` or `My Projects` -> `Request option`.
+- `Discover` or `My Projects` -> `Request casting`.
+
+Never tell a Client user to use `My Models`, `Clients`, `Recruiting`, `Links`, `ADD OPTION`, or `ADD CASTING`.
+
+## Required Checks
+
+- Any change to AI help copy/system prompts must include tests that prove Agency knowledge excludes Client-only terms and Client knowledge excludes Agency-only terms.
+- Phase 2 live data is allowlist-only. Currently live intents are `calendar_summary` and Agency-only `model_visible_profile_facts`.
+- All other live-data intents remain forbidden, including messages, billing, team/invites, admin/security, database/RLS/schema questions, writes, hidden/private model data, emails, phone numbers, sync IDs, internal IDs, raw storage paths, file URLs, and private media.
+- No `service_role`, no free SQL, no LLM-controlled tools, and no LLM-controlled table/RPC access. The Edge Function may call only narrow server-owned data sources and must send the LLM only minimized facts objects.
+- `model_visible_profile_facts` is Agency-only and may expose only visible Agency UI facts: display name, visible city/country, height, chest, waist, hips, shoes, hair, eyes, categories, and `account_linked` as product wording.
+- Calendar summary must stay bounded by date range, result limits, role/org context, and product labels only.
+- New SQL migrations for AI Assistant live data must be narrow, read-only, org-scoped, grant only intended roles, revoke anon/PUBLIC, and be deployed without destructive migration repair.
