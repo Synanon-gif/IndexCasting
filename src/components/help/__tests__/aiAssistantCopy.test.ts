@@ -1,6 +1,7 @@
 import {
   getAiAssistantRoleKnowledge,
   getAiAssistantSubtitle,
+  getAiAssistantTerminologyContract,
   getAiAssistantWorkflowGuidance,
   isAiAssistantLiveDataQuestion,
 } from '../aiAssistantCopy';
@@ -44,7 +45,7 @@ describe('aiAssistantCopy helpers', () => {
     const answer = getAiAssistantWorkflowGuidance('client', 'option');
 
     expect(answer).toContain('Discover');
-    expect(answer).toContain('Projects');
+    expect(answer).toContain('My Projects');
     expect(answer).toContain('Request option');
     expect(answer).not.toContain('ADD OPTION');
     expect(answer).not.toContain('MY MODELS');
@@ -54,13 +55,55 @@ describe('aiAssistantCopy helpers', () => {
     const agencyKnowledge = getAiAssistantRoleKnowledge('agency');
     const clientKnowledge = getAiAssistantRoleKnowledge('client');
 
-    expect(agencyKnowledge).toContain('DASHBOARD');
-    expect(agencyKnowledge).toContain('MY MODELS');
-    expect(agencyKnowledge).toContain('CALENDAR');
+    expect(agencyKnowledge).toContain('Dashboard');
+    expect(agencyKnowledge).toContain('My Models');
+    expect(agencyKnowledge).toContain('Calendar');
     expect(agencyKnowledge).toContain('ADD OPTION');
     expect(agencyKnowledge).toContain('ADD CASTING');
     expect(agencyKnowledge).not.toMatch(/\bRoster\b/);
     expect(clientKnowledge).not.toContain('MY MODELS');
     expect(clientKnowledge).not.toContain('ADD OPTION');
+  });
+
+  it('does not mix Client-only terminology into Agency knowledge', () => {
+    const agencyKnowledge = getAiAssistantRoleKnowledge('agency');
+
+    expect(agencyKnowledge).not.toContain('Discover');
+    expect(agencyKnowledge).not.toContain('My Projects');
+    expect(agencyKnowledge).not.toContain('Request option');
+    expect(agencyKnowledge).not.toContain('Request casting');
+  });
+
+  it('does not mix Agency-only terminology into Client knowledge', () => {
+    const clientKnowledge = getAiAssistantRoleKnowledge('client');
+
+    expect(clientKnowledge).not.toContain('My Models');
+    expect(clientKnowledge).not.toContain('Clients,');
+    expect(clientKnowledge).not.toContain('Recruiting');
+    expect(clientKnowledge).not.toContain('Links');
+    expect(clientKnowledge).not.toContain('ADD OPTION');
+    expect(clientKnowledge).not.toContain('ADD CASTING');
+  });
+
+  it('keeps Agency terminology contract isolated from Client navigation', () => {
+    const contract = getAiAssistantTerminologyContract('agency');
+
+    expect(contract).toContain('Allowed Agency navigation labels');
+    expect(contract).toContain('My Models');
+    expect(contract).toContain('Links');
+    expect(contract).toContain('Never use Client-only navigation');
+    expect(contract).not.toContain('Discover');
+    expect(contract).not.toContain('My Projects');
+  });
+
+  it('keeps Client terminology contract isolated from Agency navigation', () => {
+    const contract = getAiAssistantTerminologyContract('client');
+
+    expect(contract).toContain('Allowed Client navigation labels');
+    expect(contract).toContain('Discover');
+    expect(contract).toContain('My Projects');
+    expect(contract).toContain('Never use Agency-only navigation');
+    expect(contract).not.toContain('My Models');
+    expect(contract).not.toContain('ADD OPTION');
   });
 });
