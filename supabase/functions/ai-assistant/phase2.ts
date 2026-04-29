@@ -72,6 +72,11 @@ const LIVE_DATA_PATTERNS = [
 
 const CALENDAR_PATTERNS = [
   /\bcalendar\b/i,
+  /\bwhat\s+(?:is|what's)\s+on\s+(?:my|our)?\s*calendar\b/i,
+  /\bshow\s+(?:my|our)?\s*calendar\b/i,
+  /\bwhat\s+(?:do\s+i|do\s+we)\s+have\b.*\b(today|tomorrow|this week|next week|next \d+ days?)\b/i,
+  /\bwhat\s+(?:bookings?|options?|castings?|jobs?|requests?)\s+do\s+(?:i|we)\s+have\b/i,
+  /\bdo\s+(?:i|we)\s+have\s+any\s+(?:bookings?|options?|castings?|jobs?|requests?)\b/i,
   /\b(what|show|list|tell me|do i|do we|have|what's|what is)\b.*\b(today|tomorrow|this week|next week|next \d+ days?|month)\b.*\b(options?|castings?|jobs?|bookings?|requests?)\b/i,
   /\b(options?|castings?|jobs?|bookings?|requests?)\b.*\b(today|tomorrow|this week|next week|next \d+ days?|month)\b/i,
   /\bwhat (is|do we have|do i have).*\b(today|tomorrow|next week|this week)\b/i,

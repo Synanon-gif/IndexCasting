@@ -31,6 +31,23 @@ describe('AI Assistant Phase 2 intent router', () => {
     expect(result.intent).toBe('calendar_summary');
   });
 
+  it('routes common calendar questions to calendar_summary instead of static fallback', () => {
+    const questions = [
+      'what is on my calendar',
+      'what do I have tomorrow',
+      'show my calendar',
+      'what bookings do I have',
+      'do I have any options tomorrow?',
+    ];
+
+    for (const question of questions) {
+      const result = classifyAssistantIntent(question, 'agency', BASE_DATE);
+      expect(result.intent).toBe('calendar_summary');
+      expect(result.intent).not.toBe('help_static');
+      expect(result.intent).not.toBe('unknown_live_data');
+    }
+  });
+
   it('forbids billing questions', () => {
     const result = classifyAssistantIntent('Show my invoices', 'agency', BASE_DATE);
 

@@ -60,6 +60,12 @@ type OrgContextRow = {
   agency_id?: string | null;
 };
 
+type ServerContext = {
+  role: ViewerRole;
+  organizationId: string | null;
+  state: 'ok' | 'missing' | 'ambiguous' | 'error';
+};
+
 const ALLOWED_ORIGINS = [
   'https://index-casting.com',
   'https://www.index-casting.com',
@@ -251,25 +257,35 @@ function buildCalendarUserPrompt(message: string, facts: CalendarFacts): string 
   ].join('\n');
 }
 
-async function resolveServerRole(
+async function resolveServerContext(
   supabase: SupabaseClientLike,
   fallbackRole: ViewerRole,
-): Promise<ViewerRole> {
+): Promise<ServerContext> {
   try {
     const { data, error } = await supabase.rpc('get_my_org_context');
     if (error) {
       console.warn('[ai-assistant] org context lookup failed', { code: error.code });
-      return fallbackRole;
+      return { role: fallbackRole, organizationId: null, state: 'error' };
     }
     const rows = (Array.isArray(data) ? data : data ? [data] : []) as OrgContextRow[];
-    const types = [...new Set(rows.map((row) => row.org_type).filter(Boolean))];
-    if (types.length === 1 && (types[0] === 'agency' || types[0] === 'client')) {
-      return types[0];
+    const supportedRows = rows.filter(
+      (row) => row.org_type === 'agency' || row.org_type === 'client',
+    );
+    if (supportedRows.length === 1) {
+      const row = supportedRows[0];
+      return {
+        role: row.org_type as Extract<ViewerRole, 'agency' | 'client'>,
+        organizationId: row.organization_id ?? null,
+        state: row.organization_id ? 'ok' : 'missing',
+      };
     }
-    return fallbackRole;
+    if (supportedRows.length > 1) {
+      return { role: fallbackRole, organizationId: null, state: 'ambiguous' };
+    }
+    return { role: fallbackRole, organizationId: null, state: 'missing' };
   } catch (e) {
     console.warn('[ai-assistant] org context exception', e instanceof Error ? e.name : 'unknown');
-    return fallbackRole;
+    return { role: fallbackRole, organizationId: null, state: 'error' };
   }
 }
 
@@ -386,11 +402,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ ok: false, error: 'message_too_long' }, 400, cors);
   }
 
+  const routingMessage = payload.message
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_INPUT_CHARS);
   const message = sanitizeText(payload.message, MAX_INPUT_CHARS);
   if (!message) return jsonResponse({ ok: false, error: 'invalid_message' }, 400, cors);
 
-  const role = await resolveServerRole(supabase, requestedRole);
-  const classification = classifyAssistantIntent(message, role);
+  const serverContext = await resolveServerContext(supabase, requestedRole);
+  const role = serverContext.role;
+  const classification = classifyAssistantIntent(routingMessage, role);
 
   if (classification.intent !== 'help_static' && classification.intent !== 'calendar_summary') {
     return jsonResponse({ ok: true, answer: forbiddenIntentAnswer(classification.intent) }, 200, cors);
@@ -410,6 +432,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
       if (role !== 'agency' && role !== 'client') {
         return jsonResponse({ ok: true, answer: forbiddenIntentAnswer('unknown_live_data') }, 200, cors);
       }
+      if (serverContext.state !== 'ok' || !serverContext.organizationId) {
+        return jsonResponse({
+          ok: true,
+          answer: 'I can’t access calendar data because your organization context is missing or ambiguous.',
+        }, 200, cors);
+      }
+
+      console.log('PHASE2_CALENDAR_TRIGGERED', {
+        role,
+        hasOrgContext: true,
+        startDate: classification.dateRange.startDate,
+        endDate: classification.dateRange.endDate,
+      });
 
       const result = await loadCalendarFacts({
         supabase,

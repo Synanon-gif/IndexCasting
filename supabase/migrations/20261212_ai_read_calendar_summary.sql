@@ -229,7 +229,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.ai_read_calendar_summary(text, date, date, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.ai_read_calendar_summary(text, date, date, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.ai_read_calendar_summary(text, date, date, integer) TO authenticated;
 
 COMMENT ON FUNCTION public.ai_read_calendar_summary(text, date, date, integer) IS
