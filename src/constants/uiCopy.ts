@@ -3211,6 +3211,8 @@ export const uiCopy = {
     },
     initialMessage: 'Hi, I can explain IndexCasting workflows and where to find things in the app.',
     unavailable: 'AI Help is temporarily unavailable. Please try again later or contact support.',
+    limitReached:
+      'You’ve reached the AI assistant usage limit. Please try again later. Contact your organization admin if you need higher limits.',
     emptyQuestion: 'Enter a question first.',
     liveDataRefusal:
       'That request is not available in AI Help. I can help with IndexCasting workflows and supported limited live-data questions for your workspace.',

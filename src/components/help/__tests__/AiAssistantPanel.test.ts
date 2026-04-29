@@ -26,4 +26,10 @@ describe('AiAssistantPanel UI safety', () => {
     expect(panelSource).toMatch(/disabled=\{!canSend\}/);
     expect(panelSource).toMatch(/editable=\{!pending\}/);
   });
+
+  it('always clears pending after safe assistant responses such as rate-limit messages', () => {
+    expect(panelSource).toMatch(/finally \{/);
+    expect(panelSource).toMatch(/setPending\(false\)/);
+    expect(panelSource).toMatch(/setMessages\(\(current\) => \[/);
+  });
 });

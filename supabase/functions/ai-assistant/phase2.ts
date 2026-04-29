@@ -138,12 +138,42 @@ export type ModelFactsExecutionResult =
   | { type: 'answer'; answer: string }
   | { type: 'mistral'; facts: ModelVisibleProfileFacts };
 
+export type AiAssistantRateLimits = {
+  userHour: number;
+  userDay: number;
+  orgDay: number;
+};
+
+export type AiAssistantRateLimitCounts = {
+  userHour: number;
+  userDay: number;
+  orgDay: number | null;
+};
+
+export type AiAssistantRateLimitDecision = {
+  allowed: boolean;
+  reason: 'allowed' | 'user_hour' | 'user_day' | 'org_day';
+  retryAfterSeconds: number | null;
+  remainingUserHour: number;
+  remainingUserDay: number;
+  remainingOrgDay: number | null;
+};
+
 export const CALENDAR_UNSUPPORTED_RANGE_ANSWER =
   'I can answer limited calendar questions for a specific date range. Try asking what is on your calendar today, tomorrow, or next week.';
 export const MODEL_CLARIFICATION_ANSWER = 'Which model do you mean?';
 export const MODEL_INFO_CLARIFICATION_PREFIX = 'What information do you need about';
 export const CLIENT_MODEL_FACTS_REFUSAL =
   'I can’t access agency-only model profile facts from the Client workspace.';
+export const AI_ASSISTANT_LIMIT_REACHED_ANSWER =
+  'You’ve reached the AI assistant usage limit. Please try again later. Contact your organization admin if you need higher limits.';
+export const AI_ASSISTANT_UNAVAILABLE_ANSWER =
+  'AI Help is temporarily unavailable. Please try again later.';
+export const DEFAULT_AI_ASSISTANT_RATE_LIMITS: AiAssistantRateLimits = {
+  userHour: 20,
+  userDay: 80,
+  orgDay: 200,
+};
 
 export const MAX_CALENDAR_RANGE_DAYS = 31;
 export const MAX_CALENDAR_DETAIL_LOOKBACK_DAYS = 90;
@@ -227,6 +257,11 @@ const MODEL_INFO_CLARIFICATION_PATTERN =
 
 const WRITE_ACTION_PATTERN =
   /^(please\s+)?(create|add|book|confirm|cancel|delete|remove|update|send|invite)\b|\b(create|add|book|confirm|cancel|delete|remove|update|send|invite)\b.*\b(for me|now|today|tomorrow|next week)\b/i;
+
+function positiveInt(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) return null;
+  return value;
+}
 
 function dateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -312,6 +347,66 @@ export function buildModelInfoClarificationAnswer(searchText: string): string {
   return safeName
     ? `${MODEL_INFO_CLARIFICATION_PREFIX} ${safeName}? For example: measurements, height, location, hair, eyes, categories, or account status.`
     : 'What model information do you need? For example: measurements, height, location, hair, eyes, categories, or account status.';
+}
+
+export function resolveAiAssistantRateLimits(row?: Partial<{
+  user_hour_limit: unknown;
+  user_day_limit: unknown;
+  org_day_limit: unknown;
+}> | null): AiAssistantRateLimits {
+  return {
+    userHour: positiveInt(row?.user_hour_limit) ?? DEFAULT_AI_ASSISTANT_RATE_LIMITS.userHour,
+    userDay: positiveInt(row?.user_day_limit) ?? DEFAULT_AI_ASSISTANT_RATE_LIMITS.userDay,
+    orgDay: positiveInt(row?.org_day_limit) ?? DEFAULT_AI_ASSISTANT_RATE_LIMITS.orgDay,
+  };
+}
+
+export function evaluateAiAssistantRateLimit(
+  counts: AiAssistantRateLimitCounts,
+  limits: AiAssistantRateLimits = DEFAULT_AI_ASSISTANT_RATE_LIMITS,
+  retryAfterSeconds = 3600,
+): AiAssistantRateLimitDecision {
+  if (counts.userHour >= limits.userHour) {
+    return {
+      allowed: false,
+      reason: 'user_hour',
+      retryAfterSeconds,
+      remainingUserHour: 0,
+      remainingUserDay: Math.max(limits.userDay - counts.userDay, 0),
+      remainingOrgDay:
+        counts.orgDay == null ? null : Math.max(limits.orgDay - counts.orgDay, 0),
+    };
+  }
+  if (counts.userDay >= limits.userDay) {
+    return {
+      allowed: false,
+      reason: 'user_day',
+      retryAfterSeconds,
+      remainingUserHour: Math.max(limits.userHour - counts.userHour, 0),
+      remainingUserDay: 0,
+      remainingOrgDay:
+        counts.orgDay == null ? null : Math.max(limits.orgDay - counts.orgDay, 0),
+    };
+  }
+  if (counts.orgDay != null && counts.orgDay >= limits.orgDay) {
+    return {
+      allowed: false,
+      reason: 'org_day',
+      retryAfterSeconds,
+      remainingUserHour: Math.max(limits.userHour - counts.userHour, 0),
+      remainingUserDay: Math.max(limits.userDay - counts.userDay, 0),
+      remainingOrgDay: 0,
+    };
+  }
+  return {
+    allowed: true,
+    reason: 'allowed',
+    retryAfterSeconds: null,
+    remainingUserHour: Math.max(limits.userHour - counts.userHour - 1, 0),
+    remainingUserDay: Math.max(limits.userDay - counts.userDay - 1, 0),
+    remainingOrgDay:
+      counts.orgDay == null ? null : Math.max(limits.orgDay - counts.orgDay - 1, 0),
+  };
 }
 
 export function resolveCalendarDateRange(message: string, now = new Date()): CalendarDateRange {

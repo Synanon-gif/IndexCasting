@@ -12,6 +12,8 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
+  AI_ASSISTANT_LIMIT_REACHED_ANSWER,
+  AI_ASSISTANT_UNAVAILABLE_ANSWER,
   buildCalendarItemDetailsFacts,
   buildCalendarFacts,
   buildModelInfoClarificationAnswer,
@@ -29,6 +31,7 @@ import {
   resolveCalendarDetailDateRange,
   resolveCalendarItemDetailsAnswer,
   resolveModelFactsExecutionResult,
+  type AssistantIntent,
   type CalendarFacts,
   type CalendarItemDetailsFacts,
   type CalendarItemReference,
@@ -49,6 +52,7 @@ const MAX_OUTPUT_TOKENS = 450;
 const LIVE_OUTPUT_TOKENS = 360;
 const MODEL_FACT_OUTPUT_TOKENS = 320;
 const REQUEST_TIMEOUT_MS = 15_000;
+const RATE_LIMIT_MAX_INPUT_CHARS = 2000;
 
 type ChatMessage = {
   role?: unknown;
@@ -83,6 +87,19 @@ type ServerContext = {
   role: ViewerRole;
   organizationId: string | null;
   state: 'ok' | 'missing' | 'ambiguous' | 'error';
+};
+
+type UsageResult =
+  | 'allowed'
+  | 'blocked_rate_limit'
+  | 'blocked_invalid'
+  | 'blocked_forbidden'
+  | 'error';
+
+type RateLimitDecision = {
+  allowed: boolean;
+  reason: string;
+  retryAfterSeconds: number | null;
 };
 
 type AssistantResponseContext = {
@@ -157,6 +174,36 @@ function assistantAnswerResponse(
   return jsonResponse(context ? { ok: true, answer, context } : { ok: true, answer }, 200, cors);
 }
 
+function safeIntent(intent: string): AssistantIntent | 'invalid' {
+  const allowed = new Set<string>([
+    'help_static',
+    'calendar_summary',
+    'calendar_item_details',
+    'model_visible_profile_facts',
+    'billing',
+    'team_management',
+    'admin_security',
+    'database_schema',
+    'raw_messages',
+    'cross_org',
+    'write_action',
+    'model_hidden_data',
+    'gdpr_export_delete',
+    'unknown_live_data',
+    'invalid',
+  ]);
+  return allowed.has(intent) ? (intent as AssistantIntent | 'invalid') : 'invalid';
+}
+
+function isExecutableAssistantIntent(intent: AssistantIntent): boolean {
+  return (
+    intent === 'help_static' ||
+    intent === 'calendar_summary' ||
+    intent === 'calendar_item_details' ||
+    intent === 'model_visible_profile_facts'
+  );
+}
+
 function normalizeViewerRole(input: unknown): ViewerRole | null {
   if (input === 'agency' || input === 'client' || input === 'model') return input;
   return null;
@@ -217,6 +264,92 @@ function latestCalendarFactsFromHistory(raw: unknown): CalendarFacts | null {
     if (facts) return facts;
   }
   return null;
+}
+
+function normalizeRateLimitDecision(data: unknown): RateLimitDecision | null {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== 'object') return null;
+  const record = row as Record<string, unknown>;
+  if (typeof record.allowed !== 'boolean') return null;
+  return {
+    allowed: record.allowed,
+    reason: typeof record.reason === 'string' ? record.reason : 'unknown',
+    retryAfterSeconds:
+      typeof record.retry_after_seconds === 'number' &&
+      Number.isFinite(record.retry_after_seconds)
+        ? record.retry_after_seconds
+        : null,
+  };
+}
+
+function sanitizeErrorCategory(value: string): string {
+  return value.replace(/[^a-z0-9_:-]/gi, '_').slice(0, 80);
+}
+
+async function checkRateLimit(params: {
+  supabase: SupabaseClientLike;
+  requestId: string;
+  role: ViewerRole;
+  intent: AssistantIntent | 'invalid';
+  organizationId: string | null;
+  estimatedInputChars: number;
+}): Promise<{ ok: true; decision: RateLimitDecision } | { ok: false }> {
+  const { data, error } = await params.supabase.rpc('ai_assistant_check_rate_limit', {
+    p_request_id: params.requestId,
+    p_viewer_role: params.role,
+    p_intent: params.intent,
+    p_organization_id: params.organizationId,
+    p_estimated_input_chars: Math.min(
+      Math.max(params.estimatedInputChars, 0),
+      RATE_LIMIT_MAX_INPUT_CHARS,
+    ),
+  });
+
+  if (error) {
+    console.warn('[ai-assistant] rate limit check failed', { code: error.code });
+    return { ok: false };
+  }
+
+  const decision = normalizeRateLimitDecision(data);
+  return decision ? { ok: true, decision } : { ok: false };
+}
+
+async function recordUsageEvent(params: {
+  supabase: SupabaseClientLike;
+  requestId: string;
+  role: ViewerRole;
+  intent: AssistantIntent | 'invalid';
+  organizationId: string | null;
+  result: UsageResult;
+  estimatedInputChars: number;
+  estimatedOutputChars?: number | null;
+  provider?: string | null;
+  model?: string | null;
+  durationMs?: number | null;
+  errorCategory?: string | null;
+}): Promise<void> {
+  const { error } = await params.supabase.rpc('ai_assistant_record_usage', {
+    p_request_id: params.requestId,
+    p_viewer_role: params.role,
+    p_intent: params.intent,
+    p_organization_id: params.organizationId,
+    p_result: params.result,
+    p_estimated_input_chars: Math.min(
+      Math.max(params.estimatedInputChars, 0),
+      RATE_LIMIT_MAX_INPUT_CHARS,
+    ),
+    p_estimated_output_chars: params.estimatedOutputChars ?? null,
+    p_provider: params.provider ?? null,
+    p_model: params.model ?? null,
+    p_duration_ms: params.durationMs ?? null,
+    p_error_category: params.errorCategory
+      ? sanitizeErrorCategory(params.errorCategory)
+      : null,
+  });
+
+  if (error) {
+    console.warn('[ai-assistant] usage record failed', { code: error.code });
+  }
 }
 
 function calendarContextFromDetails(facts: CalendarItemDetailsFacts): AssistantResponseContext | undefined {
@@ -570,9 +703,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const requestedRole = normalizeViewerRole(payload.viewerRole);
   if (!requestedRole) return jsonResponse({ ok: false, error: 'invalid_role' }, 400, cors);
   if (typeof payload.message !== 'string') {
+    const invalidContext = await resolveServerContext(supabase, requestedRole);
+    await recordUsageEvent({
+      supabase,
+      requestId: crypto.randomUUID(),
+      role: invalidContext.role,
+      intent: 'invalid',
+      organizationId: invalidContext.organizationId,
+      result: 'blocked_invalid',
+      estimatedInputChars: 0,
+      errorCategory: 'invalid_message',
+    });
     return jsonResponse({ ok: false, error: 'invalid_message' }, 400, cors);
   }
   if (payload.message.length > MAX_INPUT_CHARS) {
+    const invalidContext = await resolveServerContext(supabase, requestedRole);
+    await recordUsageEvent({
+      supabase,
+      requestId: crypto.randomUUID(),
+      role: invalidContext.role,
+      intent: 'invalid',
+      organizationId: invalidContext.organizationId,
+      result: 'blocked_invalid',
+      estimatedInputChars: payload.message.length,
+      errorCategory: 'message_too_long',
+    });
     return jsonResponse({ ok: false, error: 'message_too_long' }, 400, cors);
   }
 
@@ -587,37 +742,94 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const serverContext = await resolveServerContext(supabase, requestedRole);
   const role = serverContext.role;
   const classification = classifyAssistantIntent(routingMessage, role);
-
-  if (
-    classification.intent !== 'help_static' &&
-    classification.intent !== 'calendar_summary' &&
-    classification.intent !== 'calendar_item_details' &&
-    classification.intent !== 'model_visible_profile_facts'
-  ) {
-    return assistantAnswerResponse(forbiddenIntentAnswer(classification.intent, role), cors);
-  }
-
-  if (!MISTRAL_API_KEY && classification.intent !== 'calendar_item_details') {
-    console.warn('[ai-assistant] missing MISTRAL_API_KEY');
-    return jsonResponse({ ok: false, error: 'assistant_unavailable' }, 503, cors);
-  }
+  const requestId = crypto.randomUUID();
+  const requestStartedAt = Date.now();
+  const usageIntent = safeIntent(classification.intent);
+  const estimatedInputChars = routingMessage.length;
+  let usageFinalized = false;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    // TODO Phase 2: add persistent per-user/org rate limits without reading business data.
+    const finalizeUsage = async (params: {
+      result: UsageResult;
+      answer?: string;
+      provider?: string | null;
+      model?: string | null;
+      errorCategory?: string | null;
+    }) => {
+      if (usageFinalized) return;
+      usageFinalized = true;
+      await recordUsageEvent({
+        supabase,
+        requestId,
+        role,
+        intent: usageIntent,
+        organizationId: serverContext.organizationId,
+        result: params.result,
+        estimatedInputChars,
+        estimatedOutputChars: params.answer?.length ?? null,
+        provider: params.provider ?? null,
+        model: params.model ?? null,
+        durationMs: Date.now() - requestStartedAt,
+        errorCategory: params.errorCategory ?? null,
+      });
+    };
+
+    const answerWithUsage = async (
+      answer: string,
+      result: UsageResult = 'allowed',
+      context?: AssistantResponseContext,
+      provider?: string | null,
+      model?: string | null,
+    ): Promise<Response> => {
+      await finalizeUsage({ result, answer, provider, model });
+      return assistantAnswerResponse(answer, cors, context);
+    };
+
+    const rateLimit = await checkRateLimit({
+      supabase,
+      requestId,
+      role,
+      intent: usageIntent,
+      organizationId: serverContext.organizationId,
+      estimatedInputChars,
+    });
+    if (!rateLimit.ok) {
+      return assistantAnswerResponse(AI_ASSISTANT_UNAVAILABLE_ANSWER, cors);
+    }
+    if (!rateLimit.decision.allowed) {
+      usageFinalized = true;
+      return assistantAnswerResponse(AI_ASSISTANT_LIMIT_REACHED_ANSWER, cors);
+    }
+
+    if (!isExecutableAssistantIntent(classification.intent)) {
+      return await answerWithUsage(
+        forbiddenIntentAnswer(classification.intent, role),
+        'blocked_forbidden',
+      );
+    }
+
+    if (!MISTRAL_API_KEY && classification.intent !== 'calendar_item_details') {
+      console.warn('[ai-assistant] missing MISTRAL_API_KEY');
+      return await answerWithUsage(AI_ASSISTANT_UNAVAILABLE_ANSWER, 'error', undefined, null, null);
+    }
+
     if (classification.intent === 'calendar_item_details') {
       if (role !== 'agency' && role !== 'client') {
-        return assistantAnswerResponse(forbiddenIntentAnswer('unknown_live_data', role), cors);
+        return await answerWithUsage(
+          forbiddenIntentAnswer('unknown_live_data', role),
+          'blocked_forbidden',
+        );
       }
       if (classification.requestedField === 'pricing') {
-        return assistantAnswerResponse(CALENDAR_DETAIL_PRICING_REFUSAL, cors);
+        return await answerWithUsage(CALENDAR_DETAIL_PRICING_REFUSAL, 'blocked_forbidden');
       }
       if (serverContext.state !== 'ok' || !serverContext.organizationId) {
-        return assistantAnswerResponse(
+        return await answerWithUsage(
           'I can’t access calendar data because your organization context is missing or ambiguous.',
-          cors,
+          'error',
         );
       }
 
@@ -647,12 +859,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const historyFacts = latestCalendarFactsFromHistory(payload.history);
         const reference = findSingleCalendarReferenceFromFacts(historyFacts, classification.kindHint);
         if (reference === 'ambiguous') {
-          return assistantAnswerResponse(CALENDAR_DETAIL_AMBIGUOUS_ANSWER, cors);
+          return await answerWithUsage(CALENDAR_DETAIL_AMBIGUOUS_ANSWER);
         }
         if (!reference) {
-          return assistantAnswerResponse(
+          return await answerWithUsage(
             'I can answer details only when one visible calendar item was just shown. Which item or date do you mean?',
-            cors,
           );
         }
         loadParams = { mode: 'reference', reference };
@@ -680,24 +891,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
           result.reason === 'org_context'
             ? 'I can’t access calendar data because your organization context is missing or ambiguous.'
             : 'I can’t access visible calendar item details right now.';
-        return assistantAnswerResponse(answer, cors);
+        return await answerWithUsage(answer, 'error');
       }
 
-      return assistantAnswerResponse(
+      return await answerWithUsage(
         resolveCalendarItemDetailsAnswer(result.facts),
-        cors,
+        'allowed',
         calendarContextFromDetails(result.facts),
       );
     }
 
     if (classification.intent === 'calendar_summary') {
       if (role !== 'agency' && role !== 'client') {
-        return assistantAnswerResponse(forbiddenIntentAnswer('unknown_live_data', role), cors);
+        return await answerWithUsage(
+          forbiddenIntentAnswer('unknown_live_data', role),
+          'blocked_forbidden',
+        );
       }
       if (serverContext.state !== 'ok' || !serverContext.organizationId) {
-        return assistantAnswerResponse(
+        return await answerWithUsage(
           'I can’t access calendar data because your organization context is missing or ambiguous.',
-          cors,
+          'error',
         );
       }
 
@@ -721,11 +935,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
           result.reason === 'org_context'
             ? 'I can’t access calendar data because your organization context is missing or ambiguous.'
             : 'I can’t access visible calendar data right now.';
-        return assistantAnswerResponse(answer, cors);
+        return await answerWithUsage(answer, 'error');
       }
 
       if (result.facts.items.length === 0) {
-        return assistantAnswerResponse('I can’t find visible calendar items for that period.', cors, {
+        return await answerWithUsage('I can’t find visible calendar items for that period.', 'allowed', {
           calendarFacts: result.facts,
         });
       }
@@ -737,30 +951,29 @@ Deno.serve(async (req: Request): Promise<Response> => {
         signal: controller.signal,
       });
       if (!answer) {
-        return jsonResponse({ ok: false, error: 'assistant_unavailable' }, 503, cors);
+        return await answerWithUsage(AI_ASSISTANT_UNAVAILABLE_ANSWER, 'error');
       }
-      return assistantAnswerResponse(answer, cors, { calendarFacts: result.facts });
+      return await answerWithUsage(answer, 'allowed', { calendarFacts: result.facts }, 'mistral', MISTRAL_MODEL);
     }
 
     if (classification.intent === 'model_visible_profile_facts') {
       console.log('[ai-assistant] intent=model_visible_profile_facts triggered');
 
       if (role !== 'agency') {
-        return assistantAnswerResponse(CLIENT_MODEL_FACTS_REFUSAL, cors);
+        return await answerWithUsage(CLIENT_MODEL_FACTS_REFUSAL, 'blocked_forbidden');
       }
       if (classification.needsClarification) {
         if (classification.clarificationReason === 'what_info') {
-          return assistantAnswerResponse(
+          return await answerWithUsage(
             buildModelInfoClarificationAnswer(classification.searchText),
-            cors,
           );
         }
-        return assistantAnswerResponse(MODEL_CLARIFICATION_ANSWER, cors);
+        return await answerWithUsage(MODEL_CLARIFICATION_ANSWER);
       }
       if (serverContext.state !== 'ok' || !serverContext.organizationId) {
-        return assistantAnswerResponse(
+        return await answerWithUsage(
           'I can’t access model facts because your organization context is missing or ambiguous.',
-          cors,
+          'error',
         );
       }
 
@@ -776,7 +989,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       });
 
       if (!result.ok) {
-        return assistantAnswerResponse('I can’t access visible model facts right now.', cors);
+        return await answerWithUsage('I can’t access visible model facts right now.', 'error');
       }
 
       const resultCount =
@@ -789,7 +1002,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
       const execution = resolveModelFactsExecutionResult({ role, facts: result.facts });
       if (execution.type === 'answer') {
-        return assistantAnswerResponse(execution.answer, cors);
+        return await answerWithUsage(execution.answer);
       }
 
       const answer = await callMistral({
@@ -799,9 +1012,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         signal: controller.signal,
       });
       if (!answer) {
-        return jsonResponse({ ok: false, error: 'assistant_unavailable' }, 503, cors);
+        return await answerWithUsage(AI_ASSISTANT_UNAVAILABLE_ANSWER, 'error');
       }
-      return assistantAnswerResponse(answer, cors);
+      return await answerWithUsage(answer, 'allowed', undefined, 'mistral', MISTRAL_MODEL);
     }
 
     const answer = await callMistral({
@@ -811,13 +1024,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
       signal: controller.signal,
     });
     if (!answer) {
-      return jsonResponse({ ok: false, error: 'assistant_unavailable' }, 503, cors);
+      return await answerWithUsage(AI_ASSISTANT_UNAVAILABLE_ANSWER, 'error');
     }
 
-    return assistantAnswerResponse(answer, cors);
+    return await answerWithUsage(answer, 'allowed', undefined, 'mistral', MISTRAL_MODEL);
   } catch (e) {
     console.warn('[ai-assistant] request failed', e instanceof Error ? e.name : 'unknown');
-    return jsonResponse({ ok: false, error: 'assistant_unavailable' }, 503, cors);
+    if (!usageFinalized) {
+      usageFinalized = true;
+      await recordUsageEvent({
+        supabase,
+        requestId,
+        role,
+        intent: usageIntent,
+        organizationId: serverContext.organizationId,
+        result: 'error',
+        estimatedInputChars,
+        durationMs: Date.now() - requestStartedAt,
+        errorCategory: e instanceof Error ? e.name : 'unknown',
+      });
+    }
+    return assistantAnswerResponse(AI_ASSISTANT_UNAVAILABLE_ANSWER, cors);
   } finally {
     clearTimeout(timeout);
   }
