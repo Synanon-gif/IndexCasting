@@ -1,14 +1,23 @@
 /**
  * Edge Function: ai-assistant
  *
- * Phase 1 only:
+ * Phase 2 foundation:
  * - authenticated callers only
- * - static IndexCasting help knowledge only
+ * - static IndexCasting help knowledge
+ * - one allowlisted live-data intent: calendar_summary
  * - no service_role
- * - no business-table reads, RPCs, writes, or private org data access
+ * - no free SQL, arbitrary RPCs, writes, or broad private org data access
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import {
+  buildCalendarFacts,
+  classifyAssistantIntent,
+  forbiddenIntentAnswer,
+  MAX_CALENDAR_RESULTS,
+  type CalendarFacts,
+  type ViewerRole,
+} from './phase2.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
@@ -20,9 +29,8 @@ const MAX_INPUT_CHARS = 1200;
 const MAX_HISTORY_MESSAGES = 6;
 const MAX_HISTORY_CHARS = 500;
 const MAX_OUTPUT_TOKENS = 450;
+const LIVE_OUTPUT_TOKENS = 360;
 const REQUEST_TIMEOUT_MS = 15_000;
-
-type ViewerRole = 'agency' | 'client' | 'model';
 
 type ChatMessage = {
   role?: unknown;
@@ -35,6 +43,23 @@ type AssistantPayload = {
   history?: unknown;
 };
 
+type SupabaseClientLike = {
+  auth: {
+    getUser: () => Promise<{ data: { user: unknown | null }; error: unknown | null }>;
+  };
+  rpc: (
+    name: string,
+    args?: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: { message?: string; code?: string } | null }>;
+};
+
+type OrgContextRow = {
+  organization_id?: string | null;
+  org_type?: string | null;
+  org_member_role?: string | null;
+  agency_id?: string | null;
+};
+
 const ALLOWED_ORIGINS = [
   'https://index-casting.com',
   'https://www.index-casting.com',
@@ -42,14 +67,6 @@ const ALLOWED_ORIGINS = [
   'https://www.indexcasting.com',
   'http://localhost:8081',
   'http://localhost:19006',
-];
-
-const LIVE_DATA_PATTERNS = [
-  /\b(which|what|show|list|give me|tell me)\b.*\b(bookings?|options?|castings?|requests?|invoices?|messages?|models?|organization|team|members?)\b/i,
-  /\b(status)\b.*\b(my|our|this)\b.*\b(request|option|casting|booking|invoice)\b/i,
-  /\b(available|availability)\b.*\b(today|tomorrow|this week|next week|now)\b/i,
-  /\b(who)\b.*\b(organization|team|company|agency|client)\b/i,
-  /\b(what did|what has)\b.*\b(client|agency|model|booker|employee)\b.*\b(say|write|send)\b/i,
 ];
 
 const AGENCY_NAV_LABELS = [
@@ -133,10 +150,6 @@ function normalizeHistory(raw: unknown): Array<{ role: 'user' | 'assistant'; con
     .filter((item): item is { role: 'user' | 'assistant'; content: string } => item != null);
 }
 
-function requiresLiveData(message: string): boolean {
-  return LIVE_DATA_PATTERNS.some((pattern) => pattern.test(message));
-}
-
 function terminologyContract(role: ViewerRole): string {
   if (role === 'agency') {
     return [
@@ -191,8 +204,8 @@ function roleKnowledge(role: ViewerRole): string {
 function buildSystemPrompt(role: ViewerRole): string {
   return [
     'You are IndexCasting AI Help.',
-    'You only explain how the product works using the static help knowledge below.',
-    'You do not have access to live data.',
+    'You explain how the product works using the static help knowledge below.',
+    'Live data is only available when the server provides a small calendar facts object. Otherwise, do not invent live data.',
     'You cannot perform actions.',
     'You must not invent bookings, models, requests, invoices, messages, organization data, people, dates, statuses, or availability.',
     'If a question requires live/private data, say: "I don\'t have access to your live data yet. I can explain where to find this in IndexCasting." Then give brief navigation guidance.',
@@ -207,8 +220,123 @@ function buildSystemPrompt(role: ViewerRole): string {
     '',
     'Global help: Settings contains account and organization settings where available. Options are tentative holds or availability checks; castings are request/workflow contexts for evaluating talent; bookings are confirmed work or confirmed schedule items at a high level. For upload issues, check file type/size, refresh the browser, and retry. For invite issues, check the email address, invite permissions, and ask the owner/admin if needed. For persistent issues, contact support.',
     '',
-    'Phase 1 boundary: no live account data, no private organization data, no database lookups, no actions.',
+    'Phase 2 boundary: only limited calendar summary data may be answered when the server provides facts. No other live account data, private organization data, database details, or actions.',
   ].join('\n');
+}
+
+function buildCalendarSystemPrompt(role: Extract<ViewerRole, 'agency' | 'client'>): string {
+  return [
+    'You are IndexCasting AI Help.',
+    'Answer the user using ONLY the provided calendar facts object.',
+    'Never invent calendar items, people, dates, statuses, prices, messages, invoices, or actions.',
+    'Never mention internal database, table, SQL, RPC, RLS, or implementation details.',
+    'Never expose raw internal status values. Use the product labels already provided in the facts.',
+    'Distinguish Option, Casting, Job, Booking, and Private Event.',
+    'If no visible items are present, say: "I can’t find visible calendar items for that period."',
+    'If the facts say the range was capped or there are more items, say so briefly.',
+    'Do not claim you performed any write action.',
+    '',
+    `Viewer role: ${role}`,
+    terminologyContract(role),
+  ].join('\n');
+}
+
+function buildCalendarUserPrompt(message: string, facts: CalendarFacts): string {
+  return [
+    `User question: ${message}`,
+    'Calendar facts:',
+    JSON.stringify(facts),
+    '',
+    'Write a concise answer in the same language as the user when possible.',
+  ].join('\n');
+}
+
+async function resolveServerRole(
+  supabase: SupabaseClientLike,
+  fallbackRole: ViewerRole,
+): Promise<ViewerRole> {
+  try {
+    const { data, error } = await supabase.rpc('get_my_org_context');
+    if (error) {
+      console.warn('[ai-assistant] org context lookup failed', { code: error.code });
+      return fallbackRole;
+    }
+    const rows = (Array.isArray(data) ? data : data ? [data] : []) as OrgContextRow[];
+    const types = [...new Set(rows.map((row) => row.org_type).filter(Boolean))];
+    if (types.length === 1 && (types[0] === 'agency' || types[0] === 'client')) {
+      return types[0];
+    }
+    return fallbackRole;
+  } catch (e) {
+    console.warn('[ai-assistant] org context exception', e instanceof Error ? e.name : 'unknown');
+    return fallbackRole;
+  }
+}
+
+async function callMistral(params: {
+  systemPrompt: string;
+  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+  maxTokens: number;
+  signal: AbortSignal;
+}): Promise<string | null> {
+  const mistralResponse = await fetch(MISTRAL_URL, {
+    method: 'POST',
+    signal: params.signal,
+    headers: {
+      Authorization: `Bearer ${MISTRAL_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: MISTRAL_MODEL,
+      temperature: 0.2,
+      max_tokens: params.maxTokens,
+      messages: [{ role: 'system', content: params.systemPrompt }, ...params.messages],
+    }),
+  });
+
+  if (!mistralResponse.ok) {
+    console.warn('[ai-assistant] Mistral request failed', { status: mistralResponse.status });
+    return null;
+  }
+
+  const data = await mistralResponse.json();
+  const answer = data?.choices?.[0]?.message?.content;
+  return typeof answer === 'string' && answer.trim() ? answer.trim() : null;
+}
+
+async function loadCalendarFacts(params: {
+  supabase: SupabaseClientLike;
+  role: Extract<ViewerRole, 'agency' | 'client'>;
+  startDate: string;
+  endDate: string;
+  rangeWasCapped: boolean;
+}): Promise<{ ok: true; facts: CalendarFacts } | { ok: false; reason: 'org_context' | 'failed' }> {
+  const { data, error } = await params.supabase.rpc('ai_read_calendar_summary', {
+    p_viewer_role: params.role,
+    p_start_date: params.startDate,
+    p_end_date: params.endDate,
+    p_limit: MAX_CALENDAR_RESULTS + 1,
+  });
+
+  if (error) {
+    const msg = error.message ?? '';
+    if (/org_context_(missing|ambiguous)|role_mismatch|unsupported_role/i.test(msg)) {
+      return { ok: false, reason: 'org_context' };
+    }
+    console.warn('[ai-assistant] calendar summary rpc failed', { code: error.code });
+    return { ok: false, reason: 'failed' };
+  }
+
+  return {
+    ok: true,
+    facts: buildCalendarFacts({
+      role: params.role,
+      startDate: params.startDate,
+      endDate: params.endDate,
+      rangeWasCapped: params.rangeWasCapped,
+      rows: Array.isArray(data) ? data : [],
+    }),
+  };
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -249,8 +377,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ ok: false, error: 'invalid_json' }, 400, cors);
   }
 
-  const role = normalizeViewerRole(payload.viewerRole);
-  if (!role) return jsonResponse({ ok: false, error: 'invalid_role' }, 400, cors);
+  const requestedRole = normalizeViewerRole(payload.viewerRole);
+  if (!requestedRole) return jsonResponse({ ok: false, error: 'invalid_role' }, 400, cors);
   if (typeof payload.message !== 'string') {
     return jsonResponse({ ok: false, error: 'invalid_message' }, 400, cors);
   }
@@ -261,12 +389,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const message = sanitizeText(payload.message, MAX_INPUT_CHARS);
   if (!message) return jsonResponse({ ok: false, error: 'invalid_message' }, 400, cors);
 
-  if (requiresLiveData(message)) {
-    return jsonResponse({
-      ok: true,
-      answer:
-        "I don't have access to your live data yet. I can explain where to find this in IndexCasting.",
-    }, 200, cors);
+  const role = await resolveServerRole(supabase, requestedRole);
+  const classification = classifyAssistantIntent(message, role);
+
+  if (classification.intent !== 'help_static' && classification.intent !== 'calendar_summary') {
+    return jsonResponse({ ok: true, answer: forbiddenIntentAnswer(classification.intent) }, 200, cors);
   }
 
   if (!MISTRAL_API_KEY) {
@@ -279,37 +406,57 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   try {
     // TODO Phase 2: add persistent per-user/org rate limits without reading business data.
-    const mistralResponse = await fetch(MISTRAL_URL, {
-      method: 'POST',
+    if (classification.intent === 'calendar_summary') {
+      if (role !== 'agency' && role !== 'client') {
+        return jsonResponse({ ok: true, answer: forbiddenIntentAnswer('unknown_live_data') }, 200, cors);
+      }
+
+      const result = await loadCalendarFacts({
+        supabase,
+        role,
+        startDate: classification.dateRange.startDate,
+        endDate: classification.dateRange.endDate,
+        rangeWasCapped: classification.dateRange.wasCapped,
+      });
+
+      if (!result.ok) {
+        const answer =
+          result.reason === 'org_context'
+            ? 'I can’t access calendar data because your organization context is missing or ambiguous.'
+            : 'I can’t access visible calendar data right now.';
+        return jsonResponse({ ok: true, answer }, 200, cors);
+      }
+
+      if (result.facts.items.length === 0) {
+        return jsonResponse({
+          ok: true,
+          answer: 'I can’t find visible calendar items for that period.',
+        }, 200, cors);
+      }
+
+      const answer = await callMistral({
+        systemPrompt: buildCalendarSystemPrompt(role),
+        messages: [{ role: 'user', content: buildCalendarUserPrompt(message, result.facts) }],
+        maxTokens: LIVE_OUTPUT_TOKENS,
+        signal: controller.signal,
+      });
+      if (!answer) {
+        return jsonResponse({ ok: false, error: 'assistant_unavailable' }, 503, cors);
+      }
+      return jsonResponse({ ok: true, answer }, 200, cors);
+    }
+
+    const answer = await callMistral({
+      systemPrompt: buildSystemPrompt(role),
+      messages: [...normalizeHistory(payload.history), { role: 'user', content: message }],
+      maxTokens: MAX_OUTPUT_TOKENS,
       signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${MISTRAL_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: MISTRAL_MODEL,
-        temperature: 0.2,
-        max_tokens: MAX_OUTPUT_TOKENS,
-        messages: [
-          { role: 'system', content: buildSystemPrompt(role) },
-          ...normalizeHistory(payload.history),
-          { role: 'user', content: message },
-        ],
-      }),
     });
-
-    if (!mistralResponse.ok) {
-      console.warn('[ai-assistant] Mistral request failed', { status: mistralResponse.status });
+    if (!answer) {
       return jsonResponse({ ok: false, error: 'assistant_unavailable' }, 503, cors);
     }
 
-    const data = await mistralResponse.json();
-    const answer = data?.choices?.[0]?.message?.content;
-    if (typeof answer !== 'string' || !answer.trim()) {
-      return jsonResponse({ ok: false, error: 'assistant_unavailable' }, 503, cors);
-    }
-
-    return jsonResponse({ ok: true, answer: answer.trim() }, 200, cors);
+    return jsonResponse({ ok: true, answer }, 200, cors);
   } catch (e) {
     console.warn('[ai-assistant] request failed', e instanceof Error ? e.name : 'unknown');
     return jsonResponse({ ok: false, error: 'assistant_unavailable' }, 503, cors);
