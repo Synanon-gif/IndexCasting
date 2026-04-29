@@ -39,9 +39,12 @@ Never tell a Client user to use `My Models`, `Clients`, `Recruiting`, `Links`, `
 ## Required Checks
 
 - Any change to AI help copy/system prompts must include tests that prove Agency knowledge excludes Client-only terms and Client knowledge excludes Agency-only terms.
-- Phase 2 live data is allowlist-only. Currently live intents are `calendar_summary` and Agency-only `model_visible_profile_facts`.
+- Phase 2 live data is allowlist-only. Currently live intents are `calendar_summary`, `calendar_item_details`, and Agency-only `model_visible_profile_facts`.
 - All other live-data intents remain forbidden, including messages, billing, team/invites, admin/security, database/RLS/schema questions, writes, hidden/private model data, emails, phone numbers, sync IDs, internal IDs, raw storage paths, file URLs, and private media.
 - No `service_role`, no free SQL, no LLM-controlled tools, and no LLM-controlled table/RPC access. The Edge Function may call only narrow server-owned data sources and must send the LLM only minimized facts objects.
 - `model_visible_profile_facts` is Agency-only and may expose only visible Agency UI facts: display name, visible city/country, height, chest, waist, hips, shoes, hair, eyes, categories, and `account_linked` as product wording.
-- Calendar summary must stay bounded by date range, result limits, role/org context, and product labels only.
+- `model_visible_profile_facts` matching must scope to the verified Agency workspace first, then match visible model display names with case-/accent-tolerant exact, prefix, and partial matching. Ambiguous matches may show safe display names only.
+- `calendar_summary` and `calendar_item_details` must stay bounded by date/range, result limits, role/org context, and product labels only. Details may expose only visible date, start/end time, kind, title, model name, counterparty name, visible note/description, and safe product status label.
+- AI assistant follow-up context must be short-lived and minimized. It may contain safe calendar facts needed to resolve one visible prior item, but never secrets, internal IDs, emails, phone numbers, raw SQL/RPC/table/RLS details, messages, file URLs, prices, billing, team/admin data, or write payloads.
+- Pricing, negotiation, `waiting_for`, `model_approval`, raw messages, billing, team/invite, admin/security, GDPR export/delete, service_role/free SQL, and write actions remain forbidden.
 - New SQL migrations for AI Assistant live data must be narrow, read-only, org-scoped, grant only intended roles, revoke anon/PUBLIC, and be deployed without destructive migration repair.

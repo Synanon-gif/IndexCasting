@@ -3,6 +3,7 @@ import * as path from 'path';
 import {
   buildCalendarItemDetailsFacts,
   buildCalendarFacts,
+  buildModelInfoClarificationAnswer,
   buildModelVisibleProfileFacts,
   CALENDAR_DETAIL_PRICING_REFUSAL,
   CALENDAR_UNSUPPORTED_RANGE_ANSWER,
@@ -15,6 +16,7 @@ import {
   MAX_CALENDAR_RANGE_DAYS,
   MAX_MODEL_SEARCH_CHARS,
   MODEL_CLARIFICATION_ANSWER,
+  MODEL_INFO_CLARIFICATION_PREFIX,
   resolveCalendarDetailDateRange,
   resolveCalendarItemDetailsAnswer,
   resolveModelFactsExecutionResult,
@@ -139,6 +141,9 @@ describe('AI Assistant Phase 2 intent router', () => {
   it('extracts partial and accent-tolerant model search names for visible model lookup', () => {
     const examples = [
       ['What are the measurements of Remi Lovisolo?', 'Remi Lovisolo'],
+      ['What are the measurements of Rémi Lovisolo?', 'Rémi Lovisolo'],
+      ['What are the measurements of RÉMI LOVISOLO?', 'RÉMI LOVISOLO'],
+      ['what are the measurements of remi lovisolo?', 'remi lovisolo'],
       ['What is the height of Johann E?', 'Johann E'],
       ['Show me profile facts for Aram E', 'Aram E'],
     ] as const;
@@ -149,6 +154,23 @@ describe('AI Assistant Phase 2 intent router', () => {
       if (result.intent === 'model_visible_profile_facts') {
         expect(result.searchText).toBe(expectedSearch);
       }
+    }
+  });
+
+  it('asks what information is needed for vague named model follow-ups', () => {
+    const result = classifyAssistantIntent('What about Remi?', 'agency', BASE_DATE);
+
+    expect(result.intent).toBe('model_visible_profile_facts');
+    if (result.intent === 'model_visible_profile_facts') {
+      expect(result.needsClarification).toBe(true);
+      expect(result.clarificationReason).toBe('what_info');
+      expect(result.searchText).toBe('Remi');
+      expect(buildModelInfoClarificationAnswer(result.searchText)).toBe(
+        'What information do you need about Remi? For example: measurements, height, location, hair, eyes, categories, or account status.',
+      );
+      expect(buildModelInfoClarificationAnswer(result.searchText)).toContain(
+        MODEL_INFO_CLARIFICATION_PREFIX,
+      );
     }
   });
 
@@ -681,6 +703,36 @@ describe('AI Assistant Phase 2 model visible profile facts', () => {
     expect(execution.answer).not.toMatch(/I don't have access to your live data yet/i);
   });
 
+  it('supports measurement comparison facts field by field without exposing hidden data', () => {
+    const facts = buildModelVisibleProfileFacts({
+      rows: [
+        {
+          display_name: 'Johann E',
+          height: 180,
+          waist: 75,
+          chest: null,
+          hips: 90,
+          shoes: 43,
+        },
+      ],
+    });
+
+    expect(facts.matchStatus).toBe('found');
+    expect(facts.model).toBeDefined();
+    if (facts.model) {
+      expect(facts.model.measurements).toEqual({
+        height: 180,
+        chest: null,
+        waist: 75,
+        hips: 90,
+        shoes: 43,
+      });
+    }
+    expect(JSON.stringify(facts)).not.toMatch(
+      /hidden@example\.com|\+491234|model-id|notes?|file_url|billing|messages/i,
+    );
+  });
+
   it('continues to Mistral only for found Agency model facts', () => {
     const facts = buildModelVisibleProfileFacts({
       rows: [{ display_name: 'Ruben E', height: 180 }],
@@ -710,6 +762,13 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     path.join(
       process.cwd(),
       'supabase/migrations/20261214_ai_assistant_calendar_details_and_model_matching.sql',
+    ),
+    'utf8',
+  );
+  const accentFoldMigration = readFileSync(
+    path.join(
+      process.cwd(),
+      'supabase/migrations/20261215_ai_assistant_fold_uppercase_accents.sql',
     ),
     'utf8',
   );
@@ -757,6 +816,27 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     expect(hardeningMigration).toMatch(/scoped_display_name_folded = v_search_folded/i);
     expect(hardeningMigration).toMatch(/scoped_display_name_folded LIKE v_search_folded \|\| '%'/i);
     expect(hardeningMigration).toMatch(/scoped_display_name_folded LIKE v_search_pattern/i);
+  });
+
+  it('folds model search text after lowercasing so uppercase accents match unaccented input', () => {
+    expect(accentFoldMigration).toMatch(
+      /CREATE OR REPLACE FUNCTION public\.ai_assistant_fold_search_text/i,
+    );
+    expect(accentFoldMigration).toMatch(/translate\(\s*lower\(COALESCE\(p_value, ''\)\)/i);
+    expect(accentFoldMigration).toMatch(/RÉMI match Remi/i);
+    expect(accentFoldMigration).not.toMatch(
+      /SERVICE_ROLE_KEY|FROM public\.models|JOIN public\.models|SELECT \*|GRANT EXECUTE/i,
+    );
+  });
+
+  it('keeps last-job detail follow-up context minimized in the edge response', () => {
+    expect(edge).toMatch(/function calendarContextFromDetails/);
+    expect(edge).toMatch(/facts\.matchStatus !== 'found'/);
+    expect(edge).toMatch(/rows: \[facts\.item\]/);
+    expect(edge).toMatch(/calendarContextFromDetails\(result\.facts\)/);
+    expect(edge).not.toMatch(
+      /proposed_price|agency_counter_price|client_price_status|model_approval|waiting_for/i,
+    );
   });
 
   it('does not use service_role or send raw SQL/table/RPC names in model facts prompts', () => {

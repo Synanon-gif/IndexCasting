@@ -31,7 +31,12 @@ export type IntentClassification =
       requestedField: CalendarDetailRequestedField;
       kindHint?: CalendarSummaryItem['kind'];
     }
-  | { intent: 'model_visible_profile_facts'; searchText: string; needsClarification?: boolean }
+  | {
+      intent: 'model_visible_profile_facts';
+      searchText: string;
+      needsClarification?: boolean;
+      clarificationReason?: 'which_model' | 'what_info';
+    }
   | {
       intent: Exclude<
         AssistantIntent,
@@ -136,6 +141,7 @@ export type ModelFactsExecutionResult =
 export const CALENDAR_UNSUPPORTED_RANGE_ANSWER =
   'I can answer limited calendar questions for a specific date range. Try asking what is on your calendar today, tomorrow, or next week.';
 export const MODEL_CLARIFICATION_ANSWER = 'Which model do you mean?';
+export const MODEL_INFO_CLARIFICATION_PREFIX = 'What information do you need about';
 export const CLIENT_MODEL_FACTS_REFUSAL =
   'I can’t access agency-only model profile facts from the Client workspace.';
 
@@ -215,6 +221,9 @@ const MODEL_PROFILE_PATTERNS = [
   /\b(?:her|his|their)\s+(?:measurements?|dimensions?|height|city|location|shoes?|shoe size|chest|bust|waist|hips|hair|eyes?)\b/i,
   /\b(?:this|that)\s+model\b.*\b(?:measurements?|dimensions?|height|city|location|shoes?|shoe size|chest|bust|waist|hips|hair|eyes?|account)\b/i,
 ];
+
+const MODEL_INFO_CLARIFICATION_PATTERN =
+  /^\s*what\s+about\s+([a-z\p{L}\p{N}'’.\-\s]{2,80})\??\s*$/iu;
 
 const WRITE_ACTION_PATTERN =
   /^(please\s+)?(create|add|book|confirm|cancel|delete|remove|update|send|invite)\b|\b(create|add|book|confirm|cancel|delete|remove|update|send|invite)\b.*\b(for me|now|today|tomorrow|next week)\b/i;
@@ -298,6 +307,13 @@ export function extractModelProfileSearchText(message: string): string {
   return stripModelSearchNoise(normalized);
 }
 
+export function buildModelInfoClarificationAnswer(searchText: string): string {
+  const safeName = cleanString(searchText, 80);
+  return safeName
+    ? `${MODEL_INFO_CLARIFICATION_PREFIX} ${safeName}? For example: measurements, height, location, hair, eyes, categories, or account status.`
+    : 'What model information do you need? For example: measurements, height, location, hair, eyes, categories, or account status.';
+}
+
 export function resolveCalendarDateRange(message: string, now = new Date()): CalendarDateRange {
   const normalized = message.toLowerCase();
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -358,6 +374,7 @@ export function classifyAssistantIntent(
     CALENDAR_DETAIL_PATTERNS.some((pattern) => pattern.test(normalized)) ||
     CALENDAR_DETAIL_PRICE_PATTERN.test(normalized);
   const modelProfileQuestion = MODEL_PROFILE_PATTERNS.some((pattern) => pattern.test(normalized));
+  const modelInfoClarificationMatch = normalized.match(MODEL_INFO_CLARIFICATION_PATTERN);
   if (WRITE_ACTION_PATTERN.test(normalized) && !/^\s*how\s+do\s+i\b/i.test(normalized)) {
     return { intent: 'write_action' };
   }
@@ -381,11 +398,28 @@ export function classifyAssistantIntent(
 
   if (modelProfileQuestion) {
     if (isPronounModelFactsQuestion(normalized)) {
-      return { intent: 'model_visible_profile_facts', searchText: '', needsClarification: true };
+      return {
+        intent: 'model_visible_profile_facts',
+        searchText: '',
+        needsClarification: true,
+        clarificationReason: 'which_model',
+      };
     }
     const searchText = extractModelProfileSearchText(normalized);
     if (!searchText || searchText.length < 2) return { intent: 'unknown_live_data' };
     return { intent: 'model_visible_profile_facts', searchText };
+  }
+
+  if (modelInfoClarificationMatch?.[1] && role === 'agency') {
+    const searchText = stripModelSearchNoise(modelInfoClarificationMatch[1]);
+    if (searchText.length >= 2) {
+      return {
+        intent: 'model_visible_profile_facts',
+        searchText,
+        needsClarification: true,
+        clarificationReason: 'what_info',
+      };
+    }
   }
 
   if (calendarQuestion || LIVE_DATA_PATTERNS.some((pattern) => pattern.test(normalized))) {

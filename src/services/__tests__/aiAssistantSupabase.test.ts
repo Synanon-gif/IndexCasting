@@ -34,7 +34,11 @@ describe('askAiAssistant', () => {
       history: [{ role: 'assistant', content: 'Hi' }],
     });
 
-    expect(result).toEqual({ ok: true, answer: 'Use Projects to organize selections.' });
+    expect(result).toEqual({
+      ok: true,
+      answer: 'Use Projects to organize selections.',
+      context: undefined,
+    });
     expect(mockInvoke).toHaveBeenCalledWith('ai-assistant', {
       body: {
         message: 'How do I create a project?',

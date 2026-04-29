@@ -14,6 +14,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   buildCalendarItemDetailsFacts,
   buildCalendarFacts,
+  buildModelInfoClarificationAnswer,
   buildModelVisibleProfileFacts,
   CALENDAR_DETAIL_AMBIGUOUS_ANSWER,
   CALENDAR_DETAIL_PRICING_REFUSAL,
@@ -216,6 +217,19 @@ function latestCalendarFactsFromHistory(raw: unknown): CalendarFacts | null {
     if (facts) return facts;
   }
   return null;
+}
+
+function calendarContextFromDetails(facts: CalendarItemDetailsFacts): AssistantResponseContext | undefined {
+  if (facts.matchStatus !== 'found' || !facts.item) return undefined;
+  return {
+    calendarFacts: buildCalendarFacts({
+      role: facts.role,
+      startDate: facts.item.date,
+      endDate: facts.item.date,
+      rangeWasCapped: false,
+      rows: [facts.item],
+    }),
+  };
 }
 
 function terminologyContract(role: ViewerRole): string {
@@ -669,7 +683,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return assistantAnswerResponse(answer, cors);
       }
 
-      return assistantAnswerResponse(resolveCalendarItemDetailsAnswer(result.facts), cors);
+      return assistantAnswerResponse(
+        resolveCalendarItemDetailsAnswer(result.facts),
+        cors,
+        calendarContextFromDetails(result.facts),
+      );
     }
 
     if (classification.intent === 'calendar_summary') {
@@ -731,6 +749,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return assistantAnswerResponse(CLIENT_MODEL_FACTS_REFUSAL, cors);
       }
       if (classification.needsClarification) {
+        if (classification.clarificationReason === 'what_info') {
+          return assistantAnswerResponse(
+            buildModelInfoClarificationAnswer(classification.searchText),
+            cors,
+          );
+        }
         return assistantAnswerResponse(MODEL_CLARIFICATION_ANSWER, cors);
       }
       if (serverContext.state !== 'ok' || !serverContext.organizationId) {

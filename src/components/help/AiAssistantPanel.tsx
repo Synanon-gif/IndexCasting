@@ -111,6 +111,7 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
             contentContainerStyle={styles.messagesContent}
             keyboardShouldPersistTaps="handled"
             onContentSizeChange={scrollToEnd}
+            onLayout={scrollToEnd}
           >
             {messages.map((message, index) => (
               <View
@@ -231,18 +232,22 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   messages: {
+    flexGrow: 1,
     minHeight: 180,
     maxHeight: 320,
   },
   messagesContent: {
     gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
   bubble: {
     maxWidth: '88%',
     borderRadius: 14,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingTop: spacing.sm + 2,
+    paddingBottom: spacing.sm,
+    overflow: 'visible',
   },
   assistantBubble: {
     alignSelf: 'flex-start',
@@ -256,6 +261,7 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontSize: 13,
     lineHeight: 19,
+    paddingTop: 1,
     color: colors.textPrimary,
   },
   userBubbleText: {
@@ -283,6 +289,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    minWidth: 0,
     minHeight: 42,
     borderWidth: 1,
     borderColor: colors.border,
@@ -290,10 +297,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     color: colors.textPrimary,
     backgroundColor: colors.background,
+    textAlignVertical: 'center',
     ...typography.body,
     fontSize: 13,
   },
   sendButton: {
+    flexShrink: 0,
     minHeight: 42,
     borderRadius: 999,
     paddingHorizontal: spacing.md,
