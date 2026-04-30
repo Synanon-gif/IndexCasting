@@ -1,3 +1,11 @@
+import {
+  isProductCalendarEducationQuestion,
+  shouldExemptBillingOrTeamForbidden,
+  type HelpStaticSubtype,
+} from './setupGuide.ts';
+
+export type { HelpStaticSubtype } from './setupGuide.ts';
+
 export type ViewerRole = 'agency' | 'client' | 'model';
 
 export type AssistantIntent =
@@ -26,7 +34,7 @@ export type CalendarDateRange = {
 };
 
 export type IntentClassification =
-  | { intent: 'help_static' }
+  | { intent: 'help_static'; helpSubtype?: HelpStaticSubtype }
   | { intent: 'calendar_summary'; dateRange: CalendarDateRange }
   | {
       intent: 'calendar_item_details';
@@ -1527,6 +1535,12 @@ export function classifyAssistantIntent(
   if (!normalized) return { intent: 'help_static' };
 
   for (const [intent, pattern] of FORBIDDEN_PATTERNS) {
+    if (
+      (intent === 'billing' || intent === 'team_management') &&
+      shouldExemptBillingOrTeamForbidden(normalized)
+    ) {
+      continue;
+    }
     if (pattern.test(normalized)) return { intent };
   }
 
@@ -1578,6 +1592,9 @@ export function classifyAssistantIntent(
   );
 
   if (calendarQuestion && (role === 'agency' || role === 'client')) {
+    if (isProductCalendarEducationQuestion(normalized)) {
+      return { intent: 'help_static', helpSubtype: 'feature_explanation' };
+    }
     if (looksLikeOrgCalendarSummaryPhrase(message)) {
       return { intent: 'calendar_summary', dateRange: resolveCalendarDateRange(normalized, now) };
     }
@@ -1648,6 +1665,10 @@ export function classifyAssistantIntent(
         clarificationReason: 'what_info',
       };
     }
+  }
+
+  if (isProductCalendarEducationQuestion(normalized)) {
+    return { intent: 'help_static', helpSubtype: 'feature_explanation' };
   }
 
   if (calendarQuestion || LIVE_DATA_PATTERNS.some((pattern) => pattern.test(normalized))) {

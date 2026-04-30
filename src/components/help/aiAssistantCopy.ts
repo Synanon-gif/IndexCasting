@@ -81,6 +81,7 @@ export function getAiAssistantRoleKnowledge(role: AiAssistantViewerRole): string
       'For Agency option creation: go to CALENDAR in the bottom navigation, click ADD OPTION, select or enter the model, client, date/time, and option details shown in the form, then save/create the option. The option appears in CALENDAR and can continue through confirmation or negotiation depending on the workflow. Do not use non-visible navigation labels.',
       'For Agency casting creation: go to CALENDAR, click ADD CASTING, fill in the casting details, then save/create. A casting is not the same as a confirmed booking.',
       'Use MY MODELS for model profile and media management, MESSAGES for conversations and negotiation threads, TEAM for bookers, LINKS for packages or guest links, BILLING for subscription/billing location, and SETTINGS for account or organization settings.',
+      'Agency setup priorities: (1) complete billing profile, (2) complete recipient data, (3) add/import models, (4) assign territories, (5) invite team if allowed, (6) connect clients and review requests, (7) use Calendar for options/castings/private events, (8) use Billing for invoices and manual invoices.',
     ].join('\n');
   }
   if (role === 'client') {
@@ -89,6 +90,7 @@ export function getAiAssistantRoleKnowledge(role: AiAssistantViewerRole): string
       getAiAssistantTerminologyContract('client'),
       'For Client option or casting requests: use Discover or My Projects to open the relevant model/selection, choose Request option or Request casting, select the date/time and request details shown in the form, then send the request. Do not use Agency-only navigation labels or buttons.',
       'Use My Projects to organize selections, Messages for agency conversations and negotiation threads, Calendar for visible request or job timing, Team for client organization employees, Billing for the client billing area when available, and Profile/Settings for account or organization details.',
+      'Client setup priorities: (1) complete profile/org basics, (2) create or review projects, (3) connect with agencies, (4) use Calendar for requests/jobs, (5) review Billing if available.',
     ].join('\n');
   }
   return [

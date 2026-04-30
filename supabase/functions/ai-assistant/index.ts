@@ -57,6 +57,7 @@ import {
   resolveModelCalendarAvailabilityExecutionResult,
   type ViewerRole,
 } from './phase2.ts';
+import { getHelpStaticSubtypeSnippet, tryDeterministicSetupResponse } from './setupGuide.ts';
 import { AI_ASSISTANT_CONSENT_REQUIRED_ANSWER, gateAiAssistantConsent } from './consentGate.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -1089,6 +1090,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    if (classification.intent === 'help_static') {
+      const deterministicHelp = tryDeterministicSetupResponse(message, role);
+      if (deterministicHelp) {
+        return await answerWithUsage(deterministicHelp.answer, 'allowed');
+      }
+    }
+
     if (!MISTRAL_API_KEY && classification.intent !== 'calendar_item_details' &&
       classification.intent !== 'model_calendar_availability_check') {
       console.warn('[ai-assistant] missing MISTRAL_API_KEY');
@@ -1428,8 +1436,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    const helpSubtype =
+      classification.intent === 'help_static' ? classification.helpSubtype : undefined;
+    const setupSnippet =
+      helpSubtype && helpSubtype !== 'general'
+        ? getHelpStaticSubtypeSnippet(role, helpSubtype)
+        : '';
     const answer = await callMistral({
-      systemPrompt: buildSystemPrompt(role),
+      systemPrompt: [buildSystemPrompt(role), setupSnippet].filter(Boolean).join('\n\n'),
       messages: [...normalizeHistory(payload.history), { role: 'user', content: message }],
       maxTokens: MAX_OUTPUT_TOKENS,
       signal: controller.signal,

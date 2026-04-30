@@ -26,6 +26,7 @@ import {
   getAiAssistantSubtitle,
   type AiAssistantViewerRole,
 } from './aiAssistantCopy';
+import { getAiAssistantQuickPrompts } from './aiAssistantSetupGuide';
 import { AiAssistantConsentModal } from './AiAssistantConsentModal';
 
 type ConsentGateState =
@@ -45,6 +46,7 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
   const copy = uiCopy.aiAssistant;
   const subtitle = getAiAssistantSubtitle(viewerRole);
   const disclaimer = getAiAssistantDisclaimer(viewerRole);
+  const quickPrompts = useMemo(() => getAiAssistantQuickPrompts(viewerRole), [viewerRole]);
   const scrollRef = useRef<ScrollView | null>(null);
   const [messages, setMessages] = useState<AiAssistantMessage[]>([
     { role: 'assistant', content: copy.initialMessage },
@@ -205,6 +207,30 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
 
             <Text style={styles.disclaimer}>{disclaimer}</Text>
 
+            {consentReady && quickPrompts.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.quickPromptsRow}
+              >
+                {quickPrompts.map((prompt) => (
+                  <Pressable
+                    key={prompt}
+                    onPress={() => {
+                      setDraft(prompt);
+                      setError(null);
+                    }}
+                    style={styles.quickPromptChip}
+                    accessibilityRole="button"
+                    accessibilityLabel={prompt}
+                  >
+                    <Text style={styles.quickPromptChipText}>{prompt}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : null}
+
             {consentGate.phase === 'checking' ? (
               <View style={styles.consentCheckingRow}>
                 <ActivityIndicator size="small" color={colors.textSecondary} />
@@ -341,6 +367,28 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: colors.textSecondary,
     paddingVertical: spacing.xs,
+  },
+  quickPromptsRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingBottom: spacing.xs,
+    maxWidth: '100%',
+  },
+  quickPromptChip: {
+    flexShrink: 0,
+    maxWidth: 280,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.background,
+  },
+  quickPromptChipText: {
+    ...typography.body,
+    fontSize: 11,
+    lineHeight: 16,
+    color: colors.textPrimary,
   },
   consentCheckingRow: {
     flexDirection: 'row',

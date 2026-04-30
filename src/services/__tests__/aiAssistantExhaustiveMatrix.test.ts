@@ -75,15 +75,12 @@ describe('AI Assistant exhaustive matrix — A help / navigation', () => {
     expect(classify('How do I create a casting?', 'agency').intent).toBe('help_static');
   });
 
-  it('3–4 treat billing/invite navigation as forbidden intents (no billing/team via assistant)', () => {
-    expect(classify('Where do I manage billing?', 'agency').intent).toBe('billing');
-    expect(classify('Where do I invite a booker?', 'agency').intent).toBe('team_management');
-    const b = forbiddenIntentAnswer('billing', 'agency');
-    const t = forbiddenIntentAnswer('team_management', 'agency');
-    assertAiResponseSafe(b);
-    assertAiResponseSafe(t);
-    assertForbiddenAnswerNoWriteClaim(b);
-    assertForbiddenAnswerNoWriteClaim(t);
+  it('3–4 route billing/team wayfinding to help_static (no live billing/team data via assistant)', () => {
+    expect(classify('Where do I manage billing?', 'agency').intent).toBe('help_static');
+    expect(classify('Where do I invite a booker?', 'agency').intent).toBe('help_static');
+    const liveBilling = forbiddenIntentAnswer('billing', 'agency');
+    assertAiResponseSafe(liveBilling);
+    assertForbiddenAnswerNoWriteClaim(liveBilling);
   });
 
   it('5–7 route Client workflow questions to help_static', () => {
