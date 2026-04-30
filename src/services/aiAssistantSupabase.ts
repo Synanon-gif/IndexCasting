@@ -141,7 +141,19 @@ export async function recordAiAssistantUserConsent(
     p_organization_id: organizationId,
     p_consent_version: AI_CONSENT_VERSION,
   });
-  return { ok: error == null };
+  if (error) {
+    const code =
+      typeof (error as { code?: string }).code === 'string'
+        ? (error as { code?: string }).code
+        : 'unknown_rpc_error';
+    console.warn('[aiAssistant][consent]', { event: 'persist_failed', code });
+    return { ok: false };
+  }
+  console.info('[aiAssistant][consent]', {
+    event: 'ack_recorded',
+    consent_version: AI_CONSENT_VERSION,
+  });
+  return { ok: true };
 }
 
 export async function askAiAssistant(input: {

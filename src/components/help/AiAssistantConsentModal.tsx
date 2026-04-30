@@ -1,6 +1,8 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Dimensions,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -12,6 +14,10 @@ import {
 import {
   AI_ASSISTANT_LEGAL_SECTIONS,
   AI_ASSISTANT_CONSENT_CHECKBOX_LABEL,
+  AI_ASSISTANT_CONSENT_SCROLL_HINT,
+  AI_ASSISTANT_CONSENT_FOOTNOTE_VERSION,
+  INDEXCASTING_PUBLIC_PRIVACY_URL,
+  INDEXCASTING_PUBLIC_TRUST_GDPR_URL,
 } from '../../constants/aiAssistantConsent';
 import { colors, spacing, typography } from '../../theme/theme';
 
@@ -29,6 +35,21 @@ export function AiAssistantConsentModal({
   const [agreed, setAgreed] = useState(false);
   const [pending, setPending] = useState(false);
 
+  const layout = useMemo(() => {
+    const h = Dimensions.get('window').height;
+    return {
+      sheetMaxHeight: Math.min(Math.round(h * 0.92), 740),
+      scrollMinHeight: Math.min(Math.max(Math.round(h * 0.38), 220), 420),
+    };
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) {
+      setAgreed(false);
+      setPending(false);
+    }
+  }, [visible]);
+
   const handleDecline = useCallback(() => {
     setAgreed(false);
     onDecline();
@@ -45,17 +66,32 @@ export function AiAssistantConsentModal({
     }
   }, [agreed, onAccept]);
 
+  const openUrl = useCallback((url: string) => {
+    void Linking.openURL(url).catch(() => {});
+  }, []);
+
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={handleDecline}>
       <View style={styles.root}>
-        <Pressable style={styles.backdrop} onPress={() => undefined} accessibilityLabel="" />
-        <View style={styles.sheet} accessibilityRole="none">
+        <Pressable style={styles.backdrop} accessibilityElementsHidden accessibilityLabel="" />
+
+        <View
+          accessibilityRole="none"
+          style={[
+            styles.sheet,
+            {
+              maxHeight: layout.sheetMaxHeight,
+            },
+          ]}
+        >
           <Text style={styles.title}>AI Assistant Usage</Text>
+          <Text style={styles.hint}>{AI_ASSISTANT_CONSENT_SCROLL_HINT}</Text>
 
           <ScrollView
-            style={styles.scroll}
+            style={[styles.scroll, { minHeight: layout.scrollMinHeight }]}
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
           >
             {AI_ASSISTANT_LEGAL_SECTIONS.map((section) => (
               <View key={section.title} style={styles.section}>
@@ -67,17 +103,40 @@ export function AiAssistantConsentModal({
                 ))}
               </View>
             ))}
+            <Text style={styles.paragraphMuted}>
+              Mandatory external references (scroll above for context):
+            </Text>
+            <View style={styles.linkRow}>
+              <Pressable
+                onPress={() => openUrl(INDEXCASTING_PUBLIC_PRIVACY_URL)}
+                accessibilityRole="link"
+                accessibilityLabel="Open privacy notice in browser"
+              >
+                <Text style={styles.linkText}>{INDEXCASTING_PUBLIC_PRIVACY_URL}</Text>
+              </Pressable>
+            </View>
+            <View style={styles.linkRow}>
+              <Pressable
+                onPress={() => openUrl(INDEXCASTING_PUBLIC_TRUST_GDPR_URL)}
+                accessibilityRole="link"
+                accessibilityLabel="Open trust center GDPR overview in browser"
+              >
+                <Text style={styles.linkText}>{INDEXCASTING_PUBLIC_TRUST_GDPR_URL}</Text>
+              </Pressable>
+            </View>
           </ScrollView>
 
           <View style={styles.meta}>
-            <Text style={styles.metaLabel}>Mistral processing (what may leave IndexCasting):</Text>
+            <Text style={styles.metaLabel}>Mistral processing (high level)</Text>
             <Text style={styles.metaText}>
-              Your typed question plus strict server instructions configured by IndexCasting,
-              optionally a small JSON envelope of facts assembled from authorised read-RPCs
-              mirroring UI-visible data. Do not paste sensitive credentials or unstructured
-              legal/health archives here.
+              Your typed question plus server-configured guidance and optionally a minimised factual
+              JSON envelope may be sent once per request for language generation outside core
+              IndexCasting compute. Do not paste credentials, payment data, unstructured legal
+              dossiers or health records into the assistant.
             </Text>
           </View>
+
+          <Text style={styles.versionFoot}>{AI_ASSISTANT_CONSENT_FOOTNOTE_VERSION}</Text>
 
           <Pressable
             style={styles.checkboxWrap}
@@ -134,11 +193,13 @@ const styles = StyleSheet.create({
   },
   sheet: {
     width: '100%',
-    maxWidth: 520,
-    maxHeight: Platform.OS === 'web' ? 640 : '90%',
+    maxWidth: 560,
+    flexShrink: 1,
     backgroundColor: colors.surface,
     borderRadius: 16,
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
     shadowColor: colors.black,
@@ -146,7 +207,7 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   title: {
     ...typography.headingCompact,
@@ -154,14 +215,21 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textAlign: 'center',
   },
+  hint: {
+    ...typography.body,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
   scroll: {
-    flexGrow: 0,
-    maxHeight: Platform.OS === 'web' ? 320 : 240,
-    minHeight: 160,
+    flexGrow: 1,
+    flexShrink: 1,
   },
   scrollContent: {
     gap: spacing.md,
     paddingBottom: spacing.sm,
+    paddingRight: Platform.OS === 'web' ? 4 : 0,
   },
   section: {
     gap: spacing.xs,
@@ -170,7 +238,7 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 12,
     color: colors.textPrimary,
-    letterSpacing: 0.4,
+    letterSpacing: 0.35,
     textTransform: 'uppercase',
   },
   paragraph: {
@@ -179,9 +247,28 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: colors.textSecondary,
   },
+  paragraphMuted: {
+    ...typography.body,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    fontStyle: 'italic',
+  },
+  linkRow: {
+    alignSelf: 'stretch',
+    marginBottom: spacing.xs,
+  },
+  linkText: {
+    ...typography.body,
+    fontSize: 13,
+    lineHeight: 20,
+    color: colors.textPrimary,
+    textDecorationLine: 'underline',
+  },
   meta: {
     gap: spacing.xs,
-    paddingTop: spacing.xs,
+    paddingTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
@@ -196,10 +283,18 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: colors.textSecondary,
   },
+  versionFoot: {
+    ...typography.label,
+    fontSize: 10,
+    letterSpacing: 0.35,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   checkboxWrap: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
+    marginTop: spacing.xs,
   },
   checkboxOuter: {
     width: 22,
@@ -233,6 +328,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: spacing.sm,
     flexWrap: 'wrap',
+    paddingTop: spacing.xs,
   },
   secondaryBtn: {
     paddingHorizontal: spacing.md,

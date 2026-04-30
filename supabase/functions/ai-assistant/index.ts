@@ -988,6 +988,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const role = serverContext.role;
 
   if (!(await gateAiAssistantConsent(supabase, serverContext.organizationId))) {
+    console.warn('[ai-assistant]', { consent_gate: 'blocked_or_missing' });
     return assistantAnswerResponse(AI_ASSISTANT_CONSENT_REQUIRED_ANSWER, cors);
   }
 
