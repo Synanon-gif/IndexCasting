@@ -13,11 +13,13 @@ import {
 } from 'react-native';
 import {
   AI_ASSISTANT_LEGAL_SECTIONS,
+  AI_ASSISTANT_CONSENT_PLAIN_SUMMARY,
   AI_ASSISTANT_CONSENT_CHECKBOX_LABEL,
   AI_ASSISTANT_CONSENT_SCROLL_HINT,
   AI_ASSISTANT_CONSENT_FOOTNOTE_VERSION,
   INDEXCASTING_PUBLIC_PRIVACY_URL,
   INDEXCASTING_PUBLIC_TRUST_GDPR_URL,
+  PROVIDER_RETENTION_CONTROLS_CAVEAT,
 } from '../../constants/aiAssistantConsent';
 import { colors, spacing, typography } from '../../theme/theme';
 
@@ -41,7 +43,7 @@ export function AiAssistantConsentModal({
       sheetMaxHeight: Math.min(Math.round(h * 0.92), 740),
       scrollMinHeight: Math.min(Math.max(Math.round(h * 0.38), 220), 420),
     };
-  }, [visible]);
+  }, []);
 
   useEffect(() => {
     if (!visible) {
@@ -64,7 +66,7 @@ export function AiAssistantConsentModal({
     } finally {
       setPending(false);
     }
-  }, [agreed, onAccept]);
+  }, [agreed, pending, onAccept]);
 
   const openUrl = useCallback((url: string) => {
     void Linking.openURL(url).catch(() => {});
@@ -85,6 +87,14 @@ export function AiAssistantConsentModal({
           ]}
         >
           <Text style={styles.title}>AI Assistant Usage</Text>
+          <View style={styles.summaryBlock}>
+            {AI_ASSISTANT_CONSENT_PLAIN_SUMMARY.map((line) => (
+              <Text key={line} style={styles.summaryLine}>
+                {'\u2022 '}
+                {line}
+              </Text>
+            ))}
+          </View>
           <Text style={styles.hint}>{AI_ASSISTANT_CONSENT_SCROLL_HINT}</Text>
 
           <ScrollView
@@ -127,12 +137,12 @@ export function AiAssistantConsentModal({
           </ScrollView>
 
           <View style={styles.meta}>
-            <Text style={styles.metaLabel}>Mistral processing (high level)</Text>
+            <Text style={styles.metaLabel}>Third-party inference (Mistral)</Text>
             <Text style={styles.metaText}>
-              Your typed question plus server-configured guidance and optionally a minimised factual
-              JSON envelope may be sent once per request for language generation outside core
-              IndexCasting compute. Do not paste credentials, payment data, unstructured legal
-              dossiers or health records into the assistant.
+              Your question text, server-side instructions, and optionally a minimized factual JSON
+              envelope may be transmitted per request for language generation on systems operated by
+              Mistral (not solely on IndexCasting application servers for that inference step).{' '}
+              {PROVIDER_RETENTION_CONTROLS_CAVEAT}
             </Text>
           </View>
 
@@ -214,6 +224,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: colors.textPrimary,
     textAlign: 'center',
+  },
+  summaryBlock: {
+    gap: spacing.xs,
+    alignSelf: 'stretch',
+  },
+  summaryLine: {
+    ...typography.body,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textPrimary,
   },
   hint: {
     ...typography.body,

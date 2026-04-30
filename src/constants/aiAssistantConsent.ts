@@ -3,7 +3,7 @@
  * `public.ai_assistant_expected_consent_version()` and Edge `consentGate.ts`).
  * Bump constants, Postgres, and redeploy the Edge Function when substantive terms change.
  */
-export const AI_CONSENT_VERSION = 'v1_2026_ai_terms';
+export const AI_CONSENT_VERSION = 'v2_2026_ai_consent';
 
 /** Must match Edge `AI_ASSISTANT_CONSENT_REQUIRED_ANSWER` exactly. */
 export const AI_ASSISTANT_CONSENT_REQUIRED_ANSWER =
@@ -14,105 +14,127 @@ export const AI_ASSISTANT_CONSENT_SCROLL_HINT =
 
 export const AI_ASSISTANT_CONSENT_FOOTNOTE_VERSION = `Disclosure bundle version (linked to acknowledgement): ${AI_CONSENT_VERSION}`;
 
-/** Public HTTPS pages suitable for GDPR / statutory cross-reference from the disclosure panel. */
-export const INDEXCASTING_PUBLIC_PRIVACY_URL = 'https://www.indexcasting.com/privacy';
-export const INDEXCASTING_PUBLIC_TRUST_GDPR_URL = 'https://www.indexcasting.com/trust/gdpr';
+/** Public HTTPS pages — same paths as in-app public legal / trust routing. */
+export const INDEXCASTING_PUBLIC_PRIVACY_URL = 'https://indexcasting.com/privacy';
+export const INDEXCASTING_PUBLIC_TRUST_GDPR_URL = 'https://indexcasting.com/trust/gdpr';
+
+/** Short plain-English orientation (above the detailed sections). */
+export const AI_ASSISTANT_CONSENT_PLAIN_SUMMARY = [
+  'The AI Assistant is optional—you can keep using IndexCasting without it.',
+  'When you use it, limited text you type and minimized factual context may be sent to our AI provider (currently Mistral) for inference.',
+  'Do not enter passwords, payment details, health data, or other highly sensitive information in the assistant.',
+  'Responses can be wrong, incomplete, or outdated; check important facts in the product.',
+  'The assistant does not perform write actions for you—confirm any change through the normal app controls.',
+] as const;
 
 export type AiAssistantConsentSection = {
   title: string;
   paragraphs: readonly string[];
 };
 
+export const LAWFUL_BASIS_ACKNOWLEDGEMENT_COPY =
+  'Your acknowledgement enables the optional AI feature. Depending on the context, IndexCasting may rely on contract performance, legitimate interests, or consent where legally required. Details are provided in the Privacy Notice.';
+
+export const RIGHTS_NON_WAIVER_NOTICE =
+  'Nothing in this notice limits rights that cannot legally be waived.';
+
+export const PROVIDER_RETENTION_CONTROLS_CAVEAT =
+  'Depending on our active Mistral plan and settings, provider-side retention and training controls may differ. IndexCasting will configure available enterprise/privacy controls where commercially and technically available, and will document the applicable provider terms in the Privacy Notice.';
+
+export const MATERIAL_CHANGE_ACKNOWLEDGEMENT_COPY =
+  'If we materially change the AI provider, processing location, or categories of data shared, we will update this notice and may require a new acknowledgement.';
+
 /**
  * Structured English disclosure for readability inside the modal.
- * Canonical regulatory detail remains in Privacy Notice / Trust Center artefacts.
+ * Canonical regulatory detail remains in the Privacy Notice / Trust artefacts.
  */
 export const AI_ASSISTANT_LEGAL_SECTIONS = [
   {
     title: '1. Scope of the Assistant (functional boundaries)',
     paragraphs: [
       'The AI Help Assistant is voluntary. You can close it at any time and continue using IndexCasting without conversational help.',
-      'It responds to procedural and navigation questions inside the product workspace you already authenticate to (Agency / Client surfaces where the button appears).',
-      'Outputs explain how workflows are intended to work; they do not constitute professional legal, fiscal, payroll, contractual, tariff, indemnity or compliance advice.',
-      'Answers are informational only. There is no warranty of completeness, correctness, suitability for business decisions or alignment with unreleased roadmap changes.',
+      'It responds to procedural and navigation questions inside the authenticated product workspace where the Assistant is offered.',
+      'It does not place bookings, send messages, change settings, initiate payments, or otherwise perform actions on your behalf—only normal in-app confirmations do.',
+      'Outputs explain how workflows are intended to work; they are not legal, fiscal, payroll, contractual, tariff, indemnity or compliance advice.',
+      'Answers are informational only and may be incomplete, incorrect or out of step with unreleased roadmap changes.',
     ],
   },
   {
-    title: '2. Personal data categories & purposes (summarised Art. 13/14 anchors)',
+    title: '2. Personal data categories & purposes (summary)',
     paragraphs: [
-      '(a) Composer text — the wording you voluntarily enter to ask questions.',
-      '(b) Optional short-lived session hints forwarded from preceding assistant replies (for example deterministic metadata about exactly one highlighted calendar row) when you deliberately continue that thread.',
-      '(c) Minimised JSON “facts envelopes” hydrated from narrow SECURITY DEFINER read-RPCs reflecting information already visible inside your authorised UI (never columns hidden relative to your role).',
-      '(d) Quota metering metadata (intent coarse class, success/failure class, coarse character/token estimates persisted in metering tables—not full prompts or verbatim completions today). Purposes are (i) supplying the conversational help channel you opted into and (ii) integrity / fair-use metering.',
-      'Recipients are principally IndexCasting operators with least-privilege access for security investigations and contractual subprocessors mandated to process on documented instructions—for language inference currently Mistral AI (see Processor section below). Corporate processor registers, SCCs and sub-processor inventories are disclosed in Privacy / Trust artefacts (see URLs at the bottom of this modal).',
+      '(a) Text you voluntarily type to ask questions.',
+      '(b) Optional short-lived session hints from prior assistant replies (for example deterministic metadata about a highlighted calendar row) when you continue that thread.',
+      '(c) Minimised JSON “facts envelopes” from narrow read paths aligned with what your role can already see in the UI.',
+      '(d) Quota and integrity metadata (coarse intent/result classes, coarse size estimates) for fair use—not full prompts or full model outputs stored for training here by design.',
+      'Purposes: operating the optional help channel and protecting integrity and quotas. Operational staff may review security-relevant artefacts under least privilege. Language generation is delegated to Mistral AI (see below); sub-processor listings and transfer tools are summarized in the Privacy Notice and Trust materials linked from this modal.',
     ],
   },
   {
-    title: '3. Data not intentionally surfaced through this assistant pathway',
+    title: '3. Data we do not deliberately route through this pathway',
     paragraphs: [
-      'No intentional ingestion or summarisation of: raw chats or negotiation mailboxes unrelated to deterministic UI facts, covert cross-organisation dossiers relative to tenancy, covert hidden roster columns withheld from UX, unstructured invoices or bookkeeping objects outside what your billing UI already exposes with proper entitlement, unstructured GDPR-export ZIP archives “for curiosity”, unstructured vault exports, unstructured MFA recovery kits, unstructured upload binaries simply because you pasted them.',
-      'Operational monitoring may throttle scripted abuse irrespective of Mistral quotas. Please do not attempt privilege escalation prompts—access control remains anchored in Postgres RLS, not conversational tone.',
+      'We do not deliberately ingest or summarise: unrelated raw negotiation mailboxes, cross-tenant dossiers, columns your UI withholds by design, unstructured billing artefacts beyond ordinary product access, MFA recovery material, unstructured bulk exports “for curiosity”, or pasted binaries unrelated to deterministic UI facts.',
+      'Operational monitoring may throttle scripted abuse irrespective of quotas. Attempts at privilege escalation by prompt do not override access control enforced in the backend.',
     ],
   },
   {
-    title: '4. Mistral AI (processor spotlight & transfers)',
+    title: '4. Mistral AI (third-party provider)',
     paragraphs: [
-      'Language completions are outsourced to Mistral AI. Minimal instructional prompts plus optionally minimal JSON facts payloads travel to Mistral-hosted systems for ephemeral inference rounds.',
-      'Transfers may rely on Standard Contractual Clauses and supplementary organisational or technical measures as described in prevailing corporate privacy packs; those instruments supersede abbreviated summary text if conflict arises historically vs. contemporaneous filing.',
-      'If processor geography or legal instrument materially changes IndexCasting will bump `consent_version` and solicit fresh acknowledgement—you cannot silently inherit widened factual scope absent an engineering + legal review pairing.',
-      'Architectural segregation (facts envelopes constrained to enumerated RPC surfaces) simplifies substituting alternate EU-aligned LLMs without widening database reach—supplier substitution still triggers governance review.',
+      'Mistral AI is a third-party AI supplier. Depending on our contractual arrangement, Mistral may act as a processor, subprocessor, or analogous service provider—in each case instructed only for inference support, not for independent use of your data outside that purpose.',
+      'To produce a reply, IndexCasting may send limited prompts (including your question text), server-side instructions, and optionally a minimized factual payload on a per-request basis. That inference step involves systems operated by Mistral; do not assume that all processing stays on IndexCasting-operated hosts for that step.',
+      PROVIDER_RETENTION_CONTROLS_CAVEAT,
+      'Transfers may rely on SCCs or other mechanisms described in corporate privacy materials; see the Privacy Notice rather than relying on abbreviated wording here.',
+      MATERIAL_CHANGE_ACKNOWLEDGEMENT_COPY,
     ],
   },
   {
-    title: '5. Retention (engineering intent — detailed schedules elsewhere)',
+    title: '5. Retention (high level)',
     paragraphs: [
-      'Composer payloads are not systematically archived into metering tables.',
-      'Quota counters roll within bounded windows enforced by housekeeping jobs subject to overarching Data Retention Policy tables (available where your organisation obtains enterprise transparency packs).',
-      'Acknowledgement ledger rows (`public.ai_assistant_user_consent`) intentionally store only acknowledgement flags/version/timestamp metadata for accountability—not transcripts.',
+      'Composer payloads are not systematically written to usage-metering rows as verbatim chat logs.',
+      'Quota telemetry uses bounded retention windows documented at a high level for operators; granular schedules reference enterprise transparency packs where available.',
+      'Rows in `public.ai_assistant_user_consent` store acknowledgement metadata (version/time)—not conversational transcripts.',
     ],
   },
   {
-    title: '6. Limitations & human oversight (no consequential automation today)',
+    title: '6. Accuracy and human oversight',
     paragraphs: [
-      'The assistant may be wrong, truncated, culturally misaligned translation-wise or subtly stale versus code you deploy days later—independent substantive verification stays mandatory.',
-      'No solely automated assistant-only branch today issues decisions producing legal effects or similarly significant effects about data subjects—you continue to confirm booking, payouts, dissolution and regulatory submissions through audited UI confirmations.',
-      'If ever upgraded toward consequential automation GDPR Art. 22 / interpretive supervisory guidance overlays must be honoured with separate conspicuous disclosure + possibly divergent lawful bases.',
+      'Responses may be wrong, truncated or culturally skewed—you should verify important outcomes.',
+      'Today no assistant-only pathway makes solely automated decisions with legal or similarly significant effect about people; substantive actions still rely on confirmations in the audited UI.',
+      'If capability changes, we address applicable transparency requirements separately.',
     ],
   },
   {
-    title: '7. Liability (statutory carve-outs prevail)',
+    title: '7. Limits of this notice',
     paragraphs: [
-      'Where mandatory consumer or employment statutes forbid blanket liability caps they override generic disclaim boilerplate—nothing here attempts illicit waiver.',
-      'Otherwise organisational operators disclaim consequential damages arising purely from stochastic chat reliance absent separate executed professional services engagements.',
-      'Assistant outputs neither amend executed contractual instruments elsewhere nor supersede supervisory orders—when chat contradicts audited UI authoritative source remains UI/state committed through proper workflow buttons.',
+      RIGHTS_NON_WAIVER_NOTICE,
+      'This panel orients you to the optional Assistant; it does not replace the Privacy Notice or Terms of Use.',
+      'Where assistant text disagrees with the product UI after you save or confirm via normal controls, the committed application state governed by those controls prevails.',
     ],
   },
   {
-    title: '8. GDPR rights & lawful bases (outline — see Privacy artefacts for forms)',
+    title: '8. Lawful bases & privacy rights (see Privacy Notice)',
     paragraphs: [
-      `Layered lawful bases may combine contractual necessity for optional feature delivery, legitimate interest for integrity/quota metering (with balancing tests documented), explicit consent evidenced by affirmative checkbox after disclosure review. Withdrawal manifests as cessation of conversational calls until you reaffirm.`,
-      `Controller identity, exhaustive processing inventory, supervisory contact channels, granular retention figures, DPIA summaries, SAR submission pathways—live upstream in authoritative Privacy artefacts (baseline public entry: ${INDEXCASTING_PUBLIC_PRIVACY_URL}), plus supplemental Trust transparency pages (baseline public entry GDPR hub: ${INDEXCASTING_PUBLIC_TRUST_GDPR_URL}).`,
-      'Rights without truncation: transparency, access, rectification where technically feasible & not defeating incompatible lawful archival, erasure where legal grounds permit, restriction during contested lawful processing contests, portability for structured artefacts where unrelated export tooling already exists, objections where applicable statutes grant them, supervisory complaints.',
-      'Nothing in this panel limits statutory claims or supervisory investigations—this is an orientation layer for an optional convenience feature.',
-      'German / EU supervisory authority references detailed in organisational Privacy artefacts (e.g., contact details BaFin/LfD analogues)—not duplicated verbatim here to minimise stale contact drift.',
+      LAWFUL_BASIS_ACKNOWLEDGEMENT_COPY,
+      `Controller details, processing inventory, retention, rights requests, and supervisory contacts are in the Privacy Notice (${INDEXCASTING_PUBLIC_PRIVACY_URL}) and the Trust GDPR overview (${INDEXCASTING_PUBLIC_TRUST_GDPR_URL}).`,
+      'Rights such as transparency, access, rectification, erasure, restriction, portability or objection depend on role and context; paths and limits are explained there.',
+      'Withdrawal regarding this feature means we stop sending assistant traffic for your account until you acknowledge again if you choose to re-enable after a version change.',
     ],
   },
   {
-    title: '9. Technical & organisational security posture (summary)',
+    title: '9. Security posture (summary)',
     paragraphs: [
-      'Row-Level Security enforces tenancy; assistant RPC envelopes cannot traverse organisations beyond authentic membership semantics.',
-      'Transport encryption baseline expectations inherit from platform stack posture (TLS etc.). Incident response escalation procedures live in SOC / DPIA appendix cross-links—not retyped here each release.',
+      'Tenancy is enforced in the application data layer; assistant fact envelopes follow the same membership rules as surfaced UI.',
+      'Baseline transport protections follow platform standards; fuller security documentation is referenced from Trust/security materials.',
     ],
   },
   {
-    title: '10. One acknowledgement per bundled version (per workspace member row)',
+    title: '10. Acknowledgement per version',
     paragraphs: [
-      'Postgres persists one composite row keyed by authenticated user × organisation acknowledging the bundled English disclosure text associated with cryptographic version slug below.',
-      'After aligning with active version engineers label `consent_version`, you ordinarily will not revisit until legal/product governance bumps that slug or regulators demand fresh capture.',
-      'Organisation administrators may programmatically revoke / audit acknowledgements pursuant to overarching enterprise agreements—outside assistant UI surface today—future UI toggles permissible without widening inference scope automatically.',
+      'We record one acknowledgement per signed-in user and organisation tied to the version label below.',
+      'You ordinarily will not be asked again until we bump `consent_version` or regulators require refreshed capture—including after material AI provider, location or data-scope changes described above.',
+      'Administrators may govern acknowledgements under enterprise agreements outside this Assistant UI where applicable.',
     ],
   },
 ] as const satisfies readonly AiAssistantConsentSection[];
 
 export const AI_ASSISTANT_CONSENT_CHECKBOX_LABEL =
-  'I understand and agree to the AI Assistant terms and data processing.';
+  'I have read the information above and agree to use the AI Assistant on these terms.';

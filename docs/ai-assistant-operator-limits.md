@@ -63,7 +63,7 @@ Die Edge ruft **`ai_assistant_check_rate_limit(p_request_id, p_viewer_role, p_in
 ## Explicit opt-in consent (`public.ai_assistant_user_consent`)
 
 - Eine Zeile **pro eingeloggtem Nutzer × Organisation** mit `consent_given`, `consent_version`, `consented_at`. Enthält **keine Prompts oder Assistentenantworten**.
-- Canonical Version auch in `public.ai_assistant_expected_consent_version()`; UI/Edge Konstanten unter `src/constants/aiAssistantConsent.ts` müssen zusammen mit neuer Migration hochgezogen werden, wenn juristischer Text angepasst wird.
+- Canonical Version wird von `public.ai_assistant_expected_consent_version()` geliefert; nachfolgende Migrations können den Rückgabewert ersetzen (z. B. `20261303_ai_assistant_expected_consent_v2.sql` → aktuell `v2_2026_ai_consent`). UI/Edge-Konstanten (`src/constants/aiAssistantConsent.ts`, `supabase/functions/ai-assistant/consentGate.ts`) müssen **identisch** bleiben und gemeinsam deployt werden.
 
 ```sql
 SELECT user_id, organization_id, consent_given, consent_version, consented_at

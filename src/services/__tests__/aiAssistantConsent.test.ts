@@ -1,12 +1,30 @@
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import * as path from 'path';
 import {
   AI_CONSENT_VERSION,
   AI_ASSISTANT_CONSENT_REQUIRED_ANSWER,
+  AI_ASSISTANT_LEGAL_SECTIONS,
+  AI_ASSISTANT_CONSENT_PLAIN_SUMMARY,
+  AI_ASSISTANT_CONSENT_FOOTNOTE_VERSION,
+  LAWFUL_BASIS_ACKNOWLEDGEMENT_COPY,
+  RIGHTS_NON_WAIVER_NOTICE,
+  PROVIDER_RETENTION_CONTROLS_CAVEAT,
+  MATERIAL_CHANGE_ACKNOWLEDGEMENT_COPY,
 } from '../../constants/aiAssistantConsent';
 
 const migration = readFileSync(
   path.join(process.cwd(), 'supabase/migrations/20261302_ai_assistant_user_consent.sql'),
+  'utf8',
+);
+
+const migrationsDir = path.join(process.cwd(), 'supabase/migrations');
+const allMigrationsSql = readdirSync(migrationsDir)
+  .filter((file) => file.endsWith('.sql'))
+  .map((file) => readFileSync(path.join(migrationsDir, file), 'utf8'))
+  .join('\n');
+
+const modalTsx = readFileSync(
+  path.join(process.cwd(), 'src/components/help/AiAssistantConsentModal.tsx'),
   'utf8',
 );
 
@@ -59,8 +77,8 @@ describe('AI Assistant consent model & RLS', () => {
   });
 
   it('anchors expected consent version centrally in Postgres', () => {
-    expect(migration).toMatch(/ai_assistant_expected_consent_version/);
-    expect(migration).toContain(AI_CONSENT_VERSION);
+    expect(allMigrationsSql).toMatch(/ai_assistant_expected_consent_version/);
+    expect(allMigrationsSql).toContain(AI_CONSENT_VERSION);
   });
 });
 
@@ -100,5 +118,70 @@ describe('AI Assistant frontend privacy integration', () => {
     expect(frontendService).toMatch(/ai_assistant_user_consent/);
     expect(frontendService).not.toMatch(/\b(prompt_text|assistant_answer_text|raw_prompt)\b/i);
     expect(panel).not.toMatch(/AsyncStorage\.setItem\(.*consent/i);
+  });
+});
+
+function aiAssistantConsentCopyCorpus(): string {
+  const sections = AI_ASSISTANT_LEGAL_SECTIONS.map((section) =>
+    [section.title, ...section.paragraphs].join('\n'),
+  ).join('\n');
+  return [
+    ...AI_ASSISTANT_CONSENT_PLAIN_SUMMARY,
+    sections,
+    AI_ASSISTANT_CONSENT_FOOTNOTE_VERSION,
+    modalTsx,
+  ].join('\n');
+}
+
+describe('AI Assistant consent wording (legal hardening)', () => {
+  const corpus = aiAssistantConsentCopyCorpus();
+
+  it('states the assistant is optional and the app works without it', () => {
+    expect(corpus).toMatch(/optional/i);
+    expect(corpus).toMatch(/may be sent to our AI provider/i);
+  });
+
+  it('discloses limited data may be sent to Mistral / provider', () => {
+    expect(corpus).toMatch(/Mistral/i);
+    expect(corpus).toMatch(/may be sent|may be transmitted|may send limited/i);
+  });
+
+  it('does not claim no data leaves IndexCasting', () => {
+    expect(corpus).not.toMatch(/no data .{0,120}leaves IndexCasting/i);
+    expect(corpus).not.toMatch(/nothing leaves IndexCasting/i);
+    expect(corpus).not.toMatch(/never leaves IndexCasting/i);
+  });
+
+  it('warns users not to enter sensitive categories of data', () => {
+    expect(corpus.toLowerCase()).toMatch(/highly sensitive|sensitive information|payment details/i);
+    expect(modalTsx).toMatch(/PROVIDER_RETENTION_CONTROLS_CAVEAT/);
+  });
+
+  it('warns that AI outputs may be wrong or outdated', () => {
+    expect(corpus).toMatch(/wrong|outdated|incorrect/i);
+  });
+
+  it('states the assistant performs no write actions on the users behalf', () => {
+    expect(corpus).toMatch(/does not perform write actions/i);
+  });
+
+  it('states material AI provider changes may require renewed acknowledgement', () => {
+    expect(corpus).toContain(MATERIAL_CHANGE_ACKNOWLEDGEMENT_COPY);
+    expect(corpus).toMatch(/materially change the AI provider/i);
+  });
+
+  it('includes lawful basis and non-waiver guardrails verbatim', () => {
+    expect(corpus).toContain(LAWFUL_BASIS_ACKNOWLEDGEMENT_COPY);
+    expect(corpus).toContain(RIGHTS_NON_WAIVER_NOTICE);
+    expect(corpus).toContain(PROVIDER_RETENTION_CONTROLS_CAVEAT);
+  });
+
+  it('surfaced public URLs match implemented legal routes without www subdomain drift', () => {
+    expect(corpus).toContain('https://indexcasting.com/privacy');
+    expect(corpus).toContain('https://indexcasting.com/trust/gdpr');
+  });
+
+  it('renders consent version string in footer constant', () => {
+    expect(corpus).toContain(AI_CONSENT_VERSION);
   });
 });
