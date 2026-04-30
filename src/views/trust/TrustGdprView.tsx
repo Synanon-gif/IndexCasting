@@ -22,6 +22,10 @@ export const TrustGdprView: React.FC = () => (
       body={uiCopy.trust.gdprPortabilityBody}
     />
     <TrustSection heading={uiCopy.trust.gdprObjectTitle} body={uiCopy.trust.gdprObjectBody} />
+    <TrustSection
+      heading={uiCopy.trust.gdprAiAssistantTitle}
+      body={uiCopy.trust.gdprAiAssistantBody}
+    />
     <TrustSection heading={uiCopy.trust.gdprMinorsTitle} body={uiCopy.trust.gdprMinorsBody} />
     <TrustSection heading={uiCopy.trust.gdprContactTitle} body={uiCopy.trust.gdprContactBody} />
   </TrustPageLayout>

@@ -2100,6 +2100,19 @@ export const uiCopy = {
     /** In-app Privacy Policy — Art. 15 / 20: full export vs calendar sync subset. */
     privacyCalendarAccessNote:
       'Access and portability: your complete structured copy is available via “Download my data” (JSON). Calendar download (.ics) and subscription links sync a subset of your in-app calendar and are not a substitute for that full export.',
+    /** In-app Privacy Policy — optional AI Assistant & Mistral (mirrors Trust Sub-processors). */
+    privacyAiAssistantTitle: 'AI Assistant and Mistral AI',
+    privacyAiAssistantBody:
+      'The optional AI Help Assistant explains how IndexCasting works and can return limited answers grounded in data your role can already see. You are never required to use it. It is available only when you open it and accept the AI Assistant terms for your organisation.\n\n' +
+      'Purposes include: in-product guidance; limited read-only workflow support; role-based answers that use minimized visible “facts” from narrow, allowlisted read paths; and integrity measures (security, abuse prevention, rate limiting) for the Assistant channel.\n\n' +
+      'Categories of data that may be processed when you use the Assistant include: your question text; your workspace role; optional short session hints the product shows for follow-up (for example a recently highlighted calendar row); minimized JSON facts needed to answer (such as limited calendar summaries, visible calendar item details, visible agency model profile facts where applicable, and visible agency model calendar conflict summaries for a single day where applicable); and usage metadata (such as coarse intent, coarse outcome, and size estimates for metering).\n\n' +
+      'IndexCasting does not intentionally send for Assistant inference: passwords; payment method or card data; Stripe or other payment secrets; raw full message histories; hidden model data or hidden notes; raw file URLs or storage paths; service_role keys or database credentials; other organisations’ data; or internal descriptions of Row Level Security, schema, or database implementation details.\n\n' +
+      'The external AI provider is Mistral AI (France). We use Mistral’s La Plateforme API (API platform) only. IndexCasting does not use Mistral Le Chat or the Mistral Agent UI for this flow. Processing is subject to Mistral’s commercial terms and Data Processing Addendum where applicable. Depending on Mistral’s product, plan, and account settings, Mistral may also process certain data as controller for purposes described in its documentation (including abuse monitoring and, on some plans or settings, model training unless opted out or configured otherwise). Subprocessors and international transfers are described in Mistral’s Trust Center and related materials.\n\n' +
+      'Where available and commercially/technically feasible, IndexCasting configures AI provider settings or plans so that customer input/output is not used for model training. If this materially changes, we will update this Privacy Policy and may require a renewed in-app AI acknowledgement.\n\n' +
+      'Legal bases under GDPR may include: contract performance (Art. 6(1)(b)) for optional features you choose to use; legitimate interests (Art. 6(1)(f)) in securing, metering, and protecting the Assistant; and consent or acknowledgement where legally required. Consent is not the only basis that may apply.\n\n' +
+      'Automated decisions: the Assistant does not make legally binding solely automated decisions about you and does not perform write actions or change data in your place.\n\n' +
+      'Retention: IndexCasting does not store full prompts or full model replies as personal-data chat logs in application usage tables for this feature. We retain limited usage metadata for security, rate limiting, abuse prevention, and operations—typically on the order of 30–90 days unless a longer period is required for legal or security reasons. Mistral retention follows applicable provider terms and settings.\n\n' +
+      'To exercise GDPR or other rights, use the contacts and procedures in “Your Rights (GDPR)” above. If we materially change the provider, processing locations, or the categories of data shared, we will update this notice and may require a new acknowledgement for continued Assistant use.',
     /** Required checkbox before chat/recruiting file attachments (non-model portfolio). */
     chatFileRightsCheckbox: 'I confirm I have all necessary rights and consents for this upload.',
     chatFileRightsMissing:
@@ -3550,6 +3563,14 @@ export const uiCopy = {
     subResendPurpose: 'Transactional email delivery (invitations, notifications, password resets).',
     subResendRegion: 'EU / US',
     subResendDpa: 'DPA + SCCs in place',
+    subMistralName: 'Mistral AI',
+    subMistralPurpose:
+      'AI provider / subprocessor for the optional AI Help Assistant: language inference via La Plateforme API only (not Le Chat or Agent UI).',
+    subMistralRegion:
+      'France / EU by default (per provider documentation; see Mistral Trust Center)',
+    subMistralDpa: 'Mistral DPA + commercial terms',
+    subMistralSupplierNote:
+      'Training, retention, and abuse monitoring depend on Mistral’s active product, plan, and settings. IndexCasting aims to use privacy-preserving API or plan configurations where commercially and technically available. See the Privacy Policy section “AI Assistant and Mistral AI”.',
     subOptionalNotice:
       'Customers may also opt in to optional integrations (e.g. Mediaslide, Netwalk) for external roster synchronization. Optional integrations only activate after explicit per-organization configuration and are documented separately.',
     subChangesTitle: 'Sub-processor changes',
@@ -3574,7 +3595,12 @@ export const uiCopy = {
       'A machine-readable JSON export covering profile data, organization memberships, calendar events, messages, and metadata is available in account settings.',
     gdprObjectTitle: 'Right to object & restrict (Art. 21–22)',
     gdprObjectBody:
-      'Users may object to processing or restrict it by contacting privacy@indexcasting.com. Automated decision-making with legal effects is not used by the platform.',
+      'Users may object to processing or restrict it by contacting privacy@indexcasting.com. The platform does not use solely automated decision-making that produces legal or similarly significant effects. The optional AI Assistant does not replace that posture: it does not execute binding automated decisions or perform writes on your behalf.',
+    gdprAiAssistantTitle: 'Optional AI Assistant (Mistral AI)',
+    gdprAiAssistantBody:
+      'IndexCasting offers an optional AI Help Assistant powered by Mistral AI’s La Plateforme API. It is voluntary, requires an in-app acknowledgement, and is used only when you choose to open and use it. It provides product guidance and limited read-only assistance grounded in minimized facts your role can already access—not raw cross-organisation exports, hidden roster fields, full message histories, or payment secrets.\n\n' +
+      'For categories of data, purposes, legal bases, retention, international transfers, and Mistral’s role as processor or (for certain activities) controller depending on plan and settings, read the Privacy Policy section “AI Assistant and Mistral AI” and the Sub-processors page in this Trust Center.\n\n' +
+      'To exercise rights (access, rectification, erasure, portability, objection), follow the paths described in the sections above or contact privacy@indexcasting.com.',
     gdprMinorsTitle: 'Minors',
     gdprMinorsBody:
       'Where a model under 18 is represented, the platform requires explicit consent metadata from the responsible agency, including guardian acknowledgement. Consent metadata is stored alongside the model record and surfaced in audit logs.',

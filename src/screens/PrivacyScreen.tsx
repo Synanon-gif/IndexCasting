@@ -88,7 +88,9 @@ export const PrivacyScreen: React.FC<Props> = ({ onClose }) => {
             We do not sell your personal data. We may share data with:{'\n'}• Other platform users
             as necessary for the Service (e.g. your profile with Agencies).{'\n'}• Sub-processors:
             Supabase (database & storage), Stripe (payment processing), Sentry (error monitoring, EU
-            region — `*.de.sentry.io`).{'\n'}• Law enforcement when required by applicable law.
+            region — `*.de.sentry.io`), and Mistral AI (optional AI Assistant inference via API—see
+            “AI Assistant and Mistral AI” above).{'\n'}• Law enforcement when required by applicable
+            law.
             {'\n'}
             All sub-processors are bound by data processing agreements.
           </Text>
@@ -106,6 +108,11 @@ export const PrivacyScreen: React.FC<Props> = ({ onClose }) => {
             Legal basis: Art. 6(1)(f) GDPR (legitimate interest in application stability and
             security).
           </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.heading}>{uiCopy.legal.privacyAiAssistantTitle}</Text>
+          <Text style={styles.body}>{uiCopy.legal.privacyAiAssistantBody}</Text>
         </View>
 
         <View style={styles.section}>

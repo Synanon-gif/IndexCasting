@@ -31,6 +31,12 @@ const rows: Row[] = [
     region: uiCopy.trust.subResendRegion,
     dpa: uiCopy.trust.subResendDpa,
   },
+  {
+    name: uiCopy.trust.subMistralName,
+    purpose: uiCopy.trust.subMistralPurpose,
+    region: uiCopy.trust.subMistralRegion,
+    dpa: uiCopy.trust.subMistralDpa,
+  },
 ];
 
 export const TrustSubprocessorsView: React.FC = () => (
@@ -63,6 +69,8 @@ export const TrustSubprocessorsView: React.FC = () => (
         <Text style={[styles.cell, styles.colDpa]}>{r.dpa}</Text>
       </View>
     ))}
+
+    <Text style={styles.supplierNote}>{uiCopy.trust.subMistralSupplierNote}</Text>
 
     <Text style={styles.optionalNotice}>{uiCopy.trust.subOptionalNotice}</Text>
 
@@ -109,6 +117,14 @@ const styles = StyleSheet.create({
   colPurpose: { flex: 4 },
   colRegion: { flex: 2 },
   colDpa: { flex: 2 },
+  supplierNote: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textPrimary,
+    lineHeight: 20,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
   optionalNotice: {
     ...typography.body,
     fontSize: 13,

@@ -1,5 +1,5 @@
 /** Must match `public.ai_assistant_expected_consent_version()` in migrations. */
-export const AI_ASSISTANT_CONSENT_VERSION = 'v2_2026_ai_consent';
+export const AI_ASSISTANT_CONSENT_VERSION = 'v3_2026_ai_consent_privacy';
 
 export const AI_ASSISTANT_CONSENT_REQUIRED_ANSWER =
   'AI usage requires acceptance of AI Assistant terms.';

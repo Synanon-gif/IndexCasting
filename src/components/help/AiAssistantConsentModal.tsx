@@ -19,7 +19,9 @@ import {
   AI_ASSISTANT_CONSENT_FOOTNOTE_VERSION,
   INDEXCASTING_PUBLIC_PRIVACY_URL,
   INDEXCASTING_PUBLIC_TRUST_GDPR_URL,
+  INDEXCASTING_PUBLIC_TRUST_SUBPROCESSORS_URL,
   PROVIDER_RETENTION_CONTROLS_CAVEAT,
+  MISTRAL_TRAINING_CONFIGURATION_CAVEAT,
 } from '../../constants/aiAssistantConsent';
 import { colors, spacing, typography } from '../../theme/theme';
 
@@ -114,7 +116,7 @@ export function AiAssistantConsentModal({
               </View>
             ))}
             <Text style={styles.paragraphMuted}>
-              Mandatory external references (scroll above for context):
+              Privacy Notice, Trust GDPR overview, and Sub-processors (open in browser):
             </Text>
             <View style={styles.linkRow}>
               <Pressable
@@ -134,6 +136,15 @@ export function AiAssistantConsentModal({
                 <Text style={styles.linkText}>{INDEXCASTING_PUBLIC_TRUST_GDPR_URL}</Text>
               </Pressable>
             </View>
+            <View style={styles.linkRow}>
+              <Pressable
+                onPress={() => openUrl(INDEXCASTING_PUBLIC_TRUST_SUBPROCESSORS_URL)}
+                accessibilityRole="link"
+                accessibilityLabel="Open trust center sub-processors in browser"
+              >
+                <Text style={styles.linkText}>{INDEXCASTING_PUBLIC_TRUST_SUBPROCESSORS_URL}</Text>
+              </Pressable>
+            </View>
           </ScrollView>
 
           <View style={styles.meta}>
@@ -142,7 +153,7 @@ export function AiAssistantConsentModal({
               Your question text, server-side instructions, and optionally a minimized factual JSON
               envelope may be transmitted per request for language generation on systems operated by
               Mistral (not solely on IndexCasting application servers for that inference step).{' '}
-              {PROVIDER_RETENTION_CONTROLS_CAVEAT}
+              {PROVIDER_RETENTION_CONTROLS_CAVEAT} {MISTRAL_TRAINING_CONFIGURATION_CAVEAT}
             </Text>
           </View>
 

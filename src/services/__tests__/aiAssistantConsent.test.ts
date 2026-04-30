@@ -9,7 +9,9 @@ import {
   LAWFUL_BASIS_ACKNOWLEDGEMENT_COPY,
   RIGHTS_NON_WAIVER_NOTICE,
   PROVIDER_RETENTION_CONTROLS_CAVEAT,
+  MISTRAL_TRAINING_CONFIGURATION_CAVEAT,
   MATERIAL_CHANGE_ACKNOWLEDGEMENT_COPY,
+  INDEXCASTING_PUBLIC_TRUST_SUBPROCESSORS_URL,
 } from '../../constants/aiAssistantConsent';
 
 const migration = readFileSync(
@@ -174,11 +176,14 @@ describe('AI Assistant consent wording (legal hardening)', () => {
     expect(corpus).toContain(LAWFUL_BASIS_ACKNOWLEDGEMENT_COPY);
     expect(corpus).toContain(RIGHTS_NON_WAIVER_NOTICE);
     expect(corpus).toContain(PROVIDER_RETENTION_CONTROLS_CAVEAT);
+    expect(corpus).toContain(MISTRAL_TRAINING_CONFIGURATION_CAVEAT);
+    expect(LAWFUL_BASIS_ACKNOWLEDGEMENT_COPY).toMatch(/consent is not the only legal basis/i);
   });
 
   it('surfaced public URLs match implemented legal routes without www subdomain drift', () => {
     expect(corpus).toContain('https://indexcasting.com/privacy');
     expect(corpus).toContain('https://indexcasting.com/trust/gdpr');
+    expect(corpus).toContain(INDEXCASTING_PUBLIC_TRUST_SUBPROCESSORS_URL);
   });
 
   it('renders consent version string in footer constant', () => {
