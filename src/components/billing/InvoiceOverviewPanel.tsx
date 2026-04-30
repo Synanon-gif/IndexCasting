@@ -22,6 +22,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -46,6 +47,7 @@ import type {
   InvoiceOverviewSourceType,
   InvoiceOverviewTrackingStatus,
 } from '../../types/invoiceOverviewTypes';
+import { isSafeInvoiceOverviewExternalUrl } from '../../utils/invoiceOverviewExternalUrl';
 
 const PAGE_SIZE = 100;
 
@@ -321,6 +323,7 @@ export const InvoiceOverviewPanel: React.FC<Props> = ({ organizationId, variant 
                   key={`${row.sourceType}:${row.sourceId}`}
                   row={row}
                   copy={c}
+                  variant={variant}
                   onPress={() => setOpenRow(row)}
                   onTrackingChange={(next) => void onTrackingChange(row, next)}
                 />
@@ -342,6 +345,7 @@ export const InvoiceOverviewPanel: React.FC<Props> = ({ organizationId, variant 
 
       <InvoiceDetailsModal
         row={openRow}
+        variant={variant}
         copy={c}
         onClose={() => setOpenRow(null)}
         onTrackingChange={onTrackingChange}
@@ -355,10 +359,11 @@ export const InvoiceOverviewPanel: React.FC<Props> = ({ organizationId, variant 
 
 const InvoiceOverviewRowView: React.FC<{
   row: InvoiceOverviewRow;
+  variant: 'agency' | 'client';
   copy: typeof uiCopy.invoiceOverview;
   onPress: () => void;
   onTrackingChange: (next: InvoiceOverviewTrackingStatus) => void;
-}> = ({ row, copy, onPress, onTrackingChange }) => {
+}> = ({ row, variant, copy, onPress, onTrackingChange }) => {
   return (
     <View style={styles.rowCard}>
       <Pressable style={styles.rowMain} onPress={onPress} accessibilityRole="button">
@@ -398,9 +403,15 @@ const InvoiceOverviewRowView: React.FC<{
           ) : null}
         </View>
       </Pressable>
-      <View style={styles.rowTrackingArea}>
-        <TrackingStatusControl value={row.trackingStatus} copy={copy} onChange={onTrackingChange} />
-      </View>
+      {variant === 'agency' ? (
+        <View style={styles.rowTrackingArea}>
+          <TrackingStatusControl
+            value={row.trackingStatus}
+            copy={copy}
+            onChange={onTrackingChange}
+          />
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -492,11 +503,12 @@ const FilterPicker: React.FC<{
 
 const InvoiceDetailsModal: React.FC<{
   row: InvoiceOverviewRow | null;
+  variant: 'agency' | 'client';
   copy: typeof uiCopy.invoiceOverview;
   onClose: () => void;
   onTrackingChange: (row: InvoiceOverviewRow, next: InvoiceOverviewTrackingStatus) => void;
   onNoteSave: (row: InvoiceOverviewRow, note: string | null) => Promise<boolean>;
-}> = ({ row, copy, onClose, onTrackingChange, onNoteSave }) => {
+}> = ({ row, variant, copy, onClose, onTrackingChange, onNoteSave }) => {
   const [noteDraft, setNoteDraft] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   useEffect(() => {
@@ -545,71 +557,144 @@ const InvoiceDetailsModal: React.FC<{
             {row.dueDate && <DetailRow label="Due" value={formatDate(row.dueDate)} />}
             {row.sourceStatus && <DetailRow label="Source status" value={row.sourceStatus} />}
 
+            <InvoicePdfActions row={row} copy={copy} />
+
+            {(row.sourceStatus === 'draft' || invoiceOverviewPdfUrlsAbsent(row)) && (
+              <Text style={styles.modalFootnote}>{copy.trackingInternalNoPdfHint}</Text>
+            )}
+
             <Text style={[styles.modalSectionTitle, { marginTop: spacing.md }]}>
               {copy.filterTrackingLabel}
             </Text>
-            <TrackingStatusControl
-              value={row.trackingStatus}
-              copy={copy}
-              onChange={(next) => onTrackingChange(row, next)}
-            />
-            <Text style={styles.helperText}>{copy.statusHelperText}</Text>
+            {variant === 'agency' ? (
+              <>
+                <TrackingStatusControl
+                  value={row.trackingStatus}
+                  copy={copy}
+                  onChange={(next) => onTrackingChange(row, next)}
+                />
+                <Text style={styles.helperText}>{copy.statusHelperText}</Text>
 
-            <Text style={[styles.modalSectionTitle, { marginTop: spacing.md }]}>
-              {copy.noteEditTitle}
-            </Text>
-            <TextInput
-              value={noteDraft}
-              onChangeText={(t) => setNoteDraft(t.slice(0, 1000))}
-              placeholder={copy.noteEditPlaceholder}
-              placeholderTextColor={colors.textSecondary}
-              multiline
-              style={styles.noteInput}
-            />
-            <Text style={styles.muted}>{copy.noteMaxLengthHint(noteDraft.length)}</Text>
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.actionBtn, styles.actionPrimary]}
-                onPress={async () => {
-                  setSavingNote(true);
-                  const ok = await onNoteSave(row, noteDraft);
-                  setSavingNote(false);
-                  if (ok) onClose();
-                }}
-                disabled={savingNote}
-                accessibilityLabel={copy.noteSave}
-              >
-                <Text style={styles.actionPrimaryText}>{copy.noteSave}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionBtn, styles.actionSecondary]}
-                onPress={async () => {
-                  setSavingNote(true);
-                  const ok = await onNoteSave(row, null);
-                  setSavingNote(false);
-                  if (ok) {
-                    setNoteDraft('');
-                  }
-                }}
-                disabled={
-                  savingNote || (row.internalNote === null && noteDraft.trim().length === 0)
-                }
-                accessibilityLabel={copy.noteClear}
-              >
-                <Text style={styles.actionSecondaryText}>{copy.noteClear}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionBtn, styles.actionSecondary]}
-                onPress={onClose}
-                accessibilityLabel={copy.noteCancel}
-              >
-                <Text style={styles.actionSecondaryText}>{copy.noteCancel}</Text>
-              </TouchableOpacity>
-            </View>
+                <Text style={[styles.modalSectionTitle, { marginTop: spacing.md }]}>
+                  {copy.noteEditTitle}
+                </Text>
+                <TextInput
+                  value={noteDraft}
+                  onChangeText={(t) => setNoteDraft(t.slice(0, 1000))}
+                  placeholder={copy.noteEditPlaceholder}
+                  placeholderTextColor={colors.textSecondary}
+                  multiline
+                  style={styles.noteInput}
+                />
+                <Text style={styles.muted}>{copy.noteMaxLengthHint(noteDraft.length)}</Text>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.actionPrimary]}
+                    onPress={async () => {
+                      setSavingNote(true);
+                      const ok = await onNoteSave(row, noteDraft);
+                      setSavingNote(false);
+                      if (ok) onClose();
+                    }}
+                    disabled={savingNote}
+                    accessibilityLabel={copy.noteSave}
+                  >
+                    <Text style={styles.actionPrimaryText}>{copy.noteSave}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.actionSecondary]}
+                    onPress={async () => {
+                      setSavingNote(true);
+                      const ok = await onNoteSave(row, null);
+                      setSavingNote(false);
+                      if (ok) {
+                        setNoteDraft('');
+                      }
+                    }}
+                    disabled={
+                      savingNote || (row.internalNote === null && noteDraft.trim().length === 0)
+                    }
+                    accessibilityLabel={copy.noteClear}
+                  >
+                    <Text style={styles.actionSecondaryText}>{copy.noteClear}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.actionSecondary]}
+                    onPress={onClose}
+                    accessibilityLabel={copy.noteCancel}
+                  >
+                    <Text style={styles.actionSecondaryText}>{copy.noteCancel}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                <DetailRow label={copy.filterTrackingLabel} value={row.trackingStatus} />
+                {row.internalNote ? (
+                  <DetailRow label={copy.columnNote} value={row.internalNote} />
+                ) : null}
+                <Text style={styles.helperText}>{copy.trackingReadOnlyClientHint}</Text>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.actionSecondary]}
+                    onPress={onClose}
+                    accessibilityLabel={copy.noteCancel}
+                  >
+                    <Text style={styles.actionSecondaryText}>{copy.noteCancel}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </ScrollView>
         </View>
       </View>
     </Modal>
+  );
+};
+
+function invoiceOverviewPdfUrlsAbsent(row: InvoiceOverviewRow): boolean {
+  return row.hostedInvoiceUrl == null && row.invoicePdfUrl == null;
+}
+
+function openInvoiceOverviewUrl(url: string): void {
+  if (!isSafeInvoiceOverviewExternalUrl(url)) return;
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined') window.open(url, '_blank', 'noopener,noreferrer');
+  } else {
+    void Linking.openURL(url);
+  }
+}
+
+const InvoicePdfActions: React.FC<{
+  row: InvoiceOverviewRow;
+  copy: typeof uiCopy.invoiceOverview;
+}> = ({ row, copy }) => {
+  const hosted = row.hostedInvoiceUrl;
+  const pdf = row.invoicePdfUrl;
+  if (!hosted && !pdf) return null;
+  return (
+    <View style={styles.pdfBtnRow}>
+      {hosted ? (
+        <TouchableOpacity
+          style={styles.pdfBtn}
+          onPress={() => openInvoiceOverviewUrl(hosted)}
+          accessibilityRole="button"
+          accessibilityLabel={copy.pdfOpenHosted}
+        >
+          <Text style={styles.pdfBtnText}>{copy.pdfOpenHosted}</Text>
+        </TouchableOpacity>
+      ) : null}
+      {pdf && pdf !== hosted ? (
+        <TouchableOpacity
+          style={styles.pdfBtn}
+          onPress={() => openInvoiceOverviewUrl(pdf)}
+          accessibilityRole="button"
+          accessibilityLabel={hosted ? copy.pdfDownloadPdf : copy.pdfOpenPdf}
+        >
+          <Text style={styles.pdfBtnText}>{hosted ? copy.pdfDownloadPdf : copy.pdfOpenPdf}</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
   );
 };
 
@@ -1069,6 +1154,32 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
     flex: 1,
+  },
+  modalFootnote: {
+    ...typography.label,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    fontStyle: 'italic',
+  },
+  pdfBtnRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: spacing.sm,
+  },
+  pdfBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    marginRight: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  pdfBtnText: {
+    ...typography.body,
+    color: colors.textPrimary,
+    fontWeight: '600' as const,
   },
 });
 

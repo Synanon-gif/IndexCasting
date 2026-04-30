@@ -2676,7 +2676,17 @@ export const uiCopy = {
     empty: 'No invoices found.',
     emptyFiltered: 'No invoices match the current filters.',
     errorLoad: 'Could not load invoices. Please try again.',
-    errorUpdate: 'Could not update this invoice. Please try again.',
+    errorUpdate: 'Could not update tracking status. Please try again.',
+
+    trackingReadOnlyClientHint:
+      'Tracking status and internal notes are managed by the issuing organization.',
+
+    pdfOpenHosted: 'Open invoice',
+    pdfOpenPdf: 'Open PDF',
+    pdfDownloadPdf: 'Download PDF',
+
+    trackingInternalNoPdfHint:
+      'This entry is listed for internal tracking. No invoice PDF is available yet.',
 
     // Detail link
     openDetailsCta: 'Open details',

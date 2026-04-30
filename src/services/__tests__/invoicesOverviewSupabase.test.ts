@@ -128,6 +128,8 @@ describe('listInvoiceOverview', () => {
           has_payment_problem: false,
           source_created_at: '2026-04-29T10:00:00Z',
           metadata_updated_at: null,
+          hosted_invoice_url: 'https://invoice.stripe.com/i/test',
+          invoice_pdf_url: 'https://files.stripe.com/v1/foo',
         },
         {
           source_type: 'manual',
@@ -150,6 +152,8 @@ describe('listInvoiceOverview', () => {
           has_payment_problem: false,
           source_created_at: '2026-04-15T08:00:00Z',
           metadata_updated_at: '2026-04-20T09:00:00Z',
+          hosted_invoice_url: null,
+          invoice_pdf_url: null,
         },
       ],
       error: null,
@@ -165,6 +169,8 @@ describe('listInvoiceOverview', () => {
       currency: 'EUR',
       totalAmountCents: 12345,
       hasPaymentProblem: false,
+      hostedInvoiceUrl: 'https://invoice.stripe.com/i/test',
+      invoicePdfUrl: 'https://files.stripe.com/v1/foo',
     });
     expect(out[1]).toMatchObject({
       sourceType: 'manual',
@@ -176,7 +182,44 @@ describe('listInvoiceOverview', () => {
       currency: 'USD',
       modelName: 'Model Person',
       referenceLabel: 'JOB-123',
+      hostedInvoiceUrl: null,
+      invoicePdfUrl: null,
     });
+  });
+
+  it('strips unsafe invoice PDF URLs from RPC payloads', async () => {
+    rpc.mockResolvedValue({
+      data: [
+        {
+          source_type: 'system',
+          source_id: 'sys-u',
+          organization_id: ORG,
+          invoice_number: null,
+          direction: 'agency_to_client',
+          source_status: 'sent',
+          tracking_status: 'open',
+          internal_note: null,
+          invoice_date: null,
+          due_date: null,
+          currency: 'EUR',
+          total_amount_cents: 0,
+          sender_name: null,
+          recipient_name: null,
+          client_name: null,
+          model_name: null,
+          reference_label: null,
+          has_payment_problem: false,
+          source_created_at: null,
+          metadata_updated_at: null,
+          hosted_invoice_url: 'https://evil.example/phish',
+          invoice_pdf_url: 'javascript:alert(1)',
+        },
+      ],
+      error: null,
+    });
+    const out = await listInvoiceOverview(ORG);
+    expect(out[0].hostedInvoiceUrl).toBeNull();
+    expect(out[0].invoicePdfUrl).toBeNull();
   });
 
   it('falls back tracking_status to "open" when an unknown value arrives', async () => {

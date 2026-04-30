@@ -55,4 +55,8 @@ export type InvoiceOverviewRow = {
   hasPaymentProblem: boolean;
   sourceCreatedAt: string | null;
   metadataUpdatedAt: string | null;
+  /** Sanitized Stripe hosted invoice URL when present */
+  hostedInvoiceUrl: string | null;
+  /** Sanitized Stripe invoice PDF URL when present */
+  invoicePdfUrl: string | null;
 };

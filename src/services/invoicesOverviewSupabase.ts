@@ -30,6 +30,7 @@
  */
 
 import { supabase } from '../../lib/supabase';
+import { isSafeInvoiceOverviewExternalUrl } from '../utils/invoiceOverviewExternalUrl';
 import { assertOrgContext } from '../utils/orgGuard';
 import type {
   InvoiceOverviewFilters,
@@ -156,6 +157,8 @@ type RawOverviewRow = {
   has_payment_problem: boolean | null;
   source_created_at: string | null;
   metadata_updated_at: string | null;
+  hosted_invoice_url?: string | null;
+  invoice_pdf_url?: string | null;
 };
 
 function normalizeRow(row: RawOverviewRow): InvoiceOverviewRow {
@@ -180,7 +183,15 @@ function normalizeRow(row: RawOverviewRow): InvoiceOverviewRow {
     hasPaymentProblem: row.has_payment_problem === true,
     sourceCreatedAt: row.source_created_at,
     metadataUpdatedAt: row.metadata_updated_at,
+    hostedInvoiceUrl: sanitizeOverviewUrl(row.hosted_invoice_url),
+    invoicePdfUrl: sanitizeOverviewUrl(row.invoice_pdf_url),
   };
+}
+
+function sanitizeOverviewUrl(value: string | null | undefined): string | null {
+  if (value == null || typeof value !== 'string') return null;
+  const t = value.trim();
+  return isSafeInvoiceOverviewExternalUrl(t) ? t : null;
 }
 
 function normalizeTrackingStatus(value: string | null | undefined): InvoiceOverviewTrackingStatus {
