@@ -16,6 +16,7 @@ import {
   CLIENT_MODEL_FACTS_REFUSAL,
   classifyAssistantIntent,
   extractModelProfileSearchText,
+  normalizeSeparatedPossessiveSTokenForModelFacts,
   normalizeTextForModelIntentMatching,
   findSingleCalendarReferenceFromFacts,
   forbiddenIntentAnswer,
@@ -250,6 +251,37 @@ describe('AI Assistant Phase 2 intent router', () => {
     expect(normalizeTextForModelIntentMatching('lovisolos measurements')).toBe(
       'lovisolo measurements',
     );
+    expect(normalizeTextForModelIntentMatching('remi lovisolo s measurements')).toBe(
+      'remi lovisolo measurements',
+    );
+    expect(normalizeTextForModelIntentMatching('johann e s measurements')).toBe(
+      'johann e measurements',
+    );
+  });
+
+  it('folds separated possessive “ s ” before measurement tails for routing and RPC search text', () => {
+    expect(normalizeSeparatedPossessiveSTokenForModelFacts('Remi Lovisolo s measurements')).toBe(
+      'Remi Lovisolo measurements',
+    );
+    const separatedPossessiveExamples: Array<[string, string]> = [
+      ['Give me Remi Lovisolo s measurements', 'Remi Lovisolo'],
+      ['Give me Johann E s measurements', 'Johann E'],
+      ['Give me Rémi Lovisolo s measurements', 'Rémi Lovisolo'],
+      ['Give me RÉMI LOVISOLO s measurements', 'RÉMI LOVISOLO'],
+      ['Remi Lovisolo measurements', 'Remi Lovisolo'],
+      ['Johann E measurements', 'Johann E'],
+      ["What are Johann E's measurements?", 'Johann E'],
+      ['What are Johann Es measurements?', 'Johann Es'],
+    ];
+    for (const [msg, expectedSearch] of separatedPossessiveExamples) {
+      const routed = classifyAssistantIntent(msg, 'agency', BASE_DATE);
+      expect(routed.intent).toBe('model_visible_profile_facts');
+      expect(routed.intent).not.toBe('unknown_live_data');
+      if (routed.intent === 'model_visible_profile_facts') {
+        expect(routed.searchText).toBe(expectedSearch);
+      }
+      expect(extractModelProfileSearchText(msg)).toBe(expectedSearch);
+    }
   });
 
   it('does not treat generic tokens as model names for measurement routing (fail-closed)', () => {
@@ -274,6 +306,29 @@ describe('AI Assistant Phase 2 intent router', () => {
     );
 
     expect(result.intent).toBe('model_visible_profile_facts');
+  });
+
+  it('routes Client separated-possessive measurement phrasing to model facts intent for role-specific refusal', () => {
+    const msg = 'Give me Rémi Lovisolo s measurements';
+    const routed = classifyAssistantIntent(msg, 'client', BASE_DATE);
+    expect(routed.intent).toBe('model_visible_profile_facts');
+    const exec = resolveModelFactsExecutionResult({
+      role: 'client',
+      facts: buildModelVisibleProfileFacts({
+        rows: [{ display_name: 'Rémi Lovisolo', height: 180 }],
+      }),
+    });
+    expect(exec.type).toBe('answer');
+    if (exec.type === 'answer') expect(exec.answer).toBe(CLIENT_MODEL_FACTS_REFUSAL);
+  });
+
+  it('does not route separated possessive measurement phrasing to model facts when asking forbidden fields', () => {
+    expect(
+      classifyAssistantIntent('Give me Remi Lovisolo s email', 'agency', BASE_DATE).intent,
+    ).toBe('model_hidden_data');
+    expect(
+      classifyAssistantIntent('Give me Remi Lovisolo s phone number', 'agency', BASE_DATE).intent,
+    ).toBe('model_hidden_data');
   });
 
   it('routes calendar item detail follow-ups without static fallback', () => {

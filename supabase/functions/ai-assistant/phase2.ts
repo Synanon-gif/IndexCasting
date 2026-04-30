@@ -349,6 +349,9 @@ const CALENDAR_DETAIL_PRICE_PATTERN =
 /** Model token: at least 3 chars to avoid matching "me" in "give me …". */
 const MODEL_NAME_TOK = String.raw`\b\p{L}[\p{L}\p{N}]{2,63}\b`;
 
+/** Optional 1–2 letter segment after full tokens (e.g. “Johann E measurements”, “Remi X waist”). */
+const MODEL_NAME_OPTIONAL_INITIAL_SUFFIX = String.raw`(?:\s+\p{L}{1,2}\b)?`;
+
 const MODEL_PROFILE_PATTERNS_FOLDED: RegExp[] = [
   new RegExp(
     `\\b(measurements?|dimensions?|maße|masse|messwerte|größe|grosse)\\b[\\s\\S]{0,120}\\b(?:of|for|von|für|fuer)\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}`,
@@ -382,31 +385,31 @@ const MODEL_PROFILE_PATTERNS_FOLDED: RegExp[] = [
   /\b(?:her|his|their)\s+(?:measurements?|dimensions?|height|city|location|shoes?|shoe\s+size|chest|bust|waist|hips|hair|eyes?)\b/iu,
   /\b(?:this|that)\s+model\b[\s\S]{0,120}\b(?:measurements?|dimensions?|height|city|location|shoes?|shoe\s+size|chest|bust|waist|hips|hair|eyes?|account)\b/iu,
   new RegExp(
-    `${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+\\b(?:measurements?|dimensions?)\\b`,
+    `${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}${MODEL_NAME_OPTIONAL_INITIAL_SUFFIX}\\s+\\b(?:measurements?|dimensions?)\\b`,
     'u',
   ),
   new RegExp(
-    `\\b(?:what|show|tell\\s+me|give\\s+me)\\b[\\s\\S]{0,40}\\b(?:are|is)\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+\\b(?:measurements?|dimensions?)\\b`,
+    `\\b(?:what|show|tell\\s+me|give\\s+me)\\b[\\s\\S]{0,40}\\b(?:are|is)\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}${MODEL_NAME_OPTIONAL_INITIAL_SUFFIX}\\s+\\b(?:measurements?|dimensions?)\\b`,
     'u',
   ),
   new RegExp(
-    `\\bshow\\b[\\s\\S]{0,40}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+\\b(?:measurements?|dimensions?)\\b`,
+    `\\bshow\\b[\\s\\S]{0,40}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}${MODEL_NAME_OPTIONAL_INITIAL_SUFFIX}\\s+\\b(?:measurements?|dimensions?)\\b`,
     'u',
   ),
   new RegExp(
-    `\\bwhat\\s+is\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+\\bheight\\b`,
+    `\\bwhat\\s+is\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}${MODEL_NAME_OPTIONAL_INITIAL_SUFFIX}\\s+\\bheight\\b`,
     'u',
   ),
   new RegExp(
-    `${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+\\b(?:waist|chest|hips|height)\\b`,
+    `${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}${MODEL_NAME_OPTIONAL_INITIAL_SUFFIX}\\s+\\b(?:waist|chest|hips|height)\\b`,
     'u',
   ),
   new RegExp(
-    `${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+model\\s+size\\b`,
+    `${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}${MODEL_NAME_OPTIONAL_INITIAL_SUFFIX}\\s+model\\s+size\\b`,
     'u',
   ),
   new RegExp(
-    `\\bwhat\\s+is\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+model\\s+size\\b`,
+    `\\bwhat\\s+is\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}${MODEL_NAME_OPTIONAL_INITIAL_SUFFIX}\\s+model\\s+size\\b`,
     'u',
   ),
   new RegExp(
@@ -899,6 +902,18 @@ function classifyModelCalendarAvailabilityIntent(
   };
 }
 
+/**
+ * Typing/layout variant where the possessive “’s” is split: “Remi Lovisolo s measurements”.
+ * Fold away the lone “s” only when it sits immediately before visible-model-fact tail words
+ * (intent matching + search extraction; does not broaden answered fields).
+ */
+const SEPARATED_POSSESSIVE_S_BEFORE_MODEL_FACT_TAIL =
+  /\s+\bs\b\s+(?=(?:measurements?|dimensions?|height|waist|chest|hips|bust|hair|eyes?|shoes?|shoe\s+size|model\s+size|profile\s+facts?|basic\s+facts?|model\s+facts?|maße|masse|messwerte|größe|grosse|taille|brust|hüfte|huefte|schuhe|schuhgröße|schuhgroesse|haare|augen)\b)/giu;
+
+export function normalizeSeparatedPossessiveSTokenForModelFacts(input: string): string {
+  return input.replace(SEPARATED_POSSESSIVE_S_BEFORE_MODEL_FACT_TAIL, ' ');
+}
+
 /** Stopwords / measurement tokens that must not lose a trailing “s” during fuzzy name cleanup. */
 const MODEL_SEARCH_TRAILING_S_NO_STRIP = new Set([
   'his',
@@ -1011,6 +1026,7 @@ const MODEL_SEARCH_MEASUREMENT_LEXEMES = new Set([
  */
 export function normalizeTextForModelIntentMatching(message: string): string {
   let s = message.trim().normalize('NFKC').toLowerCase();
+  s = normalizeSeparatedPossessiveSTokenForModelFacts(s);
   s = s.replace(/\b(\p{L}+)['\u2019]s\b/gu, '$1');
   s = s.replace(/[^\p{L}\p{N}\s]+/gu, ' ');
   s = s.replace(/\s+/g, ' ').trim();
@@ -1135,18 +1151,19 @@ function normalizeSearchTextArtifacts(text: string, measurementContextTail?: str
 }
 
 function extractFromTrailingMeasurementContext(raw: string): string | null {
+  const folded = normalizeSeparatedPossessiveSTokenForModelFacts(raw);
   const re = /\b(?:measurements?|dimensions?|height|waist|chest|hips|model\s+size)\b/gi;
   let lastIdx = -1;
   let lastMatch = '';
   let m: RegExpExecArray | null;
-  while ((m = re.exec(raw)) !== null) {
-    const after = raw.slice(m.index + m[0].length);
+  while ((m = re.exec(folded)) !== null) {
+    const after = folded.slice(m.index + m[0].length);
     if (/^\s*(?:of|for)\s+\p{L}/u.test(after)) continue;
     lastIdx = m.index;
     lastMatch = m[0];
   }
   if (lastIdx === -1) return null;
-  const prefix = raw.slice(0, lastIdx);
+  const prefix = folded.slice(0, lastIdx);
   const cleaned = stripModelSearchNoise(prefix);
   const tailToken =
     lastMatch
@@ -1160,7 +1177,7 @@ function extractFromTrailingMeasurementContext(raw: string): string | null {
 }
 
 function stripModelSearchNoise(value: string): string {
-  return value
+  return normalizeSeparatedPossessiveSTokenForModelFacts(value)
     .replace(/\b(what|are|is|the|of|for|model|show|me|tell|give|basic|profile|facts|data|does|have|an|account|height|measurements?|dimensions?|city|base|based|location|located|hair|eyes?|shoes?|shoe\s+size|chest|bust|waist|hips|here|received|match|system|compare|against|with|in|on|my|our|visible)\b/giu, ' ')
     // Minimal German equivalents (routing only).
     .replace(
@@ -1214,7 +1231,9 @@ function isPronounModelFactsQuestion(message: string): boolean {
 }
 
 export function extractModelProfileSearchText(message: string): string {
-  const normalized = message.replace(/\s+/g, ' ').trim();
+  const normalized = normalizeSeparatedPossessiveSTokenForModelFacts(
+    message.replace(/\s+/g, ' ').trim(),
+  );
   const bracketMatch = normalized.match(/\[([^\]]{2,80})\]/);
   if (bracketMatch?.[1]) {
     return normalizeSearchTextArtifacts(bracketMatch[1].trim()).slice(0, MAX_MODEL_SEARCH_CHARS);
