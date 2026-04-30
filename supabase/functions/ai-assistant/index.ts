@@ -5,7 +5,7 @@
  * - authenticated callers only
  * - static IndexCasting help knowledge
  * - allowlisted live-data intents: calendar_summary, calendar_item_details,
- *   model_visible_profile_facts
+ *   model_visible_profile_facts, model_calendar_availability_check
  * - no service_role
  * - no free SQL, arbitrary RPCs, writes, or broad private org data access
  */
@@ -22,6 +22,8 @@ import {
   buildModelVisibleProfileFacts,
   CALENDAR_DETAIL_AMBIGUOUS_ANSWER,
   CALENDAR_DETAIL_PRICING_REFUSAL,
+  AVAILABILITY_DISCLAIMER,
+  CLIENT_MODEL_AVAILABILITY_REFUSAL,
   CLIENT_MODEL_FACTS_REFUSAL,
   classifyAssistantIntent,
   findSingleCalendarReferenceFromFacts,
@@ -30,17 +32,21 @@ import {
   MAX_CALENDAR_RESULTS,
   MAX_MODEL_FACT_CANDIDATES,
   MODEL_CLARIFICATION_ANSWER,
+  MODEL_WORKSPACE_AVAILABILITY_REFUSAL,
   resolveCalendarDetailDateRange,
   resolveCalendarItemDetailsAnswer,
   resolveCalendarItemDetailsAnswerFromContext,
   resolveModelFactsExecutionResult,
+  interpretModelCalendarConflictsRpc,
   isAssistantContextValid,
   type AiAssistantContext,
   type AssistantIntent,
   type CalendarFacts,
   type CalendarItemDetailsFacts,
   type CalendarItemReference,
+  type ModelCalendarAvailabilityFacts,
   type ModelVisibleProfileFacts,
+  resolveModelCalendarAvailabilityExecutionResult,
   type ViewerRole,
 } from './phase2.ts';
 
@@ -56,6 +62,7 @@ const MAX_HISTORY_CHARS = 500;
 const MAX_OUTPUT_TOKENS = 450;
 const LIVE_OUTPUT_TOKENS = 360;
 const MODEL_FACT_OUTPUT_TOKENS = 320;
+const MODEL_AVAILABILITY_OUTPUT_TOKENS = 340;
 const REQUEST_TIMEOUT_MS = 15_000;
 const RATE_LIMIT_MAX_INPUT_CHARS = 2000;
 
@@ -185,6 +192,7 @@ function safeIntent(intent: string): AssistantIntent | 'invalid' {
     'calendar_summary',
     'calendar_item_details',
     'model_visible_profile_facts',
+    'model_calendar_availability_check',
     'billing',
     'team_management',
     'admin_security',
@@ -205,7 +213,8 @@ function isExecutableAssistantIntent(intent: AssistantIntent): boolean {
     intent === 'help_static' ||
     intent === 'calendar_summary' ||
     intent === 'calendar_item_details' ||
-    intent === 'model_visible_profile_facts'
+    intent === 'model_visible_profile_facts' ||
+    intent === 'model_calendar_availability_check'
   );
 }
 
@@ -272,7 +281,8 @@ function normalizeAssistantContext(raw: unknown): AiAssistantContext | null {
     record.last_intent === 'help_static' ||
     record.last_intent === 'calendar_summary' ||
     record.last_intent === 'calendar_item_details' ||
-    record.last_intent === 'model_visible_profile_facts'
+    record.last_intent === 'model_visible_profile_facts' ||
+    record.last_intent === 'model_calendar_availability_check'
       ? record.last_intent
       : null;
   const createdAt =
@@ -326,14 +336,23 @@ function normalizeAssistantContext(raw: unknown): AiAssistantContext | null {
   const context = buildAssistantContext({
     lastCalendarItem: safeCalendarItem,
     lastModelName,
+    lastAvailabilityCheckDate:
+      typeof record.last_availability_check_date === 'string'
+        ? sanitizeText(record.last_availability_check_date, 10)
+        : null,
+    lastAvailabilityDateSource:
+      record.last_availability_date_source === 'single_day_resolve'
+        ? 'single_day_resolve'
+        : null,
     lastIntent,
     createdAt,
     expiresAt,
   });
-  if (
-    record.last_calendar_item_source !== 'single_resolved_item' &&
-    record.last_model_source !== 'single_model_match'
-  ) {
+  const hasAllowedContextSource =
+    record.last_calendar_item_source === 'single_resolved_item' ||
+    record.last_model_source === 'single_model_match' ||
+    record.last_availability_date_source === 'single_day_resolve';
+  if (!hasAllowedContextSource) {
     return null;
   }
   return isAssistantContextValid(context) ? context : null;
@@ -475,6 +494,17 @@ function modelContextFromFacts(facts: ModelVisibleProfileFacts): AssistantRespon
   });
 }
 
+function availabilityContextFromFacts(
+  facts: ModelCalendarAvailabilityFacts,
+): AssistantResponseContext | undefined {
+  return buildAssistantContext({
+    lastModelName: facts.model_display_name,
+    lastAvailabilityCheckDate: facts.check_date,
+    lastAvailabilityDateSource: 'single_day_resolve',
+    lastIntent: 'model_calendar_availability_check',
+  });
+}
+
 function terminologyContract(role: ViewerRole): string {
   if (role === 'agency') {
     return [
@@ -528,7 +558,7 @@ function roleKnowledge(role: ViewerRole): string {
 
 function phase2Boundary(role: ViewerRole): string {
   if (role === 'agency') {
-    return 'Phase 2 boundary: Agency users may receive limited calendar summaries and basic visible facts for their own agency models when the server provides facts. No messages, billing, team/invite, admin/security, hidden model data, database details, or actions.';
+    return 'Phase 2 boundary: Agency users may receive limited calendar summaries, basic visible facts for their own agency models, and visible per-model calendar conflict checks for a single day when the server provides facts. No messages, billing, team/invite, admin/security, hidden model data, database details, or actions. Calendar conflict checks are not final availability confirmation.';
   }
   if (role === 'client') {
     return 'Phase 2 boundary: Client users may receive limited calendar summaries when the server provides facts. Agency-only model profile facts, messages, billing, team/invite, admin/security, hidden data, database details, and actions are not available from the Client workspace.';
@@ -772,6 +802,60 @@ async function loadModelVisibleProfileFacts(params: {
   };
 }
 
+function buildModelAvailabilitySystemPrompt(): string {
+  return [
+    'You are IndexCasting AI Help.',
+    'Answer the Agency user using ONLY the provided model calendar availability facts object.',
+    `You MUST include this exact sentence in your answer: "${AVAILABILITY_DISCLAIMER}"`,
+    'Never claim the model is definitely free, fully available, or that an option/booking can be confirmed from this assistant.',
+    'If has_visible_conflicts is false or the events list is empty, say you do not see visible calendar conflicts for that model on that date, and still include the disclaimer sentence.',
+    'If events are present, summarize them with kind_label, local times when present, title, and visible counterparty when present, then include the disclaimer sentence.',
+    'Never mention SQL, RPC, RLS, database tables, UUIDs, emails, phone numbers, prices, invoices, messages, file URLs, or raw status codes.',
+    'Never claim you created, updated, or confirmed an option, casting, or booking.',
+    '',
+    'Viewer role: agency',
+    terminologyContract('agency'),
+  ].join('\n');
+}
+
+function buildModelAvailabilityUserPrompt(message: string, facts: ModelCalendarAvailabilityFacts): string {
+  return [
+    `User question: ${message}`,
+    'Model calendar availability facts:',
+    JSON.stringify(facts),
+    '',
+    'Write a concise answer in the same language as the user when possible.',
+  ].join('\n');
+}
+
+async function loadModelCalendarConflicts(params: {
+  supabase: SupabaseClientLike;
+  searchText: string;
+  checkDate: string;
+}): Promise<{ ok: true; payload: unknown } | { ok: false }> {
+  const { data, error } = await params.supabase.rpc('ai_read_model_calendar_conflicts', {
+    p_search_text: params.searchText,
+    p_date: params.checkDate,
+    p_limit: 20,
+  });
+
+  if (error) {
+    const msg = error.message ?? '';
+    if (
+      /not_authenticated|org_context_(missing|ambiguous)|invalid_search|invalid_date|unsupported_role/i.test(
+        msg,
+      )
+    ) {
+      console.warn('[ai-assistant] model calendar conflicts rpc denied', { code: error.code });
+    } else {
+      console.warn('[ai-assistant] model calendar conflicts rpc failed', { code: error.code });
+    }
+    return { ok: false };
+  }
+
+  return { ok: true, payload: data };
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const cors = getCorsHeaders(req);
 
@@ -922,7 +1006,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    if (!MISTRAL_API_KEY && classification.intent !== 'calendar_item_details') {
+    if (!MISTRAL_API_KEY && classification.intent !== 'calendar_item_details' &&
+      classification.intent !== 'model_calendar_availability_check') {
       console.warn('[ai-assistant] missing MISTRAL_API_KEY');
       return await answerWithUsage(AI_ASSISTANT_UNAVAILABLE_ANSWER, 'error', undefined, null, null);
     }
@@ -1076,6 +1161,87 @@ Deno.serve(async (req: Request): Promise<Response> => {
         answer,
         'allowed',
         calendarContextFromSummary(result.facts),
+        'mistral',
+        MISTRAL_MODEL,
+      );
+    }
+
+    if (classification.intent === 'model_calendar_availability_check') {
+      console.log('[ai-assistant] intent=model_calendar_availability_check triggered');
+
+      if (role !== 'agency') {
+        if (role === 'client') {
+          return await answerWithUsage(CLIENT_MODEL_AVAILABILITY_REFUSAL, 'blocked_forbidden');
+        }
+        if (role === 'model') {
+          return await answerWithUsage(MODEL_WORKSPACE_AVAILABILITY_REFUSAL, 'blocked_forbidden');
+        }
+        return await answerWithUsage(
+          'I can’t check agency model availability from this workspace.',
+          'blocked_forbidden',
+        );
+      }
+
+      if (classification.dateAmbiguous) {
+        return await answerWithUsage(
+          'Which date do you mean? I can check one specific day at a time.',
+        );
+      }
+      if (classification.needsDateClarification && classification.needsModelClarification) {
+        return await answerWithUsage('Which model and date should I check?');
+      }
+      if (classification.needsDateClarification) {
+        return await answerWithUsage('Which date should I check?');
+      }
+      if (classification.needsModelClarification) {
+        return await answerWithUsage('Which model should I check?');
+      }
+
+      const checkDate = classification.checkDate ?? '';
+      const searchText = classification.searchText ?? '';
+      if (!checkDate || !searchText) {
+        return await answerWithUsage('Which model and date should I check?');
+      }
+
+      if (serverContext.state !== 'ok' || !serverContext.organizationId) {
+        return await answerWithUsage(
+          'I can’t access model calendar data because your organization context is missing or ambiguous.',
+          'error',
+        );
+      }
+
+      const loadOutcome = await loadModelCalendarConflicts({
+        supabase,
+        searchText,
+        checkDate,
+      });
+      if (!loadOutcome.ok) {
+        return await answerWithUsage('I can’t read visible calendar conflicts right now.', 'error');
+      }
+
+      const interpret = interpretModelCalendarConflictsRpc(loadOutcome.payload);
+      const execution = resolveModelCalendarAvailabilityExecutionResult({ role, interpret });
+      if (execution.type === 'answer') {
+        return await answerWithUsage(execution.answer);
+      }
+
+      if (!MISTRAL_API_KEY) {
+        return await answerWithUsage(AI_ASSISTANT_UNAVAILABLE_ANSWER, 'error');
+      }
+
+      const answer = await callMistral({
+        systemPrompt: buildModelAvailabilitySystemPrompt(),
+        messages: [{ role: 'user', content: buildModelAvailabilityUserPrompt(message, execution.facts) }],
+        maxTokens: MODEL_AVAILABILITY_OUTPUT_TOKENS,
+        signal: controller.signal,
+      });
+      if (!answer) {
+        return await answerWithUsage(AI_ASSISTANT_UNAVAILABLE_ANSWER, 'error');
+      }
+      return await answerWithUsage(
+        answer,
+        'allowed',
+        availabilityContextFromFacts(execution.facts),
         'mistral',
         MISTRAL_MODEL,
       );

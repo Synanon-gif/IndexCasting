@@ -3,28 +3,35 @@ import * as path from 'path';
 import {
   AI_ASSISTANT_CONTEXT_CLARIFICATION,
   AI_ASSISTANT_CONTEXT_TTL_MS,
+  AVAILABILITY_DISCLAIMER,
   buildAssistantContext,
   buildCalendarItemDetailsFacts,
   buildCalendarFacts,
   buildModelInfoClarificationAnswer,
+  buildModelCalendarAvailabilityFactsFromRpc,
   buildModelVisibleProfileFacts,
   CALENDAR_DETAIL_PRICING_REFUSAL,
   CALENDAR_UNSUPPORTED_RANGE_ANSWER,
+  CLIENT_MODEL_AVAILABILITY_REFUSAL,
   CLIENT_MODEL_FACTS_REFUSAL,
   classifyAssistantIntent,
   extractModelProfileSearchText,
   normalizeTextForModelIntentMatching,
   findSingleCalendarReferenceFromFacts,
   forbiddenIntentAnswer,
+  interpretModelCalendarConflictsRpc,
   MAX_CALENDAR_DETAIL_LOOKBACK_DAYS,
   MAX_CALENDAR_RANGE_DAYS,
   MAX_MODEL_SEARCH_CHARS,
   MODEL_CLARIFICATION_ANSWER,
   MODEL_INFO_CLARIFICATION_PREFIX,
+  MODEL_WORKSPACE_AVAILABILITY_REFUSAL,
   isAssistantContextValid,
+  resolveAvailabilityCheckDate,
   resolveCalendarDetailDateRange,
   resolveCalendarItemDetailsAnswerFromContext,
   resolveCalendarItemDetailsAnswer,
+  resolveModelCalendarAvailabilityExecutionResult,
   resolveModelFactsExecutionResult,
 } from '../../../supabase/functions/ai-assistant/phase2';
 
@@ -937,6 +944,200 @@ describe('AI Assistant Phase 2 model visible profile facts', () => {
     if (execution.type === 'mistral') {
       expect(execution.facts.matchStatus).toBe('found');
     }
+  });
+});
+
+describe('AI Assistant model_calendar_availability_check intent', () => {
+  it('routes availability and option phrasing for Agency without treating polite Can I book as write_action', () => {
+    const cases = [
+      'Is Remi free tomorrow?',
+      'Is Remi Lovisolo available tomorrow?',
+      'Can I book Remi tomorrow?',
+      'Can I option Remi tomorrow?',
+      'Does Remi Lovisolo have anything on May 12?',
+      'Can I option Aram E on 2026-05-12?',
+      'Does Johann E have a casting next Friday?',
+      'What does Remi have tomorrow?',
+      'Is Remi blocked tomorrow?',
+      'Remi Verfügbarkeit morgen',
+      'Kalender Remi morgen',
+      'Hat Remi morgen Zeit?',
+      'Ist Remi morgen frei?',
+    ];
+    for (const msg of cases) {
+      expect(classifyAssistantIntent(msg, 'agency', BASE_DATE).intent).toBe(
+        'model_calendar_availability_check',
+      );
+    }
+    expect(
+      classifyAssistantIntent('Can I book Remi tomorrow?', 'agency', BASE_DATE).intent,
+    ).not.toBe('write_action');
+  });
+
+  it('preserves write_action for imperative booking without polite prefix', () => {
+    expect(classifyAssistantIntent('Book Remi for tomorrow', 'agency', BASE_DATE).intent).toBe(
+      'write_action',
+    );
+  });
+
+  it('routes accent variants to the same intent with resolved search text', () => {
+    for (const msg of [
+      'Is Remi Lovisolo free tomorrow?',
+      'Is Rémi Lovisolo free tomorrow?',
+      'Is RÉMI LOVISOLO free tomorrow?',
+    ]) {
+      const r = classifyAssistantIntent(msg, 'agency', BASE_DATE);
+      expect(r.intent).toBe('model_calendar_availability_check');
+      if (r.intent === 'model_calendar_availability_check') {
+        const folded = r.searchText
+          .replace(/\s+/g, ' ')
+          .normalize('NFD')
+          .replace(/\p{M}/gu, '')
+          .toLowerCase();
+        expect(folded).toContain('remi');
+      }
+    }
+  });
+
+  it('resolves tomorrow, next Friday, ISO date, and May 12', () => {
+    const t1 = classifyAssistantIntent('Is Remi free tomorrow?', 'agency', BASE_DATE);
+    expect(t1.intent).toBe('model_calendar_availability_check');
+    if (t1.intent === 'model_calendar_availability_check') expect(t1.checkDate).toBe('2026-04-30');
+
+    const wed = new Date('2026-04-29T12:00:00.000Z');
+    const fri = classifyAssistantIntent('Is Johann E free next Friday?', 'agency', wed);
+    expect(fri.intent).toBe('model_calendar_availability_check');
+    if (fri.intent === 'model_calendar_availability_check')
+      expect(fri.checkDate).toBe('2026-05-01');
+
+    const iso = classifyAssistantIntent('Is Aram E free on 2026-05-12?', 'agency', BASE_DATE);
+    expect(iso.intent).toBe('model_calendar_availability_check');
+    if (iso.intent === 'model_calendar_availability_check')
+      expect(iso.checkDate).toBe('2026-05-12');
+
+    const may = classifyAssistantIntent('Does Remi have time on May 12?', 'agency', BASE_DATE);
+    expect(may.intent).toBe('model_calendar_availability_check');
+    if (may.intent === 'model_calendar_availability_check')
+      expect(may.checkDate).toBe('2026-05-12');
+  });
+
+  it('asks for date or marks ambiguous date', () => {
+    const nd = classifyAssistantIntent('Is Remi free?', 'agency', BASE_DATE);
+    expect(nd.intent).toBe('model_calendar_availability_check');
+    if (nd.intent === 'model_calendar_availability_check')
+      expect(nd.needsDateClarification).toBe(true);
+
+    expect(resolveAvailabilityCheckDate('Is Remi free on 03/04?', BASE_DATE, null).kind).toBe(
+      'ambiguous',
+    );
+
+    const clar = classifyAssistantIntent('Is Remi free on 03/04?', 'agency', BASE_DATE);
+    expect(clar.intent).toBe('model_calendar_availability_check');
+    if (clar.intent === 'model_calendar_availability_check') expect(clar.dateAmbiguous).toBe(true);
+  });
+
+  it('uses last_model_name pronoun follow-up when context is fresh', () => {
+    const ctx = buildAssistantContext({
+      lastModelName: 'Rémi Lovisolo',
+      lastIntent: 'model_visible_profile_facts',
+      createdAt: BASE_DATE,
+      expiresAt: new Date(BASE_DATE.getTime() + AI_ASSISTANT_CONTEXT_TTL_MS),
+    });
+    const r = classifyAssistantIntent('Is he free tomorrow?', 'agency', BASE_DATE, ctx);
+    expect(r.intent).toBe('model_calendar_availability_check');
+    if (r.intent === 'model_calendar_availability_check') {
+      expect(r.searchText).toContain('Rémi');
+      expect(r.checkDate).toBe('2026-04-30');
+    }
+  });
+
+  it('asks which model for pronoun without context', () => {
+    const r = classifyAssistantIntent('Is he free tomorrow?', 'agency', BASE_DATE, null);
+    expect(r.intent).toBe('model_calendar_availability_check');
+    if (r.intent === 'model_calendar_availability_check')
+      expect(r.needsModelClarification).toBe(true);
+  });
+
+  it('uses prior availability date for What about Name when context is fresh', () => {
+    const ctx = buildAssistantContext({
+      lastAvailabilityCheckDate: '2026-05-12',
+      lastAvailabilityDateSource: 'single_day_resolve',
+      lastIntent: 'model_calendar_availability_check',
+      createdAt: BASE_DATE,
+      expiresAt: new Date(BASE_DATE.getTime() + AI_ASSISTANT_CONTEXT_TTL_MS),
+    });
+    const r = classifyAssistantIntent('What about Aram E?', 'agency', BASE_DATE, ctx);
+    expect(r.intent).toBe('model_calendar_availability_check');
+    if (r.intent === 'model_calendar_availability_check') {
+      expect(r.searchText.toLowerCase()).toContain('aram');
+      expect(r.checkDate).toBe('2026-05-12');
+    }
+  });
+
+  it('refuses Client workspace execution with role-specific copy', () => {
+    const r = classifyAssistantIntent('Is Remi free tomorrow?', 'client', BASE_DATE);
+    expect(r.intent).toBe('model_calendar_availability_check');
+    const ex = resolveModelCalendarAvailabilityExecutionResult({
+      role: 'client',
+      interpret: { matchStatus: 'found', candidates: [], facts: null },
+    });
+    expect(ex.type).toBe('answer');
+    if (ex.type === 'answer') expect(ex.answer).toBe(CLIENT_MODEL_AVAILABILITY_REFUSAL);
+  });
+
+  it('refuses Model workspace execution', () => {
+    const ex = resolveModelCalendarAvailabilityExecutionResult({
+      role: 'model',
+      interpret: { matchStatus: 'found', candidates: [], facts: null },
+    });
+    expect(ex.type).toBe('answer');
+    if (ex.type === 'answer') expect(ex.answer).toBe(MODEL_WORKSPACE_AVAILABILITY_REFUSAL);
+  });
+
+  it('parses RPC payload and builds minimized facts for the LLM', () => {
+    const raw = {
+      match_status: 'found',
+      model_display_name: 'Rémi Lovisolo',
+      check_date: '2026-05-12',
+      has_visible_conflicts: true,
+      events: [
+        {
+          kind: 'option',
+          title: 'Option',
+          start_time: '10:00',
+          end_time: '12:00',
+          counterparty_name: 'ACME',
+          note: null,
+        },
+      ],
+    };
+    const facts = buildModelCalendarAvailabilityFactsFromRpc(raw);
+    expect(facts?.intent).toBe('model_calendar_availability_check');
+    expect(facts?.disclaimer).toBe(AVAILABILITY_DISCLAIMER);
+    expect(facts?.events[0]?.kind_label).toBe('Option');
+  });
+
+  it('maps ambiguous and none RPC match statuses', () => {
+    expect(interpretModelCalendarConflictsRpc({ match_status: 'none' }).matchStatus).toBe('none');
+    const amb = interpretModelCalendarConflictsRpc({
+      match_status: 'ambiguous',
+      candidates: ['A', 'B'],
+    });
+    expect(amb.matchStatus).toBe('ambiguous');
+    expect(amb.candidates.length).toBe(2);
+  });
+
+  it('keeps calendar_summary, model profile, help_static, and billing routing', () => {
+    expect(
+      classifyAssistantIntent('What is on my calendar tomorrow?', 'agency', BASE_DATE).intent,
+    ).toBe('calendar_summary');
+    expect(classifyAssistantIntent('What is the height of Rémi?', 'agency', BASE_DATE).intent).toBe(
+      'model_visible_profile_facts',
+    );
+    expect(classifyAssistantIntent('How do options work?', 'agency', BASE_DATE).intent).toBe(
+      'help_static',
+    );
+    expect(classifyAssistantIntent('Show my invoices', 'agency', BASE_DATE).intent).toBe('billing');
   });
 });
 

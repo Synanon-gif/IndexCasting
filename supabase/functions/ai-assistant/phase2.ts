@@ -5,6 +5,7 @@ export type AssistantIntent =
   | 'calendar_summary'
   | 'calendar_item_details'
   | 'model_visible_profile_facts'
+  | 'model_calendar_availability_check'
   | 'billing'
   | 'team_management'
   | 'admin_security'
@@ -38,9 +39,21 @@ export type IntentClassification =
       clarificationReason?: 'which_model' | 'what_info';
     }
   | {
+      intent: 'model_calendar_availability_check';
+      searchText: string;
+      checkDate?: string;
+      needsDateClarification?: boolean;
+      dateAmbiguous?: boolean;
+      needsModelClarification?: boolean;
+    }
+  | {
       intent: Exclude<
         AssistantIntent,
-        'help_static' | 'calendar_summary' | 'calendar_item_details' | 'model_visible_profile_facts'
+        | 'help_static'
+        | 'calendar_summary'
+        | 'calendar_item_details'
+        | 'model_visible_profile_facts'
+        | 'model_calendar_availability_check'
       >;
     };
 
@@ -92,9 +105,15 @@ export type AiAssistantContext = {
   last_calendar_item_source?: 'single_resolved_item' | null;
   last_model_name?: string | null;
   last_model_source?: 'single_model_match' | null;
+  last_availability_check_date?: string | null;
+  last_availability_date_source?: 'single_day_resolve' | null;
   last_intent?: Extract<
     AssistantIntent,
-    'help_static' | 'calendar_summary' | 'calendar_item_details' | 'model_visible_profile_facts'
+    | 'help_static'
+    | 'calendar_summary'
+    | 'calendar_item_details'
+    | 'model_visible_profile_facts'
+    | 'model_calendar_availability_check'
   > | null;
   context_created_at?: string | null;
   context_expires_at?: string | null;
@@ -154,6 +173,25 @@ export type ModelFactsExecutionResult =
   | { type: 'answer'; answer: string }
   | { type: 'mistral'; facts: ModelVisibleProfileFacts };
 
+export type ModelCalendarAvailabilityEvent = {
+  kind_label: string;
+  start_time: string | null;
+  end_time: string | null;
+  title: string;
+  counterparty_name: string | null;
+  note: string | null;
+};
+
+export type ModelCalendarAvailabilityFacts = {
+  intent: 'model_calendar_availability_check';
+  role: 'agency';
+  disclaimer: string;
+  model_display_name: string;
+  check_date: string;
+  has_visible_conflicts: boolean;
+  events: ModelCalendarAvailabilityEvent[];
+};
+
 export type AiAssistantRateLimits = {
   userHour: number;
   userDay: number;
@@ -181,6 +219,12 @@ export const MODEL_CLARIFICATION_ANSWER = 'Which model do you mean?';
 export const MODEL_INFO_CLARIFICATION_PREFIX = 'What information do you need about';
 export const CLIENT_MODEL_FACTS_REFUSAL =
   'I can’t access agency-only model profile facts from the Client workspace.';
+export const CLIENT_MODEL_AVAILABILITY_REFUSAL =
+  'I can’t check agency model availability from the Client workspace. You can create or review requests in the Client calendar or workflow.';
+export const MODEL_WORKSPACE_AVAILABILITY_REFUSAL =
+  'I can’t check agency model calendar conflicts from the Model workspace.';
+export const AVAILABILITY_DISCLAIMER =
+  'I can check visible calendar conflicts, but this is not a final availability confirmation.';
 export const AI_ASSISTANT_LIMIT_REACHED_ANSWER =
   'You’ve reached the AI assistant usage limit. Please try again later. Contact your organization admin if you need higher limits.';
 export const AI_ASSISTANT_UNAVAILABLE_ANSWER =
@@ -208,7 +252,11 @@ const FORBIDDEN_PATTERNS: Array<
   [
     Exclude<
       AssistantIntent,
-      'help_static' | 'calendar_summary' | 'calendar_item_details' | 'model_visible_profile_facts'
+      | 'help_static'
+      | 'calendar_summary'
+      | 'calendar_item_details'
+      | 'model_visible_profile_facts'
+      | 'model_calendar_availability_check'
     >,
     RegExp,
   ]
@@ -358,6 +406,12 @@ const MODEL_INFO_CLARIFICATION_PATTERN =
 const WRITE_ACTION_PATTERN =
   /^(please\s+)?(create|add|book|confirm|cancel|delete|remove|update|send|invite)\b|\b(create|add|book|confirm|cancel|delete|remove|update|send|invite)\b.*\b(for me|now|today|tomorrow|next week)\b/i;
 
+const POLITE_CAPABILITY_QUESTION =
+  /^\s*(can|could|may|would|should)\s+(i|we)\b/i;
+
+const MODEL_CALENDAR_FOREVER_RANGE_PATTERN =
+  /\b(all|entire|every|whole|forever|lifetime)\b.*\bcalendar\b|\bcalendar\b.*\b(all|entire|every|forever|whole)\b|\bshow\s+all\s+(?:of\s+)?/i;
+
 function positiveInt(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) return null;
   return value;
@@ -398,6 +452,438 @@ const WEEKDAY_TO_UTC_DAY: Record<string, number> = {
 function nextWeekdayDate(today: Date, weekday: number): Date {
   const diff = (weekday - today.getUTCDay() + 7) % 7;
   return addDays(today, diff);
+}
+
+function mondayOfUtcWeek(d: Date): Date {
+  const dow = d.getUTCDay();
+  const daysSinceMonday = (dow + 6) % 7;
+  return addDays(d, -daysSinceMonday);
+}
+
+function weekdayDateThisWeek(today: Date, weekday: number): Date {
+  const monday = mondayOfUtcWeek(today);
+  const offset = weekday === 0 ? 6 : weekday - 1;
+  return addDays(monday, offset);
+}
+
+/** “Next weekday”: upcoming occurrence; if this weekday’s calendar date is behind today, use +7 days. */
+function resolveNextLabelledWeekday(today: Date, weekday: number): string {
+  const thisWeek = weekdayDateThisWeek(today, weekday);
+  if (dateOnly(thisWeek) > dateOnly(today)) return dateOnly(thisWeek);
+  if (dateOnly(thisWeek) === dateOnly(today)) return dateOnly(addDays(thisWeek, 7));
+  return dateOnly(addDays(thisWeek, 7));
+}
+
+/** “This weekday”: same ISO week only; if that day is already before today, ambiguous at caller. */
+function resolveThisLabelledWeekday(today: Date, weekday: number): string | null {
+  const thisWeek = weekdayDateThisWeek(today, weekday);
+  if (dateOnly(thisWeek) < dateOnly(today)) return null;
+  return dateOnly(thisWeek);
+}
+
+const MONTH_NAME_TO_NUM: Record<string, number> = {
+  january: 1,
+  jan: 1,
+  januar: 1,
+  february: 2,
+  feb: 2,
+  februar: 2,
+  march: 3,
+  mar: 3,
+  märz: 3,
+  maerz: 3,
+  april: 4,
+  apr: 4,
+  may: 5,
+  mai: 5,
+  june: 6,
+  jun: 6,
+  juni: 6,
+  july: 7,
+  jul: 7,
+  juli: 7,
+  august: 8,
+  aug: 8,
+  september: 9,
+  sep: 9,
+  sept: 9,
+  october: 10,
+  oct: 10,
+  oktober: 10,
+  november: 11,
+  nov: 11,
+  december: 12,
+  dec: 12,
+  dezember: 12,
+  dez: 12,
+};
+
+export type AvailabilityDateResolution =
+  | { kind: 'ok'; date: string }
+  | { kind: 'missing' }
+  | { kind: 'ambiguous' };
+
+function parseMonthNameDay(message: string, now: Date): AvailabilityDateResolution | null {
+  const lower = message.toLowerCase();
+  const yearMatch = lower.match(/\b(\d{4})\b/);
+  const year = yearMatch ? Number(yearMatch[1]) : now.getUTCFullYear();
+
+  const monthFirst = lower.match(
+    /\b(january|januar|jan|february|februar|feb|march|märz|maerz|mar|april|apr|may|mai|june|juni|jun|july|juli|jul|august|aug|september|sep|sept|october|oktober|oct|november|nov|december|dezember|dez)\s+(\d{1,2})(?:st|nd|rd|th)?\b/,
+  );
+  if (monthFirst?.[1] && monthFirst[2]) {
+    const monthNum = MONTH_NAME_TO_NUM[monthFirst[1]];
+    const dayNum = Number(monthFirst[2]);
+    if (!monthNum || !Number.isFinite(dayNum) || dayNum < 1 || dayNum > 31) return null;
+    const candidate = new Date(Date.UTC(year, monthNum - 1, dayNum));
+    if (candidate.getUTCMonth() !== monthNum - 1 || candidate.getUTCDate() !== dayNum) {
+      return { kind: 'ambiguous' };
+    }
+    return { kind: 'ok', date: dateOnly(candidate) };
+  }
+
+  const dayFirst = lower.match(
+    /\b(\d{1,2})(?:st|nd|rd|th)?\s+(january|januar|jan|february|februar|feb|march|märz|maerz|mar|april|apr|may|mai|june|juni|jun|july|juli|jul|august|aug|september|sep|sept|october|oktober|oct|november|nov|december|dezember|dez)\b/,
+  );
+  if (dayFirst?.[1] && dayFirst[2]) {
+    const dayNum = Number(dayFirst[1]);
+    const monthNum = MONTH_NAME_TO_NUM[dayFirst[2]];
+    if (!monthNum || !Number.isFinite(dayNum) || dayNum < 1 || dayNum > 31) return null;
+    const candidate = new Date(Date.UTC(year, monthNum - 1, dayNum));
+    if (candidate.getUTCMonth() !== monthNum - 1 || candidate.getUTCDate() !== dayNum) {
+      return { kind: 'ambiguous' };
+    }
+    return { kind: 'ok', date: dateOnly(candidate) };
+  }
+
+  return null;
+}
+
+function messageHasImplicitAvailabilityDate(message: string): boolean {
+  const lower = message.toLowerCase();
+  if (/\b(\d{4}-\d{2}-\d{2})\b/.test(message)) return true;
+  if (lower.includes('today') || lower.includes('tomorrow') || /\bmorgen\b/iu.test(message)) return true;
+  if (/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(lower)) return true;
+  if (
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december|januar|februar|märz|maerz|mai|juni|juli|oktober|dezember)\b/i.test(
+      lower,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function resolveAvailabilityCheckDate(
+  message: string,
+  now = new Date(),
+  assistantContext: AiAssistantContext | null = null,
+): AvailabilityDateResolution {
+  const normalized = message.trim();
+  const lower = normalized.toLowerCase();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+  const isoMatch = normalized.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  if (isoMatch?.[1]) {
+    const d = dateFromDateOnly(isoMatch[1]);
+    if (d) return { kind: 'ok', date: isoMatch[1] };
+    return { kind: 'ambiguous' };
+  }
+
+  const usEu = normalized.match(/\b(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\b/);
+  if (usEu) {
+    const a = Number(usEu[1]);
+    const b = Number(usEu[2]);
+    const yRaw = usEu[3] ? Number(usEu[3]) : now.getUTCFullYear();
+    const y = yRaw < 100 ? 2000 + yRaw : yRaw;
+    if (a <= 12 && b <= 12 && a !== b && !usEu[3]) {
+      return { kind: 'ambiguous' };
+    }
+    const dayFirst = b <= 12 && a > 12;
+    const day = dayFirst ? a : b > 12 ? b : a;
+    const month = dayFirst ? b : b > 12 ? a : b;
+    if (month < 1 || month > 12 || day < 1 || day > 31) return { kind: 'ambiguous' };
+    const candidate = new Date(Date.UTC(y, month - 1, day));
+    if (candidate.getUTCMonth() !== month - 1 || candidate.getUTCDate() !== day) {
+      return { kind: 'ambiguous' };
+    }
+    return { kind: 'ok', date: dateOnly(candidate) };
+  }
+
+  const monthParsed = parseMonthNameDay(normalized, now);
+  if (monthParsed) return monthParsed;
+
+  if (lower.includes('tomorrow') || /\bmorgen\b/iu.test(normalized)) {
+    return { kind: 'ok', date: dateOnly(addDays(today, 1)) };
+  }
+  if (lower.includes('today') || /\bheute\b/iu.test(normalized)) {
+    return { kind: 'ok', date: dateOnly(today) };
+  }
+
+  const nextWeekdayMatch = lower.match(/\bnext\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/);
+  if (nextWeekdayMatch?.[1]) {
+    const w = WEEKDAY_TO_UTC_DAY[nextWeekdayMatch[1]];
+    return { kind: 'ok', date: resolveNextLabelledWeekday(today, w) };
+  }
+
+  const thisWeekdayMatch = lower.match(/\bthis\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/);
+  if (thisWeekdayMatch?.[1]) {
+    const w = WEEKDAY_TO_UTC_DAY[thisWeekdayMatch[1]];
+    const resolved = resolveThisLabelledWeekday(today, w);
+    if (!resolved) return { kind: 'ambiguous' };
+    return { kind: 'ok', date: resolved };
+  }
+
+  const plainWeekdayMatch = lower.match(
+    /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/,
+  );
+  if (plainWeekdayMatch?.[1] && !/\b(next|this)\s+/i.test(lower)) {
+    const w = WEEKDAY_TO_UTC_DAY[plainWeekdayMatch[1]];
+    return { kind: 'ok', date: dateOnly(nextWeekdayDate(today, w)) };
+  }
+
+  if (
+    /\b(that|the)\s+day\b/i.test(normalized) &&
+    assistantContext &&
+    isAssistantContextValid(assistantContext, now) &&
+    assistantContext.last_intent === 'model_calendar_availability_check' &&
+    assistantContext.last_availability_date_source === 'single_day_resolve' &&
+    typeof assistantContext.last_availability_check_date === 'string'
+  ) {
+    return { kind: 'ok', date: assistantContext.last_availability_check_date };
+  }
+
+  if (
+    /\bnext\s+week\b/i.test(lower) ||
+    /\bthis\s+week\b/i.test(lower) ||
+    /\bnext\s+month\b/i.test(lower) ||
+    /\bn[äa]chste\s+woche\b/iu.test(lower) ||
+    /\bdiese\s+woche\b/iu.test(lower)
+  ) {
+    return { kind: 'missing' };
+  }
+
+  if (
+    assistantContext &&
+    isAssistantContextValid(assistantContext, now) &&
+    assistantContext.last_intent === 'model_calendar_availability_check' &&
+    assistantContext.last_availability_date_source === 'single_day_resolve' &&
+    typeof assistantContext.last_availability_check_date === 'string' &&
+    /^\s*what\s+about\b/i.test(normalized)
+  ) {
+    return { kind: 'ok', date: assistantContext.last_availability_check_date };
+  }
+
+  return { kind: 'missing' };
+}
+
+function stripModelAvailabilityNoise(value: string): string {
+  return stripModelSearchNoise(value)
+    .replace(
+      /\b(free|available|availability|busy|blocked|conflict|booked|calendar|check|tomorrow|today|next|this|time|anything|something|already|still|use|does|did|have|has|is|are|will|can|could|may|would|should|there|already|casting|castings|option|options|booking|bookings|job|jobs|about|with|for|on|at|in|the|a|an|verfügbarkeit|verfuegbarkeit|verfügbar|verfuegbar|frei|zeit|gebucht|kalender|morgen|heute|hat|ist|haben|bereits)\b/giu,
+      ' ',
+    )
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_MODEL_SEARCH_CHARS);
+}
+
+export function extractModelAvailabilitySearchText(message: string): string {
+  return normalizeSearchTextArtifacts(stripModelAvailabilityNoise(message)).slice(
+    0,
+    MAX_MODEL_SEARCH_CHARS,
+  );
+}
+
+function isPronounAvailabilityQuestion(message: string): boolean {
+  return (
+    /\b(?:is|are|will|does|do)\s+(?:he|she|they)\b[\s\S]{0,80}\b(?:free|available|busy|blocked|anything|something|time|casting|booking|job|option)\b/iu.test(
+      message,
+    ) ||
+    /\b(?:is|are)\s+(?:he|she|they)\s+(?:free|available|busy|blocked)\b/iu.test(message)
+  );
+}
+
+function hasModelCalendarAvailabilitySignal(message: string, folded: string): boolean {
+  const m = message;
+  return (
+    /\b(?:free|available|availability|busy|blocked|conflict|booked)\b/iu.test(m) ||
+    /\b(?:verfügbar|verfuegbar|verfügbarkeit|verfuegbarkeit|frei|gebucht|zeit|kalender|termin)\b/iu.test(
+      folded,
+    ) ||
+    /\b(?:can|could|may)\s+(?:i|we)\s+(?:book|option|use)\b/i.test(m) ||
+    /\bhave\s+(?:anything|something|time|a\s+(?:casting|job|booking|option))\b/i.test(m) ||
+    /\bhas\s+(?:anything|something|a\s+(?:casting|job|booking|option))\b/i.test(m) ||
+    /\b(?:anything|something)\b[\s\S]{0,40}\b(?:on|for|scheduled|that\s+day)\b/i.test(m) ||
+    /\bcould\b[\s\S]{0,120}\b(?:do|make)\b[\s\S]{0,80}\b(?:casting|job|booking|option)\b/i.test(m) ||
+    /\bwhat\b[\s\S]{0,80}\b(?:does|do|is|about)\b[\s\S]{0,120}\bhave\b/i.test(m) ||
+    /\bwhat\b[\s\S]{0,40}\b(?:does|do)\b[\s\S]{0,120}\b(?:calendar|kalender)\b/i.test(m) ||
+    /\bcheck\b[\s\S]{0,80}\bon\b/i.test(m) ||
+    /\bhat\s+[A-ZÄÖÜa-zäöüß][\p{L}\p{N}'’.\-\s]{0,48}\b(?:morgen|heute|frei|zeit|kalender|gebucht|verfügbar|verfuegbar)\b/iu.test(
+      m,
+    ) ||
+    /\bist\s+[A-ZÄÖÜa-zäöüß][\p{L}\p{N}'’.\-\s]{0,48}\b(?:morgen|heute|frei|zeit|kalender|gebucht|verfügbar|verfuegbar)\b/iu.test(
+      m,
+    )
+  );
+}
+
+function hasBareAgencyCalendarSummaryShape(message: string): boolean {
+  if (!CALENDAR_PATTERNS.some((pattern) => pattern.test(message))) return false;
+  const st = extractModelAvailabilitySearchText(message);
+  if (
+    st.length >= 2 &&
+    !isDenylistOnlyModelSearchName(st) &&
+    hasPlausibleModelNameToken(st)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** Phrases that are org-wide calendar summaries but may not match every CALENDAR_PATTERNS entry. */
+function looksLikeOrgCalendarSummaryPhrase(message: string): boolean {
+  const lower = message.toLowerCase();
+  if (
+    /\bwas\s+habe\s+ich\b/iu.test(message) &&
+    /\bpor\s+favor\b/i.test(message)
+  ) {
+    return false;
+  }
+  if (/\bwhat\s+is\s+booked\b/i.test(message) && /\b\d{4}-\d{2}-\d{2}\b/.test(message)) return true;
+  if (/\bwhat\b[\s\S]{0,44}\bdo\s+(?:i|we)\s+have\b/i.test(message)) return true;
+  if (
+    /\bwho\s+is\s+booked\b/i.test(lower) &&
+    /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|\d{4}-\d{2}-\d{2})\b/i.test(
+      lower,
+    )
+  ) {
+    return true;
+  }
+  if (/\bwhat\s+jobs\s+do\s+we\s+have\b/i.test(lower)) return true;
+  if (/\bwas\s+habe\s+ich\b/iu.test(message)) return true;
+  if (/\bhabe\s+ich\s+jobs?\b/iu.test(lower)) return true;
+  if (/\bkalender\s+heute\b/iu.test(lower)) return true;
+  if (/was\s+steht\s+im\s+kalender\b/iu.test(lower)) return true;
+  return false;
+}
+
+function classifyModelCalendarAvailabilityIntent(
+  message: string,
+  role: ViewerRole,
+  folded: string,
+  assistantContext: AiAssistantContext | null,
+  now: Date,
+): IntentClassification | null {
+  if (role !== 'agency' && role !== 'client' && role !== 'model') return null;
+
+  const ctxModel =
+    assistantContext &&
+    isAssistantContextValid(assistantContext, now) &&
+    typeof assistantContext.last_model_name === 'string'
+      ? assistantContext.last_model_name.trim()
+      : '';
+  const ctxAvailDate =
+    assistantContext &&
+    isAssistantContextValid(assistantContext, now) &&
+    assistantContext.last_intent === 'model_calendar_availability_check' &&
+    assistantContext.last_availability_date_source === 'single_day_resolve' &&
+    typeof assistantContext.last_availability_check_date === 'string'
+      ? assistantContext.last_availability_check_date
+      : '';
+
+  const whatAboutAvail = message.match(MODEL_INFO_CLARIFICATION_PATTERN);
+  if (whatAboutAvail?.[1] && ctxAvailDate) {
+    const searchText = normalizeSearchTextArtifacts(
+      stripModelAvailabilityNoise(whatAboutAvail[1]),
+    ).slice(0, MAX_MODEL_SEARCH_CHARS);
+    if (
+      searchText.length >= 2 &&
+      !isDenylistOnlyModelSearchName(searchText) &&
+      hasPlausibleModelNameToken(searchText)
+    ) {
+      return {
+        intent: 'model_calendar_availability_check',
+        searchText,
+        checkDate: ctxAvailDate,
+      };
+    }
+  }
+
+  if (hasBareAgencyCalendarSummaryShape(message)) return null;
+
+  if (!hasModelCalendarAvailabilitySignal(message, folded)) return null;
+
+  if (
+    MODEL_CALENDAR_FOREVER_RANGE_PATTERN.test(message) &&
+    /\b(?:calendar|kalender)\b/iu.test(message)
+  ) {
+    return { intent: 'unknown_live_data' };
+  }
+
+  const dateRes = resolveAvailabilityCheckDate(message, now, assistantContext);
+  if (
+    /\bbooked\b/i.test(message) &&
+    dateRes.kind === 'missing' &&
+    !ctxAvailDate &&
+    !messageHasImplicitAvailabilityDate(message)
+  ) {
+    return null;
+  }
+
+  if (dateRes.kind === 'ambiguous') {
+    return {
+      intent: 'model_calendar_availability_check',
+      searchText: '',
+      dateAmbiguous: true,
+    };
+  }
+
+  let checkDate: string | undefined = dateRes.kind === 'ok' ? dateRes.date : undefined;
+
+  let searchText = extractModelAvailabilitySearchText(message);
+  const pronoun = isPronounAvailabilityQuestion(message);
+
+  if (pronoun) {
+    if (ctxModel.length >= 2) {
+      searchText = ctxModel;
+    } else {
+      return {
+        intent: 'model_calendar_availability_check',
+        searchText: '',
+        checkDate,
+        needsModelClarification: true,
+        ...(checkDate ? {} : { needsDateClarification: true }),
+      };
+    }
+  }
+
+  const nameOk =
+    searchText.length >= 2 &&
+    !isDenylistOnlyModelSearchName(searchText) &&
+    hasPlausibleModelNameToken(searchText);
+
+  if (!nameOk) {
+    if (ctxModel.length >= 2) {
+      searchText = ctxModel;
+    } else {
+      return null;
+    }
+  }
+
+  if (!checkDate) {
+    return {
+      intent: 'model_calendar_availability_check',
+      searchText,
+      needsDateClarification: true,
+    };
+  }
+
+  return {
+    intent: 'model_calendar_availability_check',
+    searchText,
+    checkDate,
+  };
 }
 
 /** Stopwords / measurement tokens that must not lose a trailing “s” during fuzzy name cleanup. */
@@ -902,16 +1388,20 @@ export function classifyAssistantIntent(
     if (pattern.test(normalized)) return { intent };
   }
 
+  const modelIntentFolded = normalizeTextForModelIntentMatching(normalized);
   const calendarQuestion = CALENDAR_PATTERNS.some((pattern) => pattern.test(normalized));
   const calendarDetailsQuestion =
     CALENDAR_DETAIL_PATTERNS.some((pattern) => pattern.test(normalized)) ||
     CALENDAR_DETAIL_PRICE_PATTERN.test(normalized);
-  const modelIntentFolded = normalizeTextForModelIntentMatching(normalized);
   const modelProfileQuestion = MODEL_PROFILE_PATTERNS_FOLDED.some((pattern) =>
     pattern.test(modelIntentFolded),
   );
   const modelInfoClarificationMatch = normalized.match(MODEL_INFO_CLARIFICATION_PATTERN);
-  if (WRITE_ACTION_PATTERN.test(normalized) && !/^\s*how\s+do\s+i\b/i.test(normalized)) {
+  if (
+    WRITE_ACTION_PATTERN.test(normalized) &&
+    !POLITE_CAPABILITY_QUESTION.test(normalized) &&
+    !/^\s*how\s+do\s+i\b/i.test(normalized)
+  ) {
     return { intent: 'write_action' };
   }
 
@@ -928,8 +1418,33 @@ export function classifyAssistantIntent(
     };
   }
 
+  const modelCalendarAvailability = classifyModelCalendarAvailabilityIntent(
+    normalized,
+    role,
+    modelIntentFolded,
+    assistantContext,
+    now,
+  );
+
   if (calendarQuestion && (role === 'agency' || role === 'client')) {
+    if (looksLikeOrgCalendarSummaryPhrase(message)) {
+      return { intent: 'calendar_summary', dateRange: resolveCalendarDateRange(normalized, now) };
+    }
+    if (modelCalendarAvailability && !hasBareAgencyCalendarSummaryShape(message)) {
+      return modelCalendarAvailability;
+    }
     return { intent: 'calendar_summary', dateRange: resolveCalendarDateRange(normalized, now) };
+  }
+
+  if (
+    looksLikeOrgCalendarSummaryPhrase(normalized) &&
+    (role === 'agency' || role === 'client')
+  ) {
+    return { intent: 'calendar_summary', dateRange: resolveCalendarDateRange(normalized, now) };
+  }
+
+  if (modelCalendarAvailability) {
+    return modelCalendarAvailability;
   }
 
   if (modelProfileQuestion) {
@@ -1233,6 +1748,8 @@ export function resolveCalendarItemDetailsAnswer(facts: CalendarItemDetailsFacts
 export function buildAssistantContext(input: {
   lastCalendarItem?: CalendarSummaryItem | CalendarItemReference | null;
   lastModelName?: string | null;
+  lastAvailabilityCheckDate?: string | null;
+  lastAvailabilityDateSource?: 'single_day_resolve' | null;
   lastIntent?: AiAssistantContext['last_intent'];
   createdAt?: Date;
   expiresAt?: Date;
@@ -1263,15 +1780,25 @@ export function buildAssistantContext(input: {
     context.last_model_name = modelName;
     context.last_model_source = 'single_model_match';
   }
+  const availRaw = cleanString(input.lastAvailabilityCheckDate, 10);
+  if (availRaw && /^\d{4}-\d{2}-\d{2}$/.test(availRaw)) {
+    context.last_availability_check_date = availRaw;
+    context.last_availability_date_source = input.lastAvailabilityDateSource ?? 'single_day_resolve';
+  }
   if (
     input.lastIntent === 'help_static' ||
     input.lastIntent === 'calendar_summary' ||
     input.lastIntent === 'calendar_item_details' ||
-    input.lastIntent === 'model_visible_profile_facts'
+    input.lastIntent === 'model_visible_profile_facts' ||
+    input.lastIntent === 'model_calendar_availability_check'
   ) {
     context.last_intent = input.lastIntent;
   }
-  if (context.last_calendar_item || context.last_model_name) {
+  if (
+    context.last_calendar_item ||
+    context.last_model_name ||
+    context.last_availability_check_date
+  ) {
     const createdAt = input.createdAt ?? new Date();
     const expiresAt =
       input.expiresAt ?? new Date(createdAt.getTime() + AI_ASSISTANT_CONTEXT_TTL_MS);
@@ -1288,7 +1815,12 @@ export function isAssistantContextValid(context: AiAssistantContext | null, now 
     context.last_calendar_item_source === 'single_resolved_item';
   const hasModelName =
     Boolean(context.last_model_name) && context.last_model_source === 'single_model_match';
-  if (!hasCalendarItem && !hasModelName) return false;
+  const hasAvailabilityFollowup =
+    context.last_intent === 'model_calendar_availability_check' &&
+    context.last_availability_date_source === 'single_day_resolve' &&
+    typeof context.last_availability_check_date === 'string' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(context.last_availability_check_date);
+  if (!hasCalendarItem && !hasModelName && !hasAvailabilityFollowup) return false;
 
   if (typeof context.context_created_at !== 'string' || typeof context.context_expires_at !== 'string') {
     return false;
@@ -1422,10 +1954,149 @@ export function resolveModelFactsExecutionResult(input: {
   };
 }
 
+export type ModelCalendarAvailabilityExecutionResult =
+  | { type: 'answer'; answer: string }
+  | { type: 'mistral'; facts: ModelCalendarAvailabilityFacts };
+
+function humanCalendarKindLabel(kind: string): string {
+  switch (kind) {
+    case 'option':
+      return 'Option';
+    case 'casting':
+      return 'Casting';
+    case 'job':
+      return 'Job';
+    case 'private_event':
+      return 'Private event';
+    case 'booking':
+      return 'Booking';
+    default:
+      return 'Calendar item';
+  }
+}
+
+export function buildModelCalendarAvailabilityFactsFromRpc(raw: unknown): ModelCalendarAvailabilityFacts | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (r.match_status !== 'found') return null;
+  const modelName = cleanString(r.model_display_name, 120);
+  const checkDate = cleanString(r.check_date, 10);
+  if (!modelName || !checkDate) return null;
+  const eventsRaw = r.events;
+  const events: ModelCalendarAvailabilityEvent[] = [];
+  if (Array.isArray(eventsRaw)) {
+    for (const item of eventsRaw.slice(0, 20)) {
+      if (!item || typeof item !== 'object') continue;
+      const e = item as Record<string, unknown>;
+      const kindRaw = typeof e.kind === 'string' ? e.kind : '';
+      const title = cleanString(e.title, 120);
+      if (!title) continue;
+      events.push({
+        kind_label: humanCalendarKindLabel(kindRaw),
+        start_time: cleanString(e.start_time, 16),
+        end_time: cleanString(e.end_time, 16),
+        title,
+        counterparty_name: cleanString(e.counterparty_name, 120),
+        note: cleanString(e.note, 200),
+      });
+    }
+  }
+  return {
+    intent: 'model_calendar_availability_check',
+    role: 'agency',
+    disclaimer: AVAILABILITY_DISCLAIMER,
+    model_display_name: modelName,
+    check_date: checkDate,
+    has_visible_conflicts: r.has_visible_conflicts === true || events.length > 0,
+    events,
+  };
+}
+
+export function interpretModelCalendarConflictsRpc(raw: unknown): {
+  matchStatus: 'none' | 'ambiguous' | 'found' | 'invalid';
+  candidates: string[];
+  facts: ModelCalendarAvailabilityFacts | null;
+} {
+  if (!raw || typeof raw !== 'object') {
+    return { matchStatus: 'invalid', candidates: [], facts: null };
+  }
+  const r = raw as Record<string, unknown>;
+  const status = r.match_status;
+  if (status === 'none') {
+    return { matchStatus: 'none', candidates: [], facts: null };
+  }
+  if (status === 'ambiguous') {
+    const c = r.candidates;
+    const names: string[] = [];
+    if (Array.isArray(c)) {
+      for (const item of c) {
+        const s = typeof item === 'string' ? cleanString(item, 120) : null;
+        if (s) names.push(s);
+      }
+    }
+    return { matchStatus: 'ambiguous', candidates: names, facts: null };
+  }
+  if (status === 'found') {
+    const facts = buildModelCalendarAvailabilityFactsFromRpc(raw);
+    return { matchStatus: facts ? 'found' : 'invalid', candidates: [], facts };
+  }
+  return { matchStatus: 'invalid', candidates: [], facts: null };
+}
+
+export function resolveModelCalendarAvailabilityExecutionResult(input: {
+  role: ViewerRole;
+  interpret: ReturnType<typeof interpretModelCalendarConflictsRpc>;
+}): ModelCalendarAvailabilityExecutionResult {
+  if (input.role === 'client') {
+    return { type: 'answer', answer: CLIENT_MODEL_AVAILABILITY_REFUSAL };
+  }
+  if (input.role === 'model') {
+    return { type: 'answer', answer: MODEL_WORKSPACE_AVAILABILITY_REFUSAL };
+  }
+  if (input.role !== 'agency') {
+    return {
+      type: 'answer',
+      answer: 'I can’t check agency model availability from this workspace.',
+    };
+  }
+
+  if (input.interpret.matchStatus === 'invalid') {
+    return { type: 'answer', answer: 'I can’t read visible calendar conflicts right now.' };
+  }
+
+  if (input.interpret.matchStatus === 'none') {
+    return {
+      type: 'answer',
+      answer:
+        'I can’t find a visible model matching that name in your agency workspace.',
+    };
+  }
+
+  if (input.interpret.matchStatus === 'ambiguous') {
+    const list = input.interpret.candidates.slice(0, 5).join(', ');
+    return {
+      type: 'answer',
+      answer: list
+        ? `I found multiple visible models matching that name: ${list}. Which one do you mean?`
+        : 'I found multiple visible models matching that name. Which one do you mean?',
+    };
+  }
+
+  if (!input.interpret.facts) {
+    return { type: 'answer', answer: 'I can’t read visible calendar conflicts right now.' };
+  }
+
+  return { type: 'mistral', facts: input.interpret.facts };
+}
+
 export function forbiddenIntentAnswer(
   intent: Exclude<
     AssistantIntent,
-    'help_static' | 'calendar_summary' | 'calendar_item_details' | 'model_visible_profile_facts'
+    | 'help_static'
+    | 'calendar_summary'
+    | 'calendar_item_details'
+    | 'model_visible_profile_facts'
+    | 'model_calendar_availability_check'
   >,
   role?: ViewerRole,
 ): string {
