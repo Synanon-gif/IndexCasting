@@ -1557,7 +1557,7 @@ Vollständige Produkt- und Routing-Regeln stehen in **`.cursorrules` §29** (kei
 | Öffentliche Routen `/trust`, `/trust/*`, `/status` + Route-Tests (`normalizeTrustPath`, `publicLegalRoutes.test.ts`) | `.cursorrules` §29.1 |
 | Agency-to-Agency Roster Share — MAT-Import ohne Überschreibung, `import_models_from_agency_share` / `agencySharePackagesSupabase.ts` | `.cursorrules` §29.2 |
 | Admin `system_events` / Logger — UI und Queries an **live** Schema | `.cursorrules` §29.3 |
-| Billing Hub, Sub-Tab Attention, Owner/Model-Firewall | `.cursorrules` §29.4; `.cursor/rules/billing-payment-invariants.mdc` **I-PAY-11** |
+| Billing Hub, Sub-Tab Attention, Owner/Model-Firewall, unified “Invoices” overview (read + overlay) | `.cursorrules` §29.4; `.cursor/rules/billing-payment-invariants.mdc` **I-PAY-11**, **I-PAY-13** |
 | Manual invoices (dates at persist boundary, PDF VAT labels) | `.cursorrules` §29.4a; **I-PAY-12** |
 | Mediaslide/Netwalk vs. implizitem Storage-Mirror | `.cursorrules` §29.5; **EXTERNE PROFIL-SYNCS** (oben) |
 
@@ -1573,7 +1573,8 @@ Der AI Help Assistant MUSS Rollenterminologie strikt trennen:
 - Client-Antworten verwenden nur Client-Workspace-Labels: `Dashboard`, `Discover`, `My Projects`, `Messages`, `Calendar`, `Agencies`, `Team`, `Billing`, `Profile`.
 - Agency Option/Casting: `Calendar` -> `ADD OPTION` / `ADD CASTING`; niemals `Roster`, `Discover`, `My Projects`, `Request option`, `Request casting`.
 - Client Option/Casting: `Discover` oder `My Projects` -> `Request option` / `Request casting`; niemals `My Models`, `Clients`, `Recruiting`, `Links`, `ADD OPTION`, `ADD CASTING`.
-- **Live-Data-Allowlist (ausführbare Intents):** `help_static`, `calendar_summary`, `calendar_item_details`, Agency-only `model_visible_profile_facts`. Keine neuen Live-Data-Intents ohne Migration, Rate-Limits, Router-Tests und Terminologie-Firewall (`ai-help-role-terminology.mdc`).
+- **Live-Data-Allowlist (ausführbare Intents):** `help_static`, `calendar_summary`, `calendar_item_details`, Agency-only `model_visible_profile_facts`. Keine neuen Live-Data-Intents ohne Migration, Rate-Limits, Router-Tests und Terminologie-Firewall (`ai-help-role-terminology.mdc`). **Billing / unified invoice overview bleibt ausgeschlossen** — kein Zugriff auf `list_invoice_overview` oder Rechnungs-/Zahlungsdetails aus dem Assistant.
+- **Intent-Routing:** `phase2.ts` darf **minimal** deterministische zusätzliche Sprach-/Zeichenketten-Muster (z. B. gängige DE/EN Vermischung) nutzen, um **bestehende** erlaubte Intents zu erreichen — **keine** neuen Datenquellen oder LLM-Freiheitsgrade. **Alle nutzer-sichtbaren Antworten bleiben Englisch** (Produktkonvention §4b `.cursorrules`).
 - **Router & Facts (Quelle der Wahrheit):** `supabase/functions/ai-assistant/phase2.ts` — Intent-Klassifikation (`classifyAssistantIntent`), Kalender-Datumsbereiche (`resolveCalendarDateRange`, begrenzt durch `MAX_CALENDAR_RANGE_DAYS`), Detail-Antworten (`resolveCalendarItemDetailsAnswer*`), Facts-Builder (`buildCalendarFacts`, `buildCalendarItemDetailsFacts`, `buildModelVisibleProfileFacts`), Kontext-Helfer (`buildAssistantContext`, `isAssistantContextValid`). Änderungen dort sind produkt- und sicherheitskritisch.
 - **`calendar_item_details`:** Nur sichtbare, allowlist-Felder aus den schmalen RPCs; bei mehreren Treffern oder fehlendem Kontext → Clarification, kein Raten. Preisfragen → deterministischer Refusal (`CALENDAR_DETAIL_PRICING_REFUSAL`), keine Ausweitung auf verbotene Spalten.
 - **`model_visible_profile_facts`:** Agency-only; nur sichtbare My-Models-Fakten in minimierten Facts-Objekten an das LLM: Display-Name, sichtbare Stadt/Land, Height, Chest, Waist, Hips, Shoes, Hair, Eyes, Categories, `account_linked`.

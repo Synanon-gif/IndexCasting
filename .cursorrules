@@ -876,8 +876,10 @@ Ergänzt Kalender-Farb-Disziplin (§28.2) und feste Domänen aus dem Release-Tag
 
 ### 29.4 Billing Hub (B2B)
 
-- **Billing Hub** (Rechnungen, Settlements, Presets, Smart-Attention im Billing-Bereich): **Owner-only**-Pflichten und **Model-Billing-Firewall** unverändert — siehe `.cursor/rules/billing-payment-invariants.mdc` (**I-PAY-1 … I-PAY-12**).
-- Banner/Attention im Hub: bei **Sub-Tab-Wechsel** neu laden, wenn der Zustand von der aktiven Registerkarte abhängt (kein veralteter Smart-Attention-Stand).
+- **Billing Hub** (invoices surfaces, settlements, presets, Smart-Attention): **Owner-only** checkout/settings and **Model-Billing-Firewall** unchanged — see `.cursor/rules/billing-payment-invariants.mdc` (**I-PAY-1 … I-PAY-13**).
+- **Unified “Invoices” sub-tab:** Additive overview across **Stripe-routed** `invoices` and **manual** `manual_invoices`; operator tracking (`open` / `paid` / `problem`) and short notes live only in **`invoice_overview_metadata`** via dedicated RPCs — **must never** mutate invoice totals, `manual_invoices.status`, or Stripe lifecycle. Manual creation/editing/PDF remains under **Manual invoices** + `manualInvoicesSupabase` (**I-PAY-13**).
+- **English-only** user-visible strings for overview: `uiCopy.invoiceOverview` (consistent with §4b).
+- Banner/attention in the Hub: refetch when switching **sub-tabs** if signals depend on the active tab (no stale banner after navigation).
 
 ### 29.4a Manual invoices — wizard payload & PDF (agency manual billing)
 
@@ -923,7 +925,8 @@ Ergänzt Kalender-Farb-Disziplin (§28.2) und feste Domänen aus dem Release-Tag
 - **Keine Rollenvermischung:** AI Help darf Agency-, Client- und Model-Terminologie niemals mischen — unabhängig von der User-Frage. Der serverseitige `viewerRole` ist maßgeblich.
 - **Agency:** Nur sichtbare Agency-Labels verwenden: `Dashboard`, `My Models`, `Clients`, `Messages`, `Calendar`, `Recruiting`, `Team`, `Links`, `Billing`, `Settings`. Option/Casting-Erstellung: `Calendar` -> `ADD OPTION` / `ADD CASTING`.
 - **Client:** Nur sichtbare Client-Labels verwenden: `Dashboard`, `Discover`, `My Projects`, `Messages`, `Calendar`, `Agencies`, `Team`, `Billing`, `Profile`. Option/Casting: `Discover` oder `My Projects` -> `Request option` / `Request casting`.
-- **Live-Data-Allowlist:** Erlaubte ausführbare Intents: `help_static`, `calendar_summary`, `calendar_item_details` (Kalender-Details/Follow-ups über allowlist-Felder und sichere Clarification), sowie Agency-only `model_visible_profile_facts`. Alles andere bleibt verboten oder `unknown_live_data`, insbesondere Messages, Billing, Team/Invites, Admin/Security, DB/RLS/Schema, Writes, hidden/private Modeldaten, Emails, Telefon, Sync-/interne IDs, Storage-Pfade, File-URLs und private Medien.
+- **Live-Data-Allowlist:** Erlaubte ausführbare Intents: `help_static`, `calendar_summary`, `calendar_item_details` (Kalender-Details/Follow-ups über allowlist-Felder und sichere Clarification), sowie Agency-only `model_visible_profile_facts`. Alles andere bleibt verboten oder `unknown_live_data`, insbesondere Messages, **Billing/Rechnungen/Unified Invoice Overview** (auch kein Zugriff auf `list_invoice_overview` oder Zahlungsstatus), Team/Invites, Admin/Security, DB/RLS/Schema, Writes, hidden/private Modeldaten, Emails, Telefon, Sync-/interne IDs, Storage-Pfade, File-URLs und private Medien.
+- **Minimal multilingual routing:** Der Router in `phase2.ts` darf eng begrenzte Muster verwenden (z. B. deutsch/englisch vermischte Kalender-/Mess-Anfragen), um **dieselben** drei Live-Intents zu treffen — **ohne** neue Datenquellen, **ohne** Abweichung von Englisch in der **Nutzer-antwort**.
 - **AI-Live-Data-Sicherheit:** Kein `service_role`, kein freies SQL, keine LLM-gesteuerten Tools/Table/RPC-Zugriffe. Edge Function ruft nur schmale servereigene Datenquellen auf und gibt dem LLM ausschließlich minimierte Facts-Objekte.
 - **Kalender:** Routing und Datumsauflösung liegen in `supabase/functions/ai-assistant/phase2.ts` (`classifyAssistantIntent`, `resolveCalendarDateRange`, Detail-Antworten). Frontend-Follow-up-Kontext ist kurzlebend (TTL), nur bei eindeutig aufgelöstem Item; bei Ambiguität oder abgelaufenem Kontext → sichere Rückfrage (`AI_ASSISTANT_CONTEXT_CLARIFICATION`).
 - **Model-Facts:** Agency-only; nur sichtbare My-Models-Fakten: Display-Name, sichtbare Stadt/Land, Height, Chest, Waist, Hips, Shoes, Hair, Eyes, Categories und `account_linked` als Produktwortlaut. Bei Ambiguität nachfragen; bei nicht sichtbarem Model sichere Not-found-Antwort.
