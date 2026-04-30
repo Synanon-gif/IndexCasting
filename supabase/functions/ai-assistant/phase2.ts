@@ -235,6 +235,27 @@ export const AI_ASSISTANT_UNAVAILABLE_ANSWER =
   'AI Help is temporarily unavailable. Please try again later.';
 export const AI_ASSISTANT_RATE_LIMIT_CHECK_FAILED_ANSWER =
   'AI Help could not verify usage limits right now. Please try again.';
+
+/** Limiter RPC rejected org membership / org id pairing (distinct from transient infra failure). */
+export const AI_ASSISTANT_LIMITER_ORG_CONTEXT_ANSWER =
+  'I can’t verify AI Help usage limits because your organization context is missing, ambiguous, or doesn’t match your session. Refresh the app or switch workspace, then try again.';
+
+export type AiAssistantRateLimiterRpcFailureKind = 'org_context' | 'infra';
+
+/** Classifies PostgREST/Postgres errors from `ai_assistant_check_rate_limit` (message text varies by gateway). */
+export function classifyAiAssistantRateLimitRpcFailure(
+  error: { message?: string; code?: string } | null | undefined,
+): AiAssistantRateLimiterRpcFailureKind {
+  const msg = (error?.message ?? '').toLowerCase();
+  if (
+    msg.includes('org_context_missing') ||
+    msg.includes('org_context_ambiguous') ||
+    msg.includes('org_context_mismatch')
+  ) {
+    return 'org_context';
+  }
+  return 'infra';
+}
 export const CALENDAR_KIND_FOLLOWUP_NEEDS_DATE_ANSWER =
   'Which date or period should I check?';
 export const CALENDAR_DETAILS_LOAD_FAILED_ANSWER =

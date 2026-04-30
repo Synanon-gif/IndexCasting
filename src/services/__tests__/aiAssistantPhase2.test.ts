@@ -1445,9 +1445,12 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
   });
 
   it('uses safe request context before re-querying calendar details', () => {
-    const contextIndex = edge.indexOf('resolveCalendarItemDetailsAnswerFromContext');
+    const handlerStart = edge.indexOf('Deno.serve(async');
+    expect(handlerStart).toBeGreaterThan(-1);
+    const contextIndex = edge.indexOf('resolveCalendarItemDetailsAnswerFromContext', handlerStart);
     expect(contextIndex).toBeGreaterThan(-1);
-    expect(contextIndex).toBeLessThan(edge.indexOf('loadCalendarItemDetails({'));
+    const loadDetailsIndex = edge.indexOf('await loadCalendarItemDetails({', handlerStart);
+    expect(contextIndex).toBeLessThan(loadDetailsIndex);
     expect(edge).toMatch(/resolveRequestAssistantContext\(payload\)/);
     expect(edge).toMatch(
       /return await answerWithUsage\(\s*AI_ASSISTANT_CONTEXT_CLARIFICATION,\s*'allowed',\s*pendingCtx\)/,
@@ -1469,8 +1472,6 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
   });
 
   it('keeps model facts execution out of Phase 1 fallback responses', () => {
-    expect(edge).toMatch(/\[ai-assistant\] intent=model_visible_profile_facts triggered/);
-    expect(edge).toMatch(/\[ai-assistant\] model facts result count:/);
     expect(edge).toMatch(/resolveModelFactsExecutionResult/);
     expect(edge).toMatch(/I can’t access visible model facts right now\./);
 

@@ -39,7 +39,7 @@ Never tell a Client user to use `My Models`, `Clients`, `Recruiting`, `Links`, `
 ## Required Checks
 
 - Any change to AI help copy/system prompts must include tests that prove Agency knowledge excludes Client-only terms and Client knowledge excludes Agency-only terms.
-- Phase 2 live data is allowlist-only. Currently live intents are `calendar_summary`, `calendar_item_details`, Agency-only `model_visible_profile_facts`, and Agency-only `model_calendar_availability_check` (visible calendar conflicts only; not a final availability guarantee).
+- Phase 2 live data is allowlist-only. Executable assistant intents are **`help_static`** (no live RPCs) plus live: `calendar_summary`, `calendar_item_details`, Agency-only `model_visible_profile_facts`, and Agency-only `model_calendar_availability_check` (visible calendar conflicts only; not a final availability guarantee).
 - **`phase2.ts` multilingual routing tokens:** Minimal deterministic patterns may map mixed German/English *phrasing* to the **existing** live intents above (same allowed RPC/facts contracts). Must **not** add new intents, broaden facts, bypass role gates, add billing/invoice/live payment access, or change the requirement that **all user-visible assistant prose stays English** (product rule: `.cursorrules` §4b).
 - All other live-data intents remain forbidden, including messages, **billing/unified invoices/payments/subscriptions/offers**, team/invites, admin/security, database/RLS/schema questions, writes, hidden/private model data, emails, phone numbers, sync IDs, internal IDs, raw storage paths, file URLs, and private media.
 - No `service_role`, no free SQL, no LLM-controlled tools, and no LLM-controlled table/RPC access. The Edge Function may call only narrow server-owned data sources and must send the LLM only minimized facts objects.
@@ -53,3 +53,7 @@ Never tell a Client user to use `My Models`, `Clients`, `Recruiting`, `Links`, `
 - Usage logging may store only minimized metadata (user/org, role, intent, result, char counts, provider/model label, duration, sanitized error category). Never log or persist full prompts, full assistant answers, model names from prompts, calendar details, notes, messages, emails, phone numbers, secrets, access tokens, SQL, RPC/table/RLS details, file URLs, or returned internal IDs.
 - Pricing, negotiation, `waiting_for`, `model_approval`, raw messages, billing, team/invite, admin/security, GDPR export/delete, service_role/free SQL, and write actions remain forbidden.
 - New AI assistant SQL migrations must be narrow, org-scoped, grant only intended roles, revoke anon/PUBLIC, and be deployed without destructive migration repair. No new live-data intent may ship without persistent rate-limit coverage.
+
+## Frozen invariant pack (canonical)
+
+Treat **`.cursor/rules/ai-assistant-frozen-invariants.mdc`** as the locked checklist: executable intent allowlist (`help_static`, `calendar_*`, Agency-only model facts/conflicts), forbidden data classes, strict role boundaries, fail-closed rate limiting, minimized usage logging **without prompts/answers**, and the change gate for any new live intent. Operators: **`docs/ai-assistant-operator-limits.md`**.

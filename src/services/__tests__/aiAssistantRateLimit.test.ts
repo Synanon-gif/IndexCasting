@@ -4,6 +4,9 @@ import { uiCopy } from '../../constants/uiCopy';
 import {
   AI_ASSISTANT_LIMIT_REACHED_ANSWER,
   AI_ASSISTANT_UNAVAILABLE_ANSWER,
+  classifyAiAssistantRateLimitRpcFailure,
+  AI_ASSISTANT_LIMITER_ORG_CONTEXT_ANSWER,
+  AI_ASSISTANT_RATE_LIMIT_CHECK_FAILED_ANSWER,
   DEFAULT_AI_ASSISTANT_RATE_LIMITS,
   evaluateAiAssistantRateLimit,
   resolveAiAssistantRateLimits,
@@ -210,20 +213,36 @@ describe('AI Assistant rate limit Edge integration', () => {
   });
 
   it('checks the persistent rate limit before Mistral and live-data reads', () => {
-    const checkIndex = edge.indexOf('checkRateLimit({');
+    const handlerStart = edge.indexOf('Deno.serve(async');
+    expect(handlerStart).toBeGreaterThan(-1);
+    const checkIndex = edge.indexOf('checkRateLimit({', handlerStart);
     expect(checkIndex).toBeGreaterThan(-1);
-    expect(checkIndex).toBeLessThan(edge.indexOf('callMistral({'));
-    expect(checkIndex).toBeLessThan(edge.indexOf('loadCalendarFacts({'));
-    expect(checkIndex).toBeLessThan(edge.indexOf('loadCalendarItemDetails({'));
-    expect(checkIndex).toBeLessThan(edge.indexOf('loadModelVisibleProfileFacts({'));
+    expect(checkIndex).toBeLessThan(edge.indexOf('callMistral({', handlerStart));
+    expect(checkIndex).toBeLessThan(edge.indexOf('await loadCalendarFacts({', handlerStart));
+    expect(checkIndex).toBeLessThan(edge.indexOf('await loadCalendarItemDetails({', handlerStart));
+    expect(checkIndex).toBeLessThan(
+      edge.indexOf('await loadModelVisibleProfileFacts({', handlerStart),
+    );
   });
 
   it('fails closed if the limiter check fails and does not expose internals', () => {
     expect(edge).toMatch(/if \(!rateLimit\.ok\)/);
-    expect(edge).toMatch(/AI_ASSISTANT_UNAVAILABLE_ANSWER/);
+    expect(edge).toMatch(/rate_limit_org_context|AI_ASSISTANT_LIMITER_ORG_CONTEXT_ANSWER/);
     expect(AI_ASSISTANT_UNAVAILABLE_ANSWER).toBe(
       'AI Help is temporarily unavailable. Please try again later.',
     );
+    expect(AI_ASSISTANT_RATE_LIMIT_CHECK_FAILED_ANSWER).toContain('could not verify usage limits');
+    expect(AI_ASSISTANT_LIMITER_ORG_CONTEXT_ANSWER).not.toContain('could not verify usage limits');
+  });
+
+  it('classifies rate limit RPC errors into org-context vs infra', () => {
+    expect(classifyAiAssistantRateLimitRpcFailure({ message: 'org_context_ambiguous' })).toBe(
+      'org_context',
+    );
+    expect(
+      classifyAiAssistantRateLimitRpcFailure({ message: 'PGRST301 org_context_mismatch' }),
+    ).toBe('org_context');
+    expect(classifyAiAssistantRateLimitRpcFailure({ message: 'connection reset' })).toBe('infra');
   });
 
   it('returns a friendly limit message without exact limit numbers', () => {

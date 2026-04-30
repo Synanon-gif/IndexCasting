@@ -1,0 +1,68 @@
+---
+description: >-
+  AI Help Assistant eingefrorene Allowlist/Verbote, Rollen, Sicherheit, Rate Limits,
+  Logging — keine neuen Live-Intents ohne Review.
+globs: "supabase/functions/ai-assistant/**/*,src/services/aiAssistantSupabase.ts,src/components/help/**/*"
+alwaysApply: false
+---
+
+# AI Help Assistant — eingefrorene Invarianten (READ-ONLY Spezifikation)
+
+Diese Regel **friert** die aktuelle Assistant-Implementierung ein. **Keine** neuen KI-Features, **keine** erweiterten Datenquellen, **keine** Abschwächung von RLS, **kein** `service_role`, **keine** Billing-/Invoice-Pfade über die KI.
+
+Kanonische Implementierung: `supabase/functions/ai-assistant/index.ts`, `supabase/functions/ai-assistant/phase2.ts`. Ergänzend: `.cursor/rules/ai-help-role-terminology.mdc`, `system-invariants.mdc` (Abschnitt AI HELP ASSISTANT).
+
+Operator-Hinweise (SQL, Tabellen): `docs/ai-assistant-operator-limits.md`.
+
+## 1. Erlaubte Intents (exakt)
+
+**Ausführbare** Intents (Router + Edge dürfen nur diese mit Live-Daten/Mistral-Facts ausführen):
+
+- `help_static` — statische Produkthilfe (Mistral nur mit Server-Systemprompt, keine Live-RPCs).
+- `calendar_summary` — nur Agency/Client, nur `ai_read_calendar_summary`, Facts an Mistral gebunden.
+- `calendar_item_details` — nur Agency/Client, nur `ai_read_calendar_item_details`, keine Preis-RPCs.
+- `model_visible_profile_facts` — **nur Agency**, nur `ai_read_model_visible_profile_facts`.
+- `model_calendar_availability_check` — **nur Agency**, nur `ai_read_model_calendar_conflicts` (sichtbare Konflikte an einem Tag).
+
+**Klassifikations-„Stop“-Labels** (`forbiddenIntentAnswer`, keine Live-Ausführung): `billing`, `team_management`, `admin_security`, `database_schema`, `raw_messages`, `cross_org`, `write_action`, `model_hidden_data`, `gdpr_export_delete`, `unknown_live_data`. Diese gehören **nicht** zur Allowlist ausführbarer Intents; sie existieren zum sicheren Ablehnen ohne Datenabfluss.
+
+`safeIntent`/`invalid`: unbekannte Strings → `invalid` (Limiter + Usage dürfen `invalid` führen).
+
+## 2. Dauerhaft verboten (ohne separates Security-/Produkt-Review)
+
+- Cross-Org-Daten, Aggregation „alle Modelle“, fremde Mandanten.
+- Billing, Rechnungen, Zahlungen, Abos, Stripe, Preise über Assistant (Ausnahme: fester Refusal-Text bei Intent `billing` / Preis-Detailfeld).
+- Rohe Messages / Chat-Dumps.
+- Admin, Security, RLS, Schema, Datenbank-Internals, `service_role`, freies SQL, LLM-gesteuerte DB/RPCs.
+- Team, Invites, Kontolöschung über Assistant.
+- GDPR-Export / Löschung über Assistant.
+- Schreib-Aktionen oder Behauptungen, etwas geändert zu haben.
+- Versteckte Modelldaten; E-Mails, Telefonnummern, File-URLs, Storage-Pfade, interne IDs in Antworten/Facts.
+
+## 3. Rollengrenzen
+
+- **Agency:** eigener Org-Kalender (`get_my_org_context` / konsistente Org); sichtbare My-Models-Facts; Nur-Konflikt-„Availability“ eines sichtbaren Agency-Models an **einem** Tag.
+- **Client:** nur eigener **sichtbarer** Kalender (`calendar_*`); **keine** Agency-Modell-Facts, **keine** Agency-Modell-Verfügbarkeit.
+- **Guest/Public:** Kein Zugriff — Edge verlangt `Authorization`; kein anonymes Live-Posting.
+- **Model:** keine Live-Daten über Assistant (statische Modell-/Produktführung nur), bis ein später expliziter Facts-Vertrag existiert.
+
+Server-seitige `viewerRole`/`get_my_org_context` sind maßgeblich; Client sendet Rolle nur als Hinweis.
+
+## 4. Kontext- & Inferenz-Sicherheit
+
+- Kein generischer Phase-1-/Static-Fallback-Text für ausführbare Live-Intents (Zweige müssen deterministisch oder facts-gebunden enden).
+- Keine erfundenen Live-Daten: Mistral nur mit gelieferten Facts-JSON oder statischem Produktprompt.
+- Mehrdeutigkeit → Rückfrage (Kalender/Model/Datum/Kontext).
+- Availability = sichtbare **Konfliktprüfung** + Disclaimer; keine finale „frei gebucht“-Zusage.
+- Sichtbare Notes/Beschreibungen: Defense-in-Depth (RPC-Auswahl + `sanitizeText`/Redaction wo vorhanden).
+- Rate-Limit-RPC **vor** Mistral und vor allen Live-RPCs; bei Limiter-Fehler **fail closed** (keine Live-Reads, kein Mistral auf Kalender-/Model-/Availability-Pfaden).
+
+## 5. Rate Limits & Usage-Logging
+
+- Production-Zähler: `ai_assistant_check_rate_limit` / `ai_assistant_record_usage` (authenticated, `auth.uid()`, Org-Abgleich `p_organization_id` vs. berechnete Mitgliedschaft).
+- „AI Help could not verify usage limits right now.“ nur bei **infra**-/Parse-Failures des Limiters; Org-Kontext-Fehler des Limiters → `AI_ASSISTANT_LIMITER_ORG_CONTEXT_ANSWER` (unterscheidbar, kein Zugriff durch Abschwächung von Checks).
+- Usage-Events: **keine** vollständigen Prompts oder Antworttexte — nur minimierte Metadaten (siehe Migration / `docs/ai-assistant-operator-limits.md`).
+
+## 6. Änderungsprozess für neue Live-Intents
+
+**Nicht erlaubt** ohne: Datenschema-/Facts-Vertrag schriftlich, RLS-/SECURITY-DEFINER-Review, Router-Regressionstests (`aiAssistantPhase2.test.ts`), Rate-Limit-Abdeckung (Intent in CHECK + RPC), Terminologie-Firewall, und explizites Produkt-Go.

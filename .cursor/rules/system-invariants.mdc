@@ -1585,7 +1585,7 @@ Der AI Help Assistant MUSS Rollenterminologie strikt trennen:
 - Kein `service_role`, kein freies SQL, keine LLM-gesteuerten Tools/Table/RPC-Zugriffe. Neue AI-Live-Data-RPCs müssen read-only, org-scoped, limitiert, anon/PUBLIC-revoked und ohne destruktive Migration-Reparatur deployt werden.
 - **Regression-Tests (nicht entfernen ohne Ersatz):** `src/services/__tests__/aiAssistantPhase2.test.ts` (Router/Facts/Contracts), `src/services/__tests__/aiAssistantSmoke.test.ts` (breite Intent- und Leak-Matrix), ergänzend `aiAssistantSupabase.test.ts`, `aiAssistantRateLimit.test.ts`, `AiAssistantPanel`/Copy-Tests wo relevant. Bei Assistant-Änderungen: `npm run typecheck`, `npm run lint`, `npm test` grün halten.
 
-Kanonische Detailregel: `.cursor/rules/ai-help-role-terminology.mdc`.
+Kanonische Detailregeln: `.cursor/rules/ai-help-role-terminology.mdc`, **`.cursor/rules/ai-assistant-frozen-invariants.mdc`** (eingefrorene Assistant-Allowlist/-Verbote/Rollen/Rate-Limits/Logging). Operator-SQL: **`docs/ai-assistant-operator-limits.md`**.
 
 ---
 

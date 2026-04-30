@@ -4,8 +4,8 @@
  * Phase 2 foundation:
  * - authenticated callers only
  * - static IndexCasting help knowledge
- * - allowlisted live-data intents: calendar_summary, calendar_item_details,
- *   model_visible_profile_facts, model_calendar_availability_check
+ * - allowlisted live-data intents: help_static, calendar_summary, calendar_item_details,
+ *   model_visible_profile_facts (Agency-only), model_calendar_availability_check (Agency-only)
  * - no service_role
  * - no free SQL, arbitrary RPCs, writes, or broad private org data access
  */
@@ -15,7 +15,9 @@ import {
   AI_ASSISTANT_LIMIT_REACHED_ANSWER,
   AI_ASSISTANT_RATE_LIMIT_CHECK_FAILED_ANSWER,
   AI_ASSISTANT_UNAVAILABLE_ANSWER,
+  AI_ASSISTANT_LIMITER_ORG_CONTEXT_ANSWER,
   AI_ASSISTANT_CONTEXT_CLARIFICATION,
+  classifyAiAssistantRateLimitRpcFailure,
   buildAssistantContext,
   buildCalendarItemDetailsFacts,
   buildCalendarFacts,
@@ -419,7 +421,10 @@ async function checkRateLimit(params: {
   intent: AssistantIntent | 'invalid';
   organizationId: string | null;
   estimatedInputChars: number;
-}): Promise<{ ok: true; decision: RateLimitDecision } | { ok: false }> {
+}): Promise<
+  | { ok: true; decision: RateLimitDecision }
+  | { ok: false; failureKind: 'org_context' | 'infra' }
+> {
   const { data, error } = await params.supabase.rpc('ai_assistant_check_rate_limit', {
     p_request_id: params.requestId,
     p_viewer_role: params.role,
@@ -432,12 +437,15 @@ async function checkRateLimit(params: {
   });
 
   if (error) {
-    console.warn('[ai-assistant] rate limit check failed', { code: error.code });
-    return { ok: false };
+    const failureKind = classifyAiAssistantRateLimitRpcFailure(error);
+    if (failureKind === 'infra') {
+      console.warn('[ai-assistant] rate limit check failed', { code: error.code });
+    }
+    return { ok: false, failureKind };
   }
 
   const decision = normalizeRateLimitDecision(data);
-  return decision ? { ok: true, decision } : { ok: false };
+  return decision ? { ok: true, decision } : { ok: false, failureKind: 'infra' };
 }
 
 async function recordUsageEvent(params: {
@@ -1041,11 +1049,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
       estimatedInputChars,
     });
     if (!rateLimit.ok) {
-      console.warn('[ai-assistant]', {
-        intent: usageIntent,
-        error_category: 'rate_limit_rpc_failed',
+      await finalizeUsage({
+        result: 'error',
+        errorCategory:
+          rateLimit.failureKind === 'org_context'
+            ? 'rate_limit_org_context'
+            : 'rate_limit_check_failed',
       });
-      return assistantAnswerResponse(AI_ASSISTANT_RATE_LIMIT_CHECK_FAILED_ANSWER, cors);
+      const limiterAnswer =
+        rateLimit.failureKind === 'org_context'
+          ? AI_ASSISTANT_LIMITER_ORG_CONTEXT_ANSWER
+          : AI_ASSISTANT_RATE_LIMIT_CHECK_FAILED_ANSWER;
+      return assistantAnswerResponse(limiterAnswer, cors);
     }
     if (!rateLimit.decision.allowed) {
       usageFinalized = true;
@@ -1152,13 +1167,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
         loadParams = { mode: 'reference', reference };
       }
 
-      console.log('PHASE2_CALENDAR_DETAILS_TRIGGERED', {
-        role,
-        hasOrgContext: true,
-        mode: loadParams.mode,
-        lookbackDays: loadParams.mode === 'last_job' ? MAX_CALENDAR_DETAIL_LOOKBACK_DAYS : undefined,
-      });
-
       const result = await loadCalendarItemDetails({
         supabase,
         role,
@@ -1198,13 +1206,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
           'error',
         );
       }
-
-      console.log('PHASE2_CALENDAR_TRIGGERED', {
-        role,
-        hasOrgContext: true,
-        startDate: classification.dateRange.startDate,
-        endDate: classification.dateRange.endDate,
-      });
 
       const result = await loadCalendarFacts({
         supabase,
@@ -1259,8 +1260,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     if (classification.intent === 'model_calendar_availability_check') {
-      console.log('[ai-assistant] intent=model_calendar_availability_check triggered');
-
       if (role !== 'agency') {
         if (role === 'client') {
           return await answerWithUsage(CLIENT_MODEL_AVAILABILITY_REFUSAL, 'blocked_forbidden');
@@ -1366,8 +1365,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     if (classification.intent === 'model_visible_profile_facts') {
-      console.log('[ai-assistant] intent=model_visible_profile_facts triggered');
-
       if (role !== 'agency') {
         return await answerWithUsage(CLIENT_MODEL_FACTS_REFUSAL, 'blocked_forbidden');
       }
@@ -1391,12 +1388,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
         );
       }
 
-      console.log('PHASE2_MODEL_FACTS_TRIGGERED', {
-        role,
-        hasOrgContext: true,
-        searchLength: (classification.searchText || assistantContext?.last_model_name || '').length,
-      });
-
       const result = await loadModelVisibleProfileFacts({
         supabase,
         searchText: classification.searchText || assistantContext?.last_model_name || '',
@@ -1406,22 +1397,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return await answerWithUsage('I can’t access visible model facts right now.', 'error');
       }
 
-      const resultCount =
-        result.facts.matchStatus === 'found'
-          ? 1
-          : result.facts.matchStatus === 'ambiguous'
-            ? (result.facts.candidates ?? []).length
-            : 0;
-      console.log('[ai-assistant] model facts result count:', resultCount);
-      if (result.facts.matchStatus !== 'found') {
-        console.log('[ai-assistant] model facts non-single result', {
-          resultCount,
-          searchLength: (classification.searchText || assistantContext?.last_model_name || '').length,
-          fuzzyThreshold: 0.4,
-        });
-      }
-
       const execution = resolveModelFactsExecutionResult({ role, facts: result.facts });
+
       if (execution.type === 'answer') {
         return await answerWithUsage(execution.answer);
       }
