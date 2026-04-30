@@ -25,7 +25,6 @@ import {
   forbiddenIntentAnswer,
   interpretModelCalendarConflictsRpc,
   MAX_CALENDAR_RANGE_DAYS,
-  MAX_MODEL_SEARCH_CHARS,
   resolveCalendarItemDetailsAnswer,
   resolveCalendarItemDetailsAnswerFromContext,
   resolveModelCalendarAvailabilityExecutionResult,

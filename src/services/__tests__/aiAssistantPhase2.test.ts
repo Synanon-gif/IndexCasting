@@ -20,7 +20,11 @@ import {
   normalizeTextForModelIntentMatching,
   findSingleCalendarReferenceFromFacts,
   forbiddenIntentAnswer,
+  expandKindOnlyCalendarFollowup,
+  formatModelCalendarAvailabilityDeterministic,
   interpretModelCalendarConflictsRpc,
+  isGlobalLastCalendarBrowseSummaryQuestion,
+  isGlobalNextCalendarBrowseSummaryQuestion,
   MAX_CALENDAR_DETAIL_LOOKBACK_DAYS,
   MAX_CALENDAR_RANGE_DAYS,
   MAX_MODEL_SEARCH_CHARS,
@@ -32,11 +36,95 @@ import {
   resolveCalendarDetailDateRange,
   resolveCalendarItemDetailsAnswerFromContext,
   resolveCalendarItemDetailsAnswer,
+  resolveCalendarDateRange,
   resolveModelCalendarAvailabilityExecutionResult,
   resolveModelFactsExecutionResult,
 } from '../../../supabase/functions/ai-assistant/phase2';
 
 const BASE_DATE = new Date('2026-04-29T12:00:00.000Z');
+
+describe('AI Assistant calendar + availability routing (hardening)', () => {
+  it('detects global last-calendar browse questions', () => {
+    expect(
+      isGlobalLastCalendarBrowseSummaryQuestion('what was the last event in the calendar'),
+    ).toBe(true);
+    expect(isGlobalLastCalendarBrowseSummaryQuestion('last calendar event')).toBe(true);
+    expect(isGlobalLastCalendarBrowseSummaryQuestion('latest entry')).toBe(true);
+  });
+
+  it('routes global last event questions to calendar_summary with recentFirst range', () => {
+    const r = classifyAssistantIntent(
+      'what was the last event in the calendar',
+      'agency',
+      BASE_DATE,
+    );
+    expect(r.intent).toBe('calendar_summary');
+    if (r.intent === 'calendar_summary') expect(r.dateRange.recentFirst).toBe(true);
+  });
+
+  it('routes next event questions via global next detector', () => {
+    expect(isGlobalNextCalendarBrowseSummaryQuestion('what is my next event?')).toBe(true);
+    const r = classifyAssistantIntent('what is my next event?', 'agency', BASE_DATE);
+    expect(r.intent).toBe('calendar_summary');
+    if (r.intent === 'calendar_summary') expect(r.dateRange.recentFirst).toBeUndefined();
+  });
+
+  it('expands kind-only replies when pending_calendar_kind_prompt', () => {
+    const ctx = buildAssistantContext({
+      pendingCalendarKindPrompt: true,
+      lastIntent: 'calendar_item_details',
+      createdAt: BASE_DATE,
+    });
+    expect(expandKindOnlyCalendarFollowup('job', ctx, BASE_DATE)).toBe('When was the last job?');
+    expect(expandKindOnlyCalendarFollowup('job', null, BASE_DATE)).toBeNull();
+  });
+
+  it('formats availability facts deterministically', () => {
+    const facts = buildModelCalendarAvailabilityFactsFromRpc({
+      match_status: 'found',
+      model_display_name: 'Johann E',
+      check_date: '2026-04-30',
+      has_visible_conflicts: false,
+      events: [],
+    });
+    expect(facts).not.toBeNull();
+    if (facts) {
+      const s = formatModelCalendarAvailabilityDeterministic(facts);
+      expect(s).toContain('Johann E');
+      expect(s).toContain(AVAILABILITY_DISCLAIMER);
+    }
+  });
+
+  it('normalizes initial possessive Es before waist for profile search', () => {
+    expect(extractModelProfileSearchText('what is Aram Es waist?')).toBe('Aram E');
+    expect(extractModelProfileSearchText("what is Aram E's waist?")).toBe('Aram E');
+    expect(extractModelProfileSearchText('what is Aram E s waist?')).toBe('Aram E');
+  });
+
+  it('routes "When was the last casting?" to last_job details with casting kind', () => {
+    const r = classifyAssistantIntent('When was the last casting?', 'agency', BASE_DATE);
+    expect(r.intent).toBe('calendar_item_details');
+    if (r.intent === 'calendar_item_details') {
+      expect(r.reference).toBe('last_job');
+      expect(r.kindHint).toBe('casting');
+    }
+  });
+
+  it('routes bare "give me details" to calendar_item_details', () => {
+    expect(classifyAssistantIntent('give me details', 'agency', BASE_DATE).intent).toBe(
+      'calendar_item_details',
+    );
+  });
+
+  it('resolveCalendarDateRange parses show calendar May 12', () => {
+    const r = resolveCalendarDateRange(
+      'show calendar May 12',
+      new Date('2026-04-30T12:00:00.000Z'),
+    );
+    expect(r.startDate).toBe('2026-05-12');
+    expect(r.endDate).toBe('2026-05-12');
+  });
+});
 
 describe('AI Assistant Phase 2 intent router', () => {
   it('allows Agency calendar summary intent', () => {
@@ -271,7 +359,7 @@ describe('AI Assistant Phase 2 intent router', () => {
       ['Remi Lovisolo measurements', 'Remi Lovisolo'],
       ['Johann E measurements', 'Johann E'],
       ["What are Johann E's measurements?", 'Johann E'],
-      ['What are Johann Es measurements?', 'Johann Es'],
+      ['What are Johann Es measurements?', 'Johann E'],
     ];
     for (const [msg, expectedSearch] of separatedPossessiveExamples) {
       const routed = classifyAssistantIntent(msg, 'agency', BASE_DATE);
@@ -1208,6 +1296,13 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     path.join(process.cwd(), 'supabase/functions/ai-assistant/index.ts'),
     'utf8',
   );
+  const calendarDetailsLastKindMigration = readFileSync(
+    path.join(
+      process.cwd(),
+      'supabase/migrations/20260430123000_ai_read_calendar_item_details_last_kind.sql',
+    ),
+    'utf8',
+  );
   const hardeningMigration = readFileSync(
     path.join(
       process.cwd(),
@@ -1250,6 +1345,16 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     );
     expect(migration).toMatch(
       /GRANT EXECUTE ON FUNCTION public\.ai_read_model_visible_profile_facts\(text, integer\) TO authenticated/i,
+    );
+  });
+
+  it('adds last_kind parameter migration for calendar details RPC', () => {
+    expect(calendarDetailsLastKindMigration).toMatch(/p_last_kind text DEFAULT 'job'/);
+    expect(calendarDetailsLastKindMigration).toMatch(
+      /REVOKE ALL ON FUNCTION public\.ai_read_calendar_item_details\(text, text, jsonb, date, date, integer, text\)/i,
+    );
+    expect(calendarDetailsLastKindMigration).toMatch(
+      /p_last_kind IS NULL OR rows\.event_kind = p_last_kind/,
     );
   });
 
@@ -1344,7 +1449,9 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     expect(contextIndex).toBeGreaterThan(-1);
     expect(contextIndex).toBeLessThan(edge.indexOf('loadCalendarItemDetails({'));
     expect(edge).toMatch(/resolveRequestAssistantContext\(payload\)/);
-    expect(edge).toMatch(/return await answerWithUsage\(AI_ASSISTANT_CONTEXT_CLARIFICATION\)/);
+    expect(edge).toMatch(
+      /return await answerWithUsage\(\s*AI_ASSISTANT_CONTEXT_CLARIFICATION,\s*'allowed',\s*pendingCtx\)/,
+    );
     expect(edge).not.toMatch(/payload\.context.*organization_id|payload\.context.*id/i);
   });
 

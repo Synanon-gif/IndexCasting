@@ -21,6 +21,8 @@ export type CalendarDateRange = {
   startDate: string;
   endDate: string;
   wasCapped: boolean;
+  /** Server returns ASC order; Edge may reorder facts when answering “last …” questions. */
+  recentFirst?: boolean;
 };
 
 export type IntentClassification =
@@ -107,6 +109,8 @@ export type AiAssistantContext = {
   last_model_source?: 'single_model_match' | null;
   last_availability_check_date?: string | null;
   last_availability_date_source?: 'single_day_resolve' | null;
+  /** True after an ambiguous calendar follow-up asked which item/kind; enables one-word kind replies. */
+  pending_calendar_kind_prompt?: boolean | null;
   last_intent?: Extract<
     AssistantIntent,
     | 'help_static'
@@ -229,6 +233,12 @@ export const AI_ASSISTANT_LIMIT_REACHED_ANSWER =
   'You’ve reached the AI assistant usage limit. Please try again later. Contact your organization admin if you need higher limits.';
 export const AI_ASSISTANT_UNAVAILABLE_ANSWER =
   'AI Help is temporarily unavailable. Please try again later.';
+export const AI_ASSISTANT_RATE_LIMIT_CHECK_FAILED_ANSWER =
+  'AI Help could not verify usage limits right now. Please try again.';
+export const CALENDAR_KIND_FOLLOWUP_NEEDS_DATE_ANSWER =
+  'Which date or period should I check?';
+export const CALENDAR_DETAILS_LOAD_FAILED_ANSWER =
+  'I couldn’t load the details for that visible calendar item right now. Please try again.';
 export const DEFAULT_AI_ASSISTANT_RATE_LIMITS: AiAssistantRateLimits = {
   userHour: 20,
   userDay: 80,
@@ -296,6 +306,50 @@ const LIVE_DATA_PATTERNS = [
   /\b(find|show|list)\s+bookings?\s+for\b/i,
 ];
 
+/** Single-word calendar kind reply after assistant asked which kind/item. */
+export const CALENDAR_KIND_ONLY_REPLY = /^\s*(job|casting|option|booking)s?\.?\s*$/i;
+
+function isAvailabilityLikeMessage(message: string): boolean {
+  return /\b(free|available|busy|booked|verf(ü|ue)gbar|verf(ü|ue)gbarkeit|frei|gebucht|zeit)\b/iu.test(
+    message,
+  );
+}
+
+/** Past-focused “last / latest …” calendar browse that collided with calendar_item_details (“last event”). */
+export function isGlobalLastCalendarBrowseSummaryQuestion(message: string): boolean {
+  const n = message.trim();
+  const l = n.toLowerCase();
+  if (!n || CALENDAR_KIND_ONLY_REPLY.test(n)) return false;
+  if (isAvailabilityLikeMessage(n)) return false;
+  if (/\b(next|upcoming)\b/i.test(l) && !/\b(last|latest|previous|letzte)\b/i.test(l)) return false;
+  if (/\b(who|which)\b/i.test(l) && /\b(client|model|counterparty|agency)\b/i.test(l)) return false;
+
+  if (
+    /\bwhat\s+was\s+(?:the\s+)?last\s+event\s+in\s+(?:the\s+)?calendar\b/i.test(l) ||
+    /\bwhat\s+was\s+my\s+last\s+calendar\s+event\b/i.test(l) ||
+    /\b(last|latest)\s+calendar\s+event\b/i.test(l) ||
+    /\b(last|latest)\s+calendar\s+item\b/i.test(l) ||
+    /\b(last|latest)\s+event\b/i.test(l) ||
+    /\blatest\s+entry\b/i.test(l) ||
+    /\bwhat\s+happened\s+last\b/i.test(l) ||
+    /\bwhat\s+did\s+i\s+have\s+last\b/i.test(l)
+  ) {
+    return true;
+  }
+  if (/\bletzte[rn]?\s+(event|termin|kalendereintrag|eintrag)\b/iu.test(n)) return true;
+  return false;
+}
+
+export function isGlobalNextCalendarBrowseSummaryQuestion(message: string): boolean {
+  const l = message.trim().toLowerCase();
+  if (!l || isAvailabilityLikeMessage(l)) return false;
+  return (
+    /\bwhat\s+is\s+my\s+next\s+event\b/i.test(l) ||
+    /\bnext\s+calendar\s+event\b/i.test(l) ||
+    /\bupcoming\s+event\b/i.test(l)
+  );
+}
+
 const CALENDAR_PATTERNS = [
   /\bcalendar\b/i,
   /\bwhat\s+(?:is|what's)\s+on\s+(?:my|our)?\s*calendar\b/i,
@@ -320,9 +374,13 @@ const CALENDAR_PATTERNS = [
 
 const CALENDAR_DETAIL_PATTERNS = [
   /^\s*tell me more\.?\s*$/i,
+  /^\s*give me details\.?\s*$/i,
+  /^\s*(more\s+)?details\.?\s*$/i,
   /^\s*what\s+job\??\s*$/i,
   /\b(details?|more|tell me more)\b.*\b(that|this|last|job|booking|casting|option|calendar item|event)\b/i,
-  /\b(that|this|last)\s+(job|booking|casting|option|calendar item|event)\b/i,
+  // Avoid bare “last event” here — it catches global “what was the last event in the calendar” (calendar_summary).
+  /\b(that|this)\s+(job|booking|casting|option|calendar item|event)\b/i,
+  /\blast\s+(job|booking|casting|option|calendar item|event)\b/i,
   /\bwho\s+was\s+(?:the\s+)?(?:client|agency|counterparty)\??\s*$/i,
   /\bwho\s+was\s+(?:the\s+)?(?:client|agency|counterparty)\b.*\b(that|this|last|job|booking|casting|option)\b/i,
   /\bwho\s+was\s+it\s+with\b/i,
@@ -711,7 +769,8 @@ function stripModelAvailabilityNoise(value: string): string {
 }
 
 export function extractModelAvailabilitySearchText(message: string): string {
-  return normalizeSearchTextArtifacts(stripModelAvailabilityNoise(message)).slice(
+  const collapsed = collapseInitialPossessiveEsBeforeModelFactTail(message);
+  return normalizeSearchTextArtifacts(stripModelAvailabilityNoise(collapsed)).slice(
     0,
     MAX_MODEL_SEARCH_CHARS,
   );
@@ -914,6 +973,16 @@ export function normalizeSeparatedPossessiveSTokenForModelFacts(input: string): 
   return input.replace(SEPARATED_POSSESSIVE_S_BEFORE_MODEL_FACT_TAIL, ' ');
 }
 
+/**
+ * Typo/layout: “Aram Es waist” / merged initial possessive (“E” + “s”) before fact tails.
+ */
+const INITIAL_POSSESSIVE_ES_BEFORE_MODEL_FACT_TAIL =
+  /\b(\p{L}{2,})\s+(\p{L})s\b(?=\s+(?:measurements?|dimensions?|height|waist|chest|hips|bust|hair|eyes?|shoes?|shoe\s+size|model\s+size|profile\s+facts?|basic\s+facts?|model\s+facts?|maße|masse|messwerte|größe|grosse|taille|brust|hüfte|huefte|schuhe|schuhgröße|schuhgroesse|haare|augen)\b)/giu;
+
+export function collapseInitialPossessiveEsBeforeModelFactTail(input: string): string {
+  return input.replace(INITIAL_POSSESSIVE_ES_BEFORE_MODEL_FACT_TAIL, '$1 $2');
+}
+
 /** Stopwords / measurement tokens that must not lose a trailing “s” during fuzzy name cleanup. */
 const MODEL_SEARCH_TRAILING_S_NO_STRIP = new Set([
   'his',
@@ -1026,6 +1095,7 @@ const MODEL_SEARCH_MEASUREMENT_LEXEMES = new Set([
  */
 export function normalizeTextForModelIntentMatching(message: string): string {
   let s = message.trim().normalize('NFKC').toLowerCase();
+  s = collapseInitialPossessiveEsBeforeModelFactTail(s);
   s = normalizeSeparatedPossessiveSTokenForModelFacts(s);
   s = s.replace(/\b(\p{L}+)['\u2019]s\b/gu, '$1');
   s = s.replace(/[^\p{L}\p{N}\s]+/gu, ' ');
@@ -1205,6 +1275,8 @@ function resolveCalendarDetailRequestedField(message: string): CalendarDetailReq
 
 function resolveCalendarDetailReference(message: string): 'followup' | 'last_job' {
   if (/\blast\s+job\b/i.test(message)) return 'last_job';
+  if (/\blast\s+(casting|option|booking)\b/i.test(message)) return 'last_job';
+  if (/\blast\s+(calendar\s+)?(event|item|entry)\b/i.test(message)) return 'last_job';
   if (/\bletzte[rn]?\s+(?:job|buchung|casting|option)\b/iu.test(message)) return 'last_job';
   return 'followup';
 }
@@ -1232,7 +1304,7 @@ function isPronounModelFactsQuestion(message: string): boolean {
 
 export function extractModelProfileSearchText(message: string): string {
   const normalized = normalizeSeparatedPossessiveSTokenForModelFacts(
-    message.replace(/\s+/g, ' ').trim(),
+    collapseInitialPossessiveEsBeforeModelFactTail(message.replace(/\s+/g, ' ').trim()),
   );
   const bracketMatch = normalized.match(/\[([^\]]{2,80})\]/);
   if (bracketMatch?.[1]) {
@@ -1342,6 +1414,7 @@ export function resolveCalendarDateRange(message: string, now = new Date()): Cal
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   let start = today;
   let days = 7;
+  let recentFirst = false;
 
   const nextDaysMatch = normalized.match(/\bnext\s+(\d{1,3})\s+days?\b/);
   const explicitRangeMatch = normalized.match(
@@ -1351,7 +1424,14 @@ export function resolveCalendarDateRange(message: string, now = new Date()): Cal
   const weekdayMatch = normalized.match(
     /\b(?:this\s+|next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/,
   );
-  if (explicitRangeMatch?.[1] && explicitRangeMatch[2]) {
+  const namedDayOnly = parseMonthNameDay(message.trim(), now);
+  if (
+    namedDayOnly?.kind === 'ok' &&
+    /\b(show\s+calendar|what\s+happened|happened\s+on|calendar|kalender)\b/i.test(normalized)
+  ) {
+    start = dateFromDateOnly(namedDayOnly.date)!;
+    days = 1;
+  } else if (explicitRangeMatch?.[1] && explicitRangeMatch[2]) {
     const rangeStart = dateFromDateOnly(explicitRangeMatch[1]);
     const rangeEnd = dateFromDateOnly(explicitRangeMatch[2]);
     if (rangeStart && rangeEnd && rangeEnd >= rangeStart) {
@@ -1372,10 +1452,16 @@ export function resolveCalendarDateRange(message: string, now = new Date()): Cal
       normalized,
     ) ||
     /\bletzte[rn]?\s+(?:job|buchung|casting|option)\b/iu.test(normalized) ||
-    /\bletzte\s+woche\b/iu.test(normalized)
+    /\bletzte\s+woche\b/iu.test(normalized) ||
+    /\b(last|latest)\s+(?:event|entry|calendar\s+event|calendar\s+item)\b/i.test(normalized) ||
+    /\bwhat\s+happened\s+last\b/i.test(normalized) ||
+    /\bwhat\s+did\s+i\s+have\s+last\b/i.test(normalized) ||
+    /\bwhat\s+was\s+(?:the\s+)?last\s+(?:event|entry)\b/i.test(normalized) ||
+    isGlobalLastCalendarBrowseSummaryQuestion(normalized)
   ) {
     start = addDays(today, -(MAX_CALENDAR_RANGE_DAYS - 1));
     days = MAX_CALENDAR_RANGE_DAYS;
+    recentFirst = true;
   } else if (normalized.includes('tomorrow') || /\bmorgen\b/iu.test(normalized)) {
     start = addDays(today, 1);
     days = 1;
@@ -1397,6 +1483,7 @@ export function resolveCalendarDateRange(message: string, now = new Date()): Cal
     startDate: dateOnly(start),
     endDate: dateOnly(addDays(start, cappedDays - 1)),
     wasCapped: days > cappedDays,
+    ...(recentFirst ? { recentFirst: true as const } : {}),
   };
 }
 
@@ -1420,6 +1507,15 @@ export function classifyAssistantIntent(
 
   for (const [intent, pattern] of FORBIDDEN_PATTERNS) {
     if (pattern.test(normalized)) return { intent };
+  }
+
+  if (role === 'agency' || role === 'client') {
+    if (isGlobalLastCalendarBrowseSummaryQuestion(normalized)) {
+      return { intent: 'calendar_summary', dateRange: resolveCalendarDateRange(normalized, now) };
+    }
+    if (isGlobalNextCalendarBrowseSummaryQuestion(normalized)) {
+      return { intent: 'calendar_summary', dateRange: resolveCalendarDateRange(normalized, now) };
+    }
   }
 
   const modelIntentFolded = normalizeTextForModelIntentMatching(normalized);
@@ -1753,17 +1849,17 @@ export function resolveCalendarItemDetailsAnswer(facts: CalendarItemDetailsFacts
     case 'counterparty':
       return item.counterparty_name
         ? `The visible counterparty is ${item.counterparty_name}.`
-        : 'No visible counterparty is shown for that calendar item.';
+        : 'I can’t see a visible counterparty for that item.';
     case 'model':
       return item.model_name
         ? `The visible model is ${item.model_name}.`
-        : 'No visible model is shown for that calendar item.';
+        : 'I can’t see a visible model for that item.';
     case 'date':
       return `It is on ${formatCalendarDateTime(item)}.`;
     case 'description':
       return item.note
         ? `The visible description is: ${item.note}`
-        : 'No visible description or note is shown for that calendar item.';
+        : 'I can’t see a visible note or description for that item.';
     case 'summary': {
       const lines = [
         `${humanCalendarKind(item.kind)}: ${item.title}`,
@@ -1785,6 +1881,7 @@ export function buildAssistantContext(input: {
   lastAvailabilityCheckDate?: string | null;
   lastAvailabilityDateSource?: 'single_day_resolve' | null;
   lastIntent?: AiAssistantContext['last_intent'];
+  pendingCalendarKindPrompt?: boolean;
   createdAt?: Date;
   expiresAt?: Date;
 }): AiAssistantContext {
@@ -1828,10 +1925,14 @@ export function buildAssistantContext(input: {
   ) {
     context.last_intent = input.lastIntent;
   }
+  if (input.pendingCalendarKindPrompt === true) {
+    context.pending_calendar_kind_prompt = true;
+  }
   if (
     context.last_calendar_item ||
     context.last_model_name ||
-    context.last_availability_check_date
+    context.last_availability_check_date ||
+    context.pending_calendar_kind_prompt === true
   ) {
     const createdAt = input.createdAt ?? new Date();
     const expiresAt =
@@ -1854,7 +1955,10 @@ export function isAssistantContextValid(context: AiAssistantContext | null, now 
     context.last_availability_date_source === 'single_day_resolve' &&
     typeof context.last_availability_check_date === 'string' &&
     /^\d{4}-\d{2}-\d{2}$/.test(context.last_availability_check_date);
-  if (!hasCalendarItem && !hasModelName && !hasAvailabilityFollowup) return false;
+  const hasPendingKind =
+    context.pending_calendar_kind_prompt === true &&
+    (context.last_intent === 'calendar_item_details' || context.last_intent === 'calendar_summary');
+  if (!hasCalendarItem && !hasModelName && !hasAvailabilityFollowup && !hasPendingKind) return false;
 
   if (typeof context.context_created_at !== 'string' || typeof context.context_expires_at !== 'string') {
     return false;
@@ -1867,6 +1971,24 @@ export function isAssistantContextValid(context: AiAssistantContext | null, now 
   if (expiresAt <= nowMs) return false;
   if (expiresAt - createdAt > AI_ASSISTANT_CONTEXT_TTL_MS + 30_000) return false;
   return true;
+}
+
+export function expandKindOnlyCalendarFollowup(
+  message: string,
+  assistantContext: AiAssistantContext | null,
+  now = new Date(),
+): string | null {
+  const m = message.trim();
+  if (!CALENDAR_KIND_ONLY_REPLY.test(m)) return null;
+  if (!isAssistantContextValid(assistantContext, now)) return null;
+  if (assistantContext!.pending_calendar_kind_prompt !== true) return null;
+  const match = m.match(CALENDAR_KIND_ONLY_REPLY);
+  const raw = (match?.[1] ?? '').toLowerCase();
+  if (raw === 'job') return 'When was the last job?';
+  if (raw === 'casting') return 'When was the last casting?';
+  if (raw === 'option') return 'When was the last option?';
+  if (raw === 'booking') return 'When was the last booking?';
+  return null;
 }
 
 export function resolveCalendarItemDetailsAnswerFromContext(
@@ -2044,6 +2166,21 @@ export function buildModelCalendarAvailabilityFactsFromRpc(raw: unknown): ModelC
     has_visible_conflicts: r.has_visible_conflicts === true || events.length > 0,
     events,
   };
+}
+
+export function formatModelCalendarAvailabilityDeterministic(facts: ModelCalendarAvailabilityFacts): string {
+  const disclaimer = facts.disclaimer;
+  if (!facts.has_visible_conflicts || facts.events.length === 0) {
+    return `I don’t see any visible calendar conflicts for ${facts.model_display_name} on ${facts.check_date}. ${disclaimer}`;
+  }
+  const lines = facts.events.map((e) => {
+    const t = [e.start_time, e.end_time].filter(Boolean).join('–');
+    const who = e.counterparty_name ? ` · ${e.counterparty_name}` : '';
+    return `- ${e.kind_label}${t ? ` (${t})` : ''}: ${e.title}${who}`;
+  });
+  return `Visible calendar conflicts for ${facts.model_display_name} on ${facts.check_date}:\n${lines.join(
+    '\n',
+  )}\n\n${disclaimer}`;
 }
 
 export function interpretModelCalendarConflictsRpc(raw: unknown): {

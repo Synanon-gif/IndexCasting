@@ -13,6 +13,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   AI_ASSISTANT_LIMIT_REACHED_ANSWER,
+  AI_ASSISTANT_RATE_LIMIT_CHECK_FAILED_ANSWER,
   AI_ASSISTANT_UNAVAILABLE_ANSWER,
   AI_ASSISTANT_CONTEXT_CLARIFICATION,
   buildAssistantContext,
@@ -22,12 +23,17 @@ import {
   buildModelVisibleProfileFacts,
   CALENDAR_DETAIL_AMBIGUOUS_ANSWER,
   CALENDAR_DETAIL_PRICING_REFUSAL,
+  CALENDAR_DETAILS_LOAD_FAILED_ANSWER,
+  CALENDAR_KIND_FOLLOWUP_NEEDS_DATE_ANSWER,
+  CALENDAR_KIND_ONLY_REPLY,
   AVAILABILITY_DISCLAIMER,
   CLIENT_MODEL_AVAILABILITY_REFUSAL,
   CLIENT_MODEL_FACTS_REFUSAL,
   classifyAssistantIntent,
+  expandKindOnlyCalendarFollowup,
   findSingleCalendarReferenceFromFacts,
   forbiddenIntentAnswer,
+  formatModelCalendarAvailabilityDeterministic,
   MAX_CALENDAR_DETAIL_LOOKBACK_DAYS,
   MAX_CALENDAR_RESULTS,
   MAX_MODEL_FACT_CANDIDATES,
@@ -345,13 +351,15 @@ function normalizeAssistantContext(raw: unknown): AiAssistantContext | null {
         ? 'single_day_resolve'
         : null,
     lastIntent,
+    pendingCalendarKindPrompt: record.pending_calendar_kind_prompt === true ? true : undefined,
     createdAt,
     expiresAt,
   });
   const hasAllowedContextSource =
     record.last_calendar_item_source === 'single_resolved_item' ||
     record.last_model_source === 'single_model_match' ||
-    record.last_availability_date_source === 'single_day_resolve';
+    record.last_availability_date_source === 'single_day_resolve' ||
+    record.pending_calendar_kind_prompt === true;
   if (!hasAllowedContextSource) {
     return null;
   }
@@ -478,12 +486,31 @@ function calendarContextFromDetails(facts: CalendarItemDetailsFacts): AssistantR
   });
 }
 
-function calendarContextFromSummary(facts: CalendarFacts): AssistantResponseContext | undefined {
-  if (facts.items.length !== 1) return undefined;
-  return buildAssistantContext({
-    lastCalendarItem: facts.items[0],
-    lastIntent: 'calendar_summary',
-  });
+function calendarContextFromSummary(
+  facts: CalendarFacts,
+  options?: { focusMostRecent?: boolean },
+): AssistantResponseContext | undefined {
+  if (facts.items.length === 0) return undefined;
+  if (facts.items.length === 1) {
+    return buildAssistantContext({
+      lastCalendarItem: facts.items[0],
+      lastIntent: 'calendar_summary',
+    });
+  }
+  if (options?.focusMostRecent) {
+    const sorted = [...facts.items].sort((a, b) => {
+      const d = b.date.localeCompare(a.date);
+      if (d !== 0) return d;
+      const st = (b.start_time ?? '').localeCompare(a.start_time ?? '');
+      if (st !== 0) return st;
+      return b.title.localeCompare(a.title);
+    });
+    return buildAssistantContext({
+      lastCalendarItem: sorted[0],
+      lastIntent: 'calendar_summary',
+    });
+  }
+  return undefined;
 }
 
 function modelContextFromFacts(facts: ModelVisibleProfileFacts): AssistantResponseContext | undefined {
@@ -749,15 +776,20 @@ async function loadCalendarItemDetails(params: {
   reference?: CalendarItemReference;
   startDate?: string;
   endDate?: string;
+  lastKind?: string | null;
 }): Promise<{ ok: true; facts: CalendarItemDetailsFacts } | { ok: false; reason: 'org_context' | 'failed' }> {
-  const { data, error } = await params.supabase.rpc('ai_read_calendar_item_details', {
+  const rpcBody: Record<string, unknown> = {
     p_viewer_role: params.role,
     p_mode: params.mode,
     p_reference: params.reference ?? null,
     p_start_date: params.startDate ?? null,
     p_end_date: params.endDate ?? null,
     p_limit: 2,
-  });
+  };
+  if (params.mode === 'last_job') {
+    rpcBody.p_last_kind = params.lastKind === null ? null : params.lastKind ?? 'job';
+  }
+  const { data, error } = await params.supabase.rpc('ai_read_calendar_item_details', rpcBody);
 
   if (error) {
     const msg = error.message ?? '';
@@ -832,7 +864,10 @@ async function loadModelCalendarConflicts(params: {
   supabase: SupabaseClientLike;
   searchText: string;
   checkDate: string;
-}): Promise<{ ok: true; payload: unknown } | { ok: false }> {
+}): Promise<
+  | { ok: true; payload: unknown }
+  | { ok: false; category: 'permission' | 'missing_rpc' | 'invalid_args' | 'unknown' }
+> {
   const { data, error } = await params.supabase.rpc('ai_read_model_calendar_conflicts', {
     p_search_text: params.searchText,
     p_date: params.checkDate,
@@ -840,17 +875,24 @@ async function loadModelCalendarConflicts(params: {
   });
 
   if (error) {
-    const msg = error.message ?? '';
-    if (
-      /not_authenticated|org_context_(missing|ambiguous)|invalid_search|invalid_date|unsupported_role/i.test(
-        msg,
-      )
-    ) {
-      console.warn('[ai-assistant] model calendar conflicts rpc denied', { code: error.code });
-    } else {
-      console.warn('[ai-assistant] model calendar conflicts rpc failed', { code: error.code });
+    const code = error.code ?? '';
+    const msg = (error.message ?? '').toLowerCase();
+    let category: 'permission' | 'missing_rpc' | 'invalid_args' | 'unknown' = 'unknown';
+    if (/not_authenticated|org_context_(missing|ambiguous)|invalid_search|invalid_date|unsupported_role|permission/.test(
+      msg,
+    ) || code === '42501') {
+      category = 'permission';
+    } else if (/42883|does not exist|undefined function/i.test(msg)) {
+      category = 'missing_rpc';
+    } else if (/invalid_search|invalid_date/i.test(msg)) {
+      category = 'invalid_args';
     }
-    return { ok: false };
+    console.warn('[ai-assistant]', {
+      intent: 'model_calendar_availability_check',
+      error_category: category,
+      code,
+    });
+    return { ok: false, category };
   }
 
   return { ok: true, payload: data };
@@ -936,7 +978,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const serverContext = await resolveServerContext(supabase, requestedRole);
   const role = serverContext.role;
   const assistantContext = resolveRequestAssistantContext(payload);
-  const classification = classifyAssistantIntent(routingMessage, role, new Date(), assistantContext);
+  const expandedKindFollowup = expandKindOnlyCalendarFollowup(
+    routingMessage,
+    assistantContext,
+    new Date(),
+  );
+  const routingForClassify = expandedKindFollowup ?? routingMessage;
+  const classification = classifyAssistantIntent(routingForClassify, role, new Date(), assistantContext);
   const requestId = crypto.randomUUID();
   const requestStartedAt = Date.now();
   const usageIntent = safeIntent(classification.intent);
@@ -978,8 +1026,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       context?: AssistantResponseContext,
       provider?: string | null,
       model?: string | null,
+      errorCategory?: string | null,
     ): Promise<Response> => {
-      await finalizeUsage({ result, answer, provider, model });
+      await finalizeUsage({ result, answer, provider, model, errorCategory });
       return assistantAnswerResponse(answer, cors, context);
     };
 
@@ -992,11 +1041,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
       estimatedInputChars,
     });
     if (!rateLimit.ok) {
-      return assistantAnswerResponse(AI_ASSISTANT_UNAVAILABLE_ANSWER, cors);
+      console.warn('[ai-assistant]', {
+        intent: usageIntent,
+        error_category: 'rate_limit_rpc_failed',
+      });
+      return assistantAnswerResponse(AI_ASSISTANT_RATE_LIMIT_CHECK_FAILED_ANSWER, cors);
     }
     if (!rateLimit.decision.allowed) {
       usageFinalized = true;
+      console.warn('[ai-assistant]', {
+        intent: usageIntent,
+        error_category: `rate_limit_${rateLimit.decision.reason}`,
+      });
       return assistantAnswerResponse(AI_ASSISTANT_LIMIT_REACHED_ANSWER, cors);
+    }
+
+    if (CALENDAR_KIND_ONLY_REPLY.test(routingMessage) && !expandedKindFollowup) {
+      return await answerWithUsage(CALENDAR_KIND_FOLLOWUP_NEEDS_DATE_ANSWER, 'allowed');
     }
 
     if (!isExecutableAssistantIntent(classification.intent)) {
@@ -1030,7 +1091,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
         if (contextAnswer) {
           return await answerWithUsage(contextAnswer, 'allowed', assistantContext ?? undefined);
         }
-        return await answerWithUsage(AI_ASSISTANT_CONTEXT_CLARIFICATION);
+        const pendingCtx = buildAssistantContext({
+          pendingCalendarKindPrompt: true,
+          lastIntent: 'calendar_item_details',
+        });
+        return await answerWithUsage(AI_ASSISTANT_CONTEXT_CLARIFICATION, 'allowed', pendingCtx);
       }
       if (serverContext.state !== 'ok' || !serverContext.organizationId) {
         return await answerWithUsage(
@@ -1051,21 +1116,33 @@ Deno.serve(async (req: Request): Promise<Response> => {
             reference?: CalendarItemReference;
             startDate: string;
             endDate: string;
+            lastKind?: string | null;
           }
         | null = null;
 
       if (classification.reference === 'last_job') {
         const range = resolveCalendarDetailDateRange();
+        let lastKind: string | null = 'job';
+        if (classification.kindHint) {
+          lastKind = classification.kindHint;
+        } else if (/\blast\s+(?:calendar\s+)?(?:event|item|entry)\b/i.test(routingForClassify)) {
+          lastKind = null;
+        }
         loadParams = {
           mode: 'last_job',
           startDate: range.startDate,
           endDate: range.endDate,
+          lastKind,
         };
       } else {
         const historyFacts = latestCalendarFactsFromHistory(payload.history);
         const reference = findSingleCalendarReferenceFromFacts(historyFacts, classification.kindHint);
         if (reference === 'ambiguous') {
-          return await answerWithUsage(CALENDAR_DETAIL_AMBIGUOUS_ANSWER);
+          const ambCtx = buildAssistantContext({
+            pendingCalendarKindPrompt: true,
+            lastIntent: 'calendar_item_details',
+          });
+          return await answerWithUsage(CALENDAR_DETAIL_AMBIGUOUS_ANSWER, 'allowed', ambCtx);
         }
         if (!reference) {
           return await answerWithUsage(
@@ -1090,14 +1167,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
         reference: loadParams.reference,
         startDate: loadParams.startDate,
         endDate: loadParams.endDate,
+        lastKind: loadParams.mode === 'last_job' ? loadParams.lastKind : undefined,
       });
 
       if (!result.ok) {
         const answer =
           result.reason === 'org_context'
             ? 'I can’t access calendar data because your organization context is missing or ambiguous.'
-            : 'I can’t access visible calendar item details right now.';
-        return await answerWithUsage(answer, 'error');
+            : CALENDAR_DETAILS_LOAD_FAILED_ANSWER;
+        return await answerWithUsage(answer, 'error', undefined, null, null, 'calendar_details_rpc');
       }
 
       return await answerWithUsage(
@@ -1148,19 +1226,33 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return await answerWithUsage('I can’t find visible calendar items for that period.', 'allowed');
       }
 
+      const presentationRecent = classification.dateRange.recentFirst === true;
+      const factsForLlm = presentationRecent
+        ? {
+            ...result.facts,
+            items: [...result.facts.items].sort((a, b) => {
+              const d = b.date.localeCompare(a.date);
+              if (d !== 0) return d;
+              const st = (b.start_time ?? '').localeCompare(a.start_time ?? '');
+              if (st !== 0) return st;
+              return b.title.localeCompare(a.title);
+            }),
+          }
+        : result.facts;
+
       const answer = await callMistral({
         systemPrompt: buildCalendarSystemPrompt(role),
-        messages: [{ role: 'user', content: buildCalendarUserPrompt(message, result.facts) }],
+        messages: [{ role: 'user', content: buildCalendarUserPrompt(message, factsForLlm) }],
         maxTokens: LIVE_OUTPUT_TOKENS,
         signal: controller.signal,
       });
       if (!answer) {
-        return await answerWithUsage(AI_ASSISTANT_UNAVAILABLE_ANSWER, 'error');
+        return await answerWithUsage(AI_ASSISTANT_UNAVAILABLE_ANSWER, 'error', undefined, null, null, 'mistral_unavailable');
       }
       return await answerWithUsage(
         answer,
         'allowed',
-        calendarContextFromSummary(result.facts),
+        calendarContextFromSummary(result.facts, { focusMostRecent: presentationRecent }),
         'mistral',
         MISTRAL_MODEL,
       );
@@ -1216,7 +1308,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
         checkDate,
       });
       if (!loadOutcome.ok) {
-        return await answerWithUsage('I can’t read visible calendar conflicts right now.', 'error');
+        let errAnswer = 'I couldn’t check visible calendar conflicts right now. Please try again.';
+        if (loadOutcome.category === 'permission') {
+          errAnswer =
+            'I can’t run that availability check with your current sign-in or organization context.';
+        } else if (loadOutcome.category === 'missing_rpc') {
+          errAnswer =
+            'I couldn’t run the availability check in this environment right now. Please try again later.';
+        }
+        return await answerWithUsage(
+          errAnswer,
+          'error',
+          undefined,
+          null,
+          null,
+          `availability_${loadOutcome.category}`,
+        );
       }
 
       const interpret = interpretModelCalendarConflictsRpc(loadOutcome.payload);
@@ -1226,7 +1333,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
 
       if (!MISTRAL_API_KEY) {
-        return await answerWithUsage(AI_ASSISTANT_UNAVAILABLE_ANSWER, 'error');
+        return await answerWithUsage(
+          formatModelCalendarAvailabilityDeterministic(execution.facts),
+          'allowed',
+          availabilityContextFromFacts(execution.facts),
+        );
       }
 
       const answer = await callMistral({
@@ -1236,7 +1347,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
         signal: controller.signal,
       });
       if (!answer) {
-        return await answerWithUsage(AI_ASSISTANT_UNAVAILABLE_ANSWER, 'error');
+        return await answerWithUsage(
+          formatModelCalendarAvailabilityDeterministic(execution.facts),
+          'allowed',
+          availabilityContextFromFacts(execution.facts),
+          null,
+          null,
+          'mistral_unavailable',
+        );
       }
       return await answerWithUsage(
         answer,

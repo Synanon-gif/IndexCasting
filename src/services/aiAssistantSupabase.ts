@@ -20,6 +20,7 @@ export type AiAssistantContext = {
   last_model_source?: 'single_model_match' | null;
   last_availability_check_date?: string | null;
   last_availability_date_source?: 'single_day_resolve' | null;
+  pending_calendar_kind_prompt?: boolean | null;
   last_intent?: string | null;
   context_created_at?: string | null;
   context_expires_at?: string | null;
@@ -62,7 +63,17 @@ export function isAiAssistantContextFresh(
     context.last_intent === 'model_calendar_availability_check' &&
     context.last_availability_date_source === 'single_day_resolve' &&
     Boolean(context.last_availability_check_date);
-  if (!hasSingleCalendarItem && !hasSingleModel && !hasAvailabilityFollowup) return false;
+  const hasPendingKindPick =
+    Boolean(context.pending_calendar_kind_prompt) &&
+    (context.last_intent === 'calendar_item_details' || context.last_intent === 'calendar_summary');
+  if (
+    !hasSingleCalendarItem &&
+    !hasSingleModel &&
+    !hasAvailabilityFollowup &&
+    !hasPendingKindPick
+  ) {
+    return false;
+  }
   if (
     typeof context.context_created_at !== 'string' ||
     typeof context.context_expires_at !== 'string'
