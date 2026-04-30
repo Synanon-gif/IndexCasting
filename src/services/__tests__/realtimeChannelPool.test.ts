@@ -179,3 +179,60 @@ describe('flushIdleChannels', () => {
     expect(stats.active).toBe(1);
   });
 });
+
+describe('disposeAllRealtimeChannels', () => {
+  test('closes all channels including active subscribers', () => {
+    const { removeChannel } = freshMocks();
+    const { pooledSubscribe, disposeAllRealtimeChannels, getChannelPoolStats } = freshPool();
+    pooledSubscribe('dispose-1', noop, jest.fn());
+    pooledSubscribe('dispose-2', noop, jest.fn());
+    expect(getChannelPoolStats().total).toBe(2);
+    disposeAllRealtimeChannels();
+    expect(removeChannel).toHaveBeenCalledTimes(2);
+    expect(getChannelPoolStats().total).toBe(0);
+  });
+
+  test('idle-timer channels are cleared without waiting', () => {
+    const { removeChannel } = freshMocks();
+    const { pooledSubscribe, disposeAllRealtimeChannels } = freshPool();
+    const c = pooledSubscribe('dispose-idle', noop, jest.fn());
+    c();
+    disposeAllRealtimeChannels();
+    expect(removeChannel).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(30_000);
+    expect(removeChannel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('pooledSubscribe — empty key', () => {
+  test('does not create a channel when key is whitespace', () => {
+    const { channel } = freshMocks();
+    const { pooledSubscribe } = freshPool();
+    const cleanup = pooledSubscribe('  \t ', noop, jest.fn());
+    cleanup();
+    expect(channel).not.toHaveBeenCalled();
+  });
+});
+
+describe('createRealtimeSubscribeStatusHandler', () => {
+  test('logs CHANNEL_ERROR once then throttles bursts', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    freshMocks();
+    const { createRealtimeSubscribeStatusHandler } = freshPool();
+    const h = createRealtimeSubscribeStatusHandler('test-key');
+    h('CHANNEL_ERROR', new Error('e1'));
+    h('CHANNEL_ERROR', new Error('e2'));
+    h('TIMED_OUT');
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  test('ignores SUBSCRIBED status', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    freshMocks();
+    const { createRealtimeSubscribeStatusHandler } = freshPool();
+    createRealtimeSubscribeStatusHandler('k')('SUBSCRIBED');
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});

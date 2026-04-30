@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase';
-import { pooledSubscribe } from './realtimeChannelPool';
+import { pooledSubscribe, createRealtimeSubscribeStatusHandler } from './realtimeChannelPool';
 import type { BookingEventType } from './bookingEventsSupabase';
 import { createNotification, createNotifications } from './notificationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
@@ -2315,8 +2315,12 @@ export function subscribeToOptionMessages(
   requestId: string,
   onMessage: (msg: SupabaseOptionMessage) => void,
 ): () => void {
+  const id = requestId?.trim();
+  if (!id) return () => {};
+
+  const key = `option-${id}`;
   return pooledSubscribe(
-    `option-${requestId}`,
+    key,
     (channel, dispatch) =>
       channel
         .on(
@@ -2325,12 +2329,18 @@ export function subscribeToOptionMessages(
             event: 'INSERT',
             schema: 'public',
             table: 'option_request_messages',
-            filter: `option_request_id=eq.${requestId}`,
+            filter: `option_request_id=eq.${id}`,
           },
           dispatch,
         )
-        .subscribe(),
-    (payload) => onMessage((payload as { new: SupabaseOptionMessage }).new),
+        .subscribe(createRealtimeSubscribeStatusHandler(key)),
+    (payload) => {
+      try {
+        onMessage((payload as { new: SupabaseOptionMessage }).new);
+      } catch {
+        /* ignore malformed payload */
+      }
+    },
   );
 }
 
@@ -2343,8 +2353,12 @@ export function subscribeToOptionRequestChanges(
   requestId: string,
   onUpdate: (updated: SupabaseOptionRequest) => void,
 ): () => void {
+  const id = requestId?.trim();
+  if (!id) return () => {};
+
+  const key = `option-row-${id}`;
   return pooledSubscribe(
-    `option-row-${requestId}`,
+    key,
     (channel, dispatch) =>
       channel
         .on(
@@ -2353,12 +2367,18 @@ export function subscribeToOptionRequestChanges(
             event: 'UPDATE',
             schema: 'public',
             table: 'option_requests',
-            filter: `id=eq.${requestId}`,
+            filter: `id=eq.${id}`,
           },
           dispatch,
         )
-        .subscribe(),
-    (payload) => onUpdate((payload as { new: SupabaseOptionRequest }).new),
+        .subscribe(createRealtimeSubscribeStatusHandler(key)),
+    (payload) => {
+      try {
+        onUpdate((payload as { new: SupabaseOptionRequest }).new);
+      } catch {
+        /* ignore malformed payload */
+      }
+    },
   );
 }
 

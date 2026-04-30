@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase';
-import { pooledSubscribe } from './realtimeChannelPool';
+import { pooledSubscribe, createRealtimeSubscribeStatusHandler } from './realtimeChannelPool';
 import { OPTION_REQUEST_SELECT } from './optionRequestsSupabase';
 import type { SupabaseOptionRequest } from './optionRequestsSupabase';
 import { uiCopy } from '../constants/uiCopy';
@@ -903,8 +903,12 @@ export async function checkCalendarConflict(
  * Uses the shared channel pool. Returns a cleanup function.
  */
 export function subscribeToCalendarChanges(modelId: string, onChange: () => void): () => void {
+  const id = modelId?.trim();
+  if (!id) return () => {};
+
+  const key = `calendar-${id}`;
   return pooledSubscribe(
-    `calendar-${modelId}`,
+    key,
     (channel, dispatch) =>
       channel
         .on(
@@ -913,11 +917,17 @@ export function subscribeToCalendarChanges(modelId: string, onChange: () => void
             event: '*',
             schema: 'public',
             table: 'calendar_entries',
-            filter: `model_id=eq.${modelId}`,
+            filter: `model_id=eq.${id}`,
           },
           dispatch,
         )
-        .subscribe(),
-    () => onChange(),
+        .subscribe(createRealtimeSubscribeStatusHandler(key)),
+    () => {
+      try {
+        onChange();
+      } catch {
+        /* caller refresh must not throw */
+      }
+    },
   );
 }

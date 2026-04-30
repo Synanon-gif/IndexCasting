@@ -120,6 +120,10 @@ export function pooledSubscribe(
   setup: (channel: RealtimeChannel, dispatch: DispatchFn) => RealtimeChannel,
   callback: DispatchFn,
 ): () => void {
+  if (!key.trim()) {
+    console.warn('[realtimeChannelPool] pooledSubscribe: empty key — ignored');
+    return () => {};
+  }
   let cleaned = false;
   let cleanupFn: (() => void) | null = null;
 
@@ -204,6 +208,60 @@ export function flushIdleChannels(): void {
       pool.delete(key);
     }
   }
+}
+
+/**
+ * Close every pooled Realtime channel immediately (sign-out / auth reset).
+ * Clears timers; further cleanups from old `pooledSubscribe` refs become no-ops.
+ */
+export function disposeAllRealtimeChannels(): void {
+  for (const [, entry] of pool.entries()) {
+    if (entry.idleTimer !== null) clearTimeout(entry.idleTimer);
+    try {
+      supabase.removeChannel(entry.channel);
+    } catch {
+      /* channel may already be torn down */
+    }
+  }
+  pool.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Subscribe status logging (throttled — no JWT / message payload)
+// ---------------------------------------------------------------------------
+
+const subscribeIssueLog = new Map<string, { lastAt: number; suppressed: number }>();
+const SUBSCRIBE_ISSUE_LOG_THROTTLE_MS = 30_000;
+
+/**
+ * Pass to `RealtimeChannel.subscribe(...)` for pooled channels.
+ * Logs CHANNEL_ERROR / TIMED_OUT only, throttled per pool key.
+ */
+export function createRealtimeSubscribeStatusHandler(poolKey: string) {
+  return (status: string, err?: Error) => {
+    if (status !== 'CHANNEL_ERROR' && status !== 'TIMED_OUT') return;
+
+    const now = Date.now();
+    let row = subscribeIssueLog.get(poolKey);
+    if (!row) {
+      row = { lastAt: 0, suppressed: 0 };
+      subscribeIssueLog.set(poolKey, row);
+    }
+    if (now - row.lastAt < SUBSCRIBE_ISSUE_LOG_THROTTLE_MS) {
+      row.suppressed += 1;
+      return;
+    }
+    const suppressed = row.suppressed;
+    row.lastAt = now;
+    row.suppressed = 0;
+
+    console.warn('[realtimeChannelPool] subscribe issue', {
+      channelKey: poolKey,
+      status,
+      ...(err?.message ? { errorMessage: err.message } : {}),
+      ...(suppressed > 0 ? { suppressedEarlier: suppressed } : {}),
+    });
+  };
 }
 
 /**

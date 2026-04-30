@@ -19,7 +19,6 @@ import { isMobileWidth } from '../theme/breakpoints';
 import { StorageImage } from '../components/StorageImage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography } from '../theme/theme';
-import { supabase } from '../../lib/supabase';
 import {
   getGuestLink,
   getGuestLinkModels,
@@ -64,7 +63,6 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   const [loading, setLoading] = useState(true);
   const [phase, setPhase] = useState<ViewPhase>('legal');
   const [pageError, setPageError] = useState<string | null>(null);
-  const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const loadingRef = useRef(false);
 
   // Legal gate
@@ -200,34 +198,9 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   useEffect(() => {
     loadLinkData();
 
-    // M-5: Subscribe to Realtime changes on this specific guest link so that
-    // deactivation or model-list changes during an active session are reflected
-    // without requiring a manual page reload.
-    const channel = supabase
-      .channel(`guest_link_watch_${linkId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'guest_links',
-          filter: `id=eq.${linkId}`,
-        },
-        () => {
-          // Re-fetch link metadata and models when the link is updated.
-          loadLinkData();
-        },
-      )
-      .subscribe();
-
-    realtimeChannelRef.current = channel;
-
-    return () => {
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
-      }
-    };
+    // Intentionally no Supabase Realtime here: anon guests cannot receive
+    // postgres_changes on guest_links (RLS); a socket would fail/retry and spam
+    // the console. Fresh data comes from periodic polling below + manual loads.
     // loadLinkData is defined inside the component; eslint-disable below prevents
     // the exhaustive-deps warning from requiring it in the dependency array.
     // eslint-disable-next-line react-hooks/exhaustive-deps

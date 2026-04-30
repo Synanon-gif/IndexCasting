@@ -7,7 +7,7 @@
  * member of an organization (organization_id). RLS enforces visibility.
  */
 import { supabase } from '../../lib/supabase';
-import { pooledSubscribe } from './realtimeChannelPool';
+import { pooledSubscribe, createRealtimeSubscribeStatusHandler } from './realtimeChannelPool';
 import { enqueueNotification } from '../utils/notificationBatcher';
 import { logger } from '../utils/logger';
 
@@ -298,8 +298,12 @@ export function subscribeToUserNotifications(
   userId: string,
   onNotification: (n: Notification) => void,
 ): () => void {
+  const id = userId?.trim();
+  if (!id) return () => {};
+
+  const key = `notifications-user-${id}`;
   return pooledSubscribe(
-    `notifications-user-${userId}`,
+    key,
     (channel, dispatch) =>
       channel
         .on(
@@ -308,12 +312,18 @@ export function subscribeToUserNotifications(
             event: 'INSERT',
             schema: 'public',
             table: 'notifications',
-            filter: `user_id=eq.${userId}`,
+            filter: `user_id=eq.${id}`,
           },
           dispatch,
         )
-        .subscribe(),
-    (payload) => onNotification((payload as { new: Notification }).new),
+        .subscribe(createRealtimeSubscribeStatusHandler(key)),
+    (payload) => {
+      try {
+        onNotification((payload as { new: Notification }).new);
+      } catch {
+        /* ignore malformed payload */
+      }
+    },
   );
 }
 
@@ -325,8 +335,12 @@ export function subscribeToOrgNotifications(
   organizationId: string,
   onNotification: (n: Notification) => void,
 ): () => void {
+  const id = organizationId?.trim();
+  if (!id) return () => {};
+
+  const key = `notifications-org-${id}`;
   return pooledSubscribe(
-    `notifications-org-${organizationId}`,
+    key,
     (channel, dispatch) =>
       channel
         .on(
@@ -335,12 +349,18 @@ export function subscribeToOrgNotifications(
             event: 'INSERT',
             schema: 'public',
             table: 'notifications',
-            filter: `organization_id=eq.${organizationId}`,
+            filter: `organization_id=eq.${id}`,
           },
           dispatch,
         )
-        .subscribe(),
-    (payload) => onNotification((payload as { new: Notification }).new),
+        .subscribe(createRealtimeSubscribeStatusHandler(key)),
+    (payload) => {
+      try {
+        onNotification((payload as { new: Notification }).new);
+      } catch {
+        /* ignore malformed payload */
+      }
+    },
   );
 }
 

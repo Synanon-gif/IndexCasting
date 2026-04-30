@@ -20,6 +20,21 @@ import {
 } from '../services/finalizePendingInviteOrClaim';
 import { setUserContext } from '../observability/sentry';
 
+async function teardownSupabaseRealtimeAndNotifications(): Promise<void> {
+  try {
+    const { disposeAllRealtimeChannels } = await import('../services/realtimeChannelPool');
+    disposeAllRealtimeChannels();
+  } catch (e) {
+    console.error('teardownSupabaseRealtimeAndNotifications pool error:', e);
+  }
+  try {
+    const { resetNotificationsStore } = await import('../store/notificationsStore');
+    resetNotificationsStore();
+  } catch (e) {
+    console.error('teardownSupabaseRealtimeAndNotifications notifications error:', e);
+  }
+}
+
 const EMPTY_FINALIZE: FinalizeInviteClaimResult = {
   invite: { attempted: false, ok: false, state: 'idle' },
   claim: { attempted: false, ok: false, state: 'idle' },
@@ -315,6 +330,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const role: AppRole = normalizedRoleInput ?? 'client';
     const deletionRequestedAt = data.deletion_requested_at ?? null;
     if (deletionRequestedAt) {
+      await teardownSupabaseRealtimeAndNotifications();
       await supabase.auth.signOut();
       setSession(null);
       updateProfile(null);
@@ -322,6 +338,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     // Guest accounts are always considered active — skip the activation gate.
     if (!isGuest && (role === 'client' || role === 'agent') && !isActive) {
+      await teardownSupabaseRealtimeAndNotifications();
       await supabase.auth.signOut();
       setSession(null);
       updateProfile(null);
@@ -339,6 +356,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (orgErr) throw orgErr;
           if (orgActive === false) {
             setOrgDeactivated(true);
+            await teardownSupabaseRealtimeAndNotifications();
             await supabase.auth.signOut();
             setSession(null);
             updateProfile(null);
@@ -354,6 +372,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!orgCheckPassed) {
         console.error('loadProfile org active check failed after retries — failing closed');
         setOrgDeactivated(true);
+        await teardownSupabaseRealtimeAndNotifications();
         await supabase.auth.signOut();
         setSession(null);
         updateProfile(null);
@@ -836,6 +855,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // missing. Sign out and return an error so the user can retry cleanly.
     if (bootstrapThrew) {
       try {
+        await teardownSupabaseRealtimeAndNotifications();
         await supabase.auth.signOut();
       } catch {
         /* ignore sign-out error */
@@ -871,6 +891,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    await teardownSupabaseRealtimeAndNotifications();
     await supabase.auth.signOut();
     setSession(null);
     updateProfile(null);

@@ -8,7 +8,7 @@
 import { supabase } from '../../lib/supabase';
 import { buildMessengerSenderDisplay } from '../utils/messengerSenderLabel';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
-import { pooledSubscribe } from './realtimeChannelPool';
+import { pooledSubscribe, createRealtimeSubscribeStatusHandler } from './realtimeChannelPool';
 import { createNotifications } from './notificationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
 import {
@@ -652,8 +652,12 @@ export function subscribeToConversation(
   conversationId: string,
   onMessage: (msg: Message) => void,
 ): () => void {
+  const id = conversationId?.trim();
+  if (!id) return () => {};
+
+  const key = `conversation-${id}`;
   return pooledSubscribe(
-    `conversation-${conversationId}`,
+    key,
     (channel, dispatch) =>
       channel
         .on(
@@ -662,7 +666,7 @@ export function subscribeToConversation(
             event: 'INSERT',
             schema: 'public',
             table: 'messages',
-            filter: `conversation_id=eq.${conversationId}`,
+            filter: `conversation_id=eq.${id}`,
           },
           dispatch,
         )
@@ -672,12 +676,18 @@ export function subscribeToConversation(
             event: 'UPDATE',
             schema: 'public',
             table: 'messages',
-            filter: `conversation_id=eq.${conversationId}`,
+            filter: `conversation_id=eq.${id}`,
           },
           dispatch,
         )
-        .subscribe(),
-    (payload) => onMessage((payload as { new: Message }).new),
+        .subscribe(createRealtimeSubscribeStatusHandler(key)),
+    (payload) => {
+      try {
+        onMessage((payload as { new: Message }).new);
+      } catch {
+        /* realtime payload malformed — ignore */
+      }
+    },
   );
 }
 

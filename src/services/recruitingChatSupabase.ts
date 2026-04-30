@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
-import { pooledSubscribe } from './realtimeChannelPool';
+import { pooledSubscribe, createRealtimeSubscribeStatusHandler } from './realtimeChannelPool';
 import { createNotification } from './notificationsSupabase';
 import {
   validateText,
@@ -700,8 +700,12 @@ export function subscribeToThreadMessages(
   threadId: string,
   onMessage: (msg: SupabaseRecruitingMessage) => void,
 ): () => void {
+  const id = threadId?.trim();
+  if (!id) return () => {};
+
+  const key = `recruiting-${id}`;
   return pooledSubscribe(
-    `recruiting-${threadId}`,
+    key,
     (channel, dispatch) =>
       channel
         .on(
@@ -710,12 +714,18 @@ export function subscribeToThreadMessages(
             event: 'INSERT',
             schema: 'public',
             table: 'recruiting_chat_messages',
-            filter: `thread_id=eq.${threadId}`,
+            filter: `thread_id=eq.${id}`,
           },
           dispatch,
         )
-        .subscribe(),
-    (payload) => onMessage((payload as { new: SupabaseRecruitingMessage }).new),
+        .subscribe(createRealtimeSubscribeStatusHandler(key)),
+    (payload) => {
+      try {
+        onMessage((payload as { new: SupabaseRecruitingMessage }).new);
+      } catch {
+        /* ignore malformed payload */
+      }
+    },
   );
 }
 
