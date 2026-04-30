@@ -851,8 +851,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const serverContext = await resolveServerContext(supabase, requestedRole);
   const role = serverContext.role;
-  const classification = classifyAssistantIntent(routingMessage, role);
   const assistantContext = resolveRequestAssistantContext(payload);
+  const classification = classifyAssistantIntent(routingMessage, role, new Date(), assistantContext);
   const requestId = crypto.randomUUID();
   const requestStartedAt = Date.now();
   const usageIntent = safeIntent(classification.intent);

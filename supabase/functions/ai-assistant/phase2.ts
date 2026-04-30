@@ -278,15 +278,61 @@ const CALENDAR_DETAIL_PATTERNS = [
 const CALENDAR_DETAIL_PRICE_PATTERN =
   /\b(price|pricing|cost|fee|rate|budget|amount|how much|paid|pay)\b/i;
 
-const MODEL_PROFILE_PATTERNS = [
-  /\b(measurements?|dimensions?)\b.*\b(?:of|for)\b.*\b(model\s+)?[a-z][\p{L}\p{N}'’.\-\s]{1,80}\b/iu,
-  /\b(?:height|city|base|based|location|located|hair|eyes?|shoes?|shoe size|chest|bust|waist|hips)\b.*\b(?:of|for|does|is|has|have)\b.*\b[a-z][\p{L}\p{N}'’.\-\s]{1,80}\b/iu,
-  /\b(?:what|show|tell me|give me)\b.*\b(?:profile facts?|basic facts?|model facts?)\b.*\b[a-z][\p{L}\p{N}'’.\-\s]{1,80}\b/iu,
-  /\bdoes\b.*\b[a-z][\p{L}\p{N}'’.\-\s]{1,80}\b.*\bhave an account\b/iu,
-  /\bmodel\s+dimensions?\b.*\b[a-z][\p{L}\p{N}'’.\-\s]{1,80}\b/iu,
-  /\bdo(?:es)?\b.*\b(measurements?|dimensions?)\b.*\bmatch\b/iu,
-  /\b(?:her|his|their)\s+(?:measurements?|dimensions?|height|city|location|shoes?|shoe size|chest|bust|waist|hips|hair|eyes?)\b/i,
-  /\b(?:this|that)\s+model\b.*\b(?:measurements?|dimensions?|height|city|location|shoes?|shoe size|chest|bust|waist|hips|hair|eyes?|account)\b/i,
+/** Model token: at least 3 chars to avoid matching "me" in "give me …". */
+const MODEL_NAME_TOK = String.raw`\b\p{L}[\p{L}\p{N}]{2,63}\b`;
+
+const MODEL_PROFILE_PATTERNS_FOLDED: RegExp[] = [
+  new RegExp(
+    `\\b(measurements?|dimensions?)\\b[\\s\\S]{0,120}\\b(?:of|for)\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}`,
+    'u',
+  ),
+  new RegExp(
+    `\\b(?:height|city|base|based|location|located|hair|eyes?|shoes?|shoe\\s+size|chest|bust|waist|hips)\\b[\\s\\S]{0,120}\\b(?:of|for|does|is|has|have)\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}`,
+    'u',
+  ),
+  new RegExp(
+    `\\b(?:what|show|tell\\s+me|give\\s+me)\\b[\\s\\S]{0,160}\\b(?:profile\\s+facts?|basic\\s+facts?|model\\s+facts?)\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}`,
+    'u',
+  ),
+  new RegExp(
+    `\\bgive\\s+me\\b[\\s\\S]{0,120}\\bmodel\\s+data\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}`,
+    'u',
+  ),
+  new RegExp(
+    `\\bdoes\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}[\\s\\S]{0,120}\\bhave\\s+an\\s+account\\b`,
+    'u',
+  ),
+  new RegExp(
+    `\\bmodel\\s+dimensions?\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}`,
+    'u',
+  ),
+  /\bdo(?:es)?\b[\s\S]{0,120}\b(?:measurements?|dimensions?)\b[\s\S]{0,80}\bmatch\b/u,
+  new RegExp(
+    `\\bdoes\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}[\\s\\S]{0,120}\\bmatch\\s+the\\s+system\\b`,
+    'u',
+  ),
+  /\b(?:her|his|their)\s+(?:measurements?|dimensions?|height|city|location|shoes?|shoe\s+size|chest|bust|waist|hips|hair|eyes?)\b/u,
+  /\b(?:this|that)\s+model\b[\s\S]{0,120}\b(?:measurements?|dimensions?|height|city|location|shoes?|shoe\s+size|chest|bust|waist|hips|hair|eyes?|account)\b/u,
+  new RegExp(
+    `${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+\\b(?:measurements?|dimensions?)\\b`,
+    'u',
+  ),
+  new RegExp(
+    `\\b(?:what|show|tell\\s+me|give\\s+me)\\b[\\s\\S]{0,40}\\b(?:are|is)\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+\\b(?:measurements?|dimensions?)\\b`,
+    'u',
+  ),
+  new RegExp(
+    `\\bshow\\b[\\s\\S]{0,40}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+\\b(?:measurements?|dimensions?)\\b`,
+    'u',
+  ),
+  new RegExp(
+    `\\bwhat\\s+is\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+\\bheight\\b`,
+    'u',
+  ),
+  new RegExp(
+    `${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+\\b(?:waist|chest|hips|height)\\b`,
+    'u',
+  ),
 ];
 
 const MODEL_INFO_CLARIFICATION_PATTERN =
@@ -337,9 +383,184 @@ function nextWeekdayDate(today: Date, weekday: number): Date {
   return addDays(today, diff);
 }
 
+/** Stopwords / measurement tokens that must not lose a trailing “s” during fuzzy name cleanup. */
+const MODEL_SEARCH_TRAILING_S_NO_STRIP = new Set([
+  'his',
+  'hers',
+  'theirs',
+  'this',
+  'that',
+  'these',
+  'those',
+  'yes',
+  'us',
+  'as',
+  'is',
+  'was',
+  'has',
+  'measurements',
+  'measurement',
+  'dimensions',
+  'dimension',
+  'models',
+  'model',
+  'hips',
+  'shoes',
+  'eyes',
+  'jones',
+  'james',
+  'chris',
+  'alexis',
+  'paris',
+  'dallas',
+  'lucas',
+  'iris',
+]);
+
+const MODEL_SEARCH_MEASUREMENT_LEXEMES = new Set([
+  'measurements',
+  'measurement',
+  'dimensions',
+  'dimension',
+  'height',
+  'waist',
+  'chest',
+  'hips',
+  'shoes',
+  'shoe',
+  'hair',
+  'eyes',
+  'eye',
+  'model',
+  'size',
+  'data',
+  'facts',
+  'account',
+  'accounts',
+  'basic',
+  'profile',
+  'give',
+  'tell',
+  'what',
+  'show',
+  'does',
+  'match',
+  'system',
+  'have',
+  'the',
+  'are',
+  'for',
+  'of',
+  'me',
+  'please',
+  'a',
+  'an',
+  'and',
+  'or',
+]);
+
+/**
+ * Lowercase, strip punctuation, normalize ascii apostrophe possessives and common “extra s” typos
+ * (e.g. lovisolos → lovisolo) for model measurement intent matching only.
+ */
+export function normalizeTextForModelIntentMatching(message: string): string {
+  let s = message.trim().normalize('NFKC').toLowerCase();
+  s = s.replace(/\b(\p{L}+)'s\b/gu, '$1');
+  s = s.replace(/[^\p{L}\p{N}\s]+/gu, ' ');
+  s = s.replace(/\s+/g, ' ').trim();
+  return normalizeModelNamePluralArtifacts(s);
+}
+
+function normalizeModelNamePluralArtifacts(s: string): string {
+  const words = s.split(' ').filter(Boolean);
+  const out = words.map((w, i) => {
+    if (MODEL_SEARCH_MEASUREMENT_LEXEMES.has(w) || MODEL_SEARCH_TRAILING_S_NO_STRIP.has(w)) return w;
+    const next = words[i + 1] ?? '';
+    const nextIsMeas =
+      MODEL_SEARCH_MEASUREMENT_LEXEMES.has(next) || (next === 'size' && words[i - 1] === 'model');
+    if (w.length >= 8 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
+    if (
+      nextIsMeas &&
+      w.length >= 4 &&
+      w.length <= 7 &&
+      w.endsWith('s') &&
+      !w.endsWith('ss') &&
+      /[aeiouyäöü]/u.test(w[w.length - 2] ?? '')
+    ) {
+      return w.slice(0, -1);
+    }
+    return w;
+  });
+  return out.join(' ');
+}
+
+function normalizeSearchTextArtifacts(text: string, measurementContextTail?: string): string {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const tailLow = measurementContextTail?.normalize('NFKC').toLowerCase().trim();
+  const evalWords = tailLow ? [...words, tailLow] : words;
+  const out = words.map((w, i) => {
+    const low = w.normalize('NFKC').toLowerCase();
+    if (MODEL_SEARCH_MEASUREMENT_LEXEMES.has(low) || MODEL_SEARCH_TRAILING_S_NO_STRIP.has(low)) {
+      return w;
+    }
+    const nextWord = evalWords[i + 1] ?? '';
+    const nextLow = nextWord.normalize('NFKC').toLowerCase();
+    const nextIsMeas =
+      MODEL_SEARCH_MEASUREMENT_LEXEMES.has(nextLow) ||
+      (nextLow === 'size' &&
+        i > 0 &&
+        evalWords[i - 1]?.normalize('NFKC').toLowerCase() === 'model');
+    let stemLow = low;
+    if (stemLow.length >= 8 && stemLow.endsWith('s') && !stemLow.endsWith('ss')) {
+      stemLow = stemLow.slice(0, -1);
+    } else if (
+      nextIsMeas &&
+      stemLow.length >= 4 &&
+      stemLow.length <= 7 &&
+      stemLow.endsWith('s') &&
+      !stemLow.endsWith('ss') &&
+      /[aeiouyäöü]/u.test(stemLow[stemLow.length - 2] ?? '')
+    ) {
+      stemLow = stemLow.slice(0, -1);
+    }
+    if (stemLow === low) return w;
+    if (w === w.toUpperCase()) return stemLow.toUpperCase();
+    if (w.length > 0 && w[0] === w[0].toUpperCase() && w.slice(1) === w.slice(1).toLowerCase()) {
+      return stemLow.charAt(0).toUpperCase() + stemLow.slice(1);
+    }
+    return stemLow;
+  });
+  return out.join(' ');
+}
+
+function extractFromTrailingMeasurementContext(raw: string): string | null {
+  const re = /\b(?:measurements?|dimensions?|height|waist|chest|hips|model\s+size)\b/gi;
+  let lastIdx = -1;
+  let lastMatch = '';
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw)) !== null) {
+    const after = raw.slice(m.index + m[0].length);
+    if (/^\s*(?:of|for)\s+\p{L}/u.test(after)) continue;
+    lastIdx = m.index;
+    lastMatch = m[0];
+  }
+  if (lastIdx === -1) return null;
+  const prefix = raw.slice(0, lastIdx);
+  const cleaned = stripModelSearchNoise(prefix);
+  const tailToken =
+    lastMatch
+      .toLowerCase()
+      .normalize('NFKC')
+      .trim()
+      .split(/\s+/)
+      .pop() ?? 'measurements';
+  const shaped = normalizeSearchTextArtifacts(cleaned, tailToken);
+  return shaped.length >= 2 ? shaped : null;
+}
+
 function stripModelSearchNoise(value: string): string {
   return value
-    .replace(/\b(what|are|is|the|of|for|model|show|me|basic|profile|facts|does|have|an|account|height|measurements?|dimensions?|city|base|based|location|located|hair|eyes?|shoes?|shoe size|chest|bust|waist|hips|here|received|match|system|compare|against|with|in|on|my|our|visible)\b/giu, ' ')
+    .replace(/\b(what|are|is|the|of|for|model|show|me|tell|give|basic|profile|facts|data|does|have|an|account|height|measurements?|dimensions?|city|base|based|location|located|hair|eyes?|shoes?|shoe\s+size|chest|bust|waist|hips|here|received|match|system|compare|against|with|in|on|my|our|visible)\b/giu, ' ')
     .replace(/\b\d+(?:[.,]\d+)?\b/g, ' ')
     .replace(/[?:;,]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -374,10 +595,10 @@ function resolveCalendarDetailKindHint(message: string): CalendarSummaryItem['ki
 
 function isPronounModelFactsQuestion(message: string): boolean {
   return (
-    /\b(?:her|his|their)\s+(?:measurements?|dimensions?|height|city|location|shoes?|shoe size|chest|bust|waist|hips|hair|eyes?)\b/i.test(
+    /\b(?:her|his|their)\s+(?:measurements?|dimensions?|height|city|location|shoes?|shoe\s+size|chest|bust|waist|hips|hair|eyes?)\b/i.test(
       message,
     ) ||
-    /\b(?:this|that)\s+model\b.*\b(?:measurements?|dimensions?|height|city|location|shoes?|shoe size|chest|bust|waist|hips|hair|eyes?|account)\b/i.test(
+    /\b(?:this|that)\s+model\b.*\b(?:measurements?|dimensions?|height|city|location|shoes?|shoe\s+size|chest|bust|waist|hips|hair|eyes?|account)\b/i.test(
       message,
     )
   );
@@ -386,18 +607,39 @@ function isPronounModelFactsQuestion(message: string): boolean {
 export function extractModelProfileSearchText(message: string): string {
   const normalized = message.replace(/\s+/g, ' ').trim();
   const bracketMatch = normalized.match(/\[([^\]]{2,80})\]/);
-  if (bracketMatch?.[1]) return bracketMatch[1].trim().slice(0, MAX_MODEL_SEARCH_CHARS);
+  if (bracketMatch?.[1]) {
+    return normalizeSearchTextArtifacts(bracketMatch[1].trim()).slice(0, MAX_MODEL_SEARCH_CHARS);
+  }
 
   const possessiveMatch = normalized.match(/\b([A-Z][\p{L}\p{N}'’.\-]*(?:\s+[A-Z][\p{L}\p{N}'’.\-]*){0,3})['’]s\b/u);
-  if (possessiveMatch?.[1]) return possessiveMatch[1].trim().slice(0, MAX_MODEL_SEARCH_CHARS);
+  if (possessiveMatch?.[1]) {
+    return normalizeSearchTextArtifacts(possessiveMatch[1].trim()).slice(0, MAX_MODEL_SEARCH_CHARS);
+  }
+
+  const possessiveLower = normalized.match(
+    /\b([a-z\p{L}][\p{L}\p{N}'’.\-]*(?:\s+[a-z\p{L}][\p{L}\p{N}'’.\-]*){0,3})['’]s\b/iu,
+  );
+  if (possessiveLower?.[1]) {
+    return normalizeSearchTextArtifacts(possessiveLower[1].trim()).slice(0, MAX_MODEL_SEARCH_CHARS);
+  }
 
   const namedAfterPreposition = normalized.match(/\b(?:of|for)\s+([A-Z][\p{L}\p{N}'’.\-]*(?:\s+[A-Z][\p{L}\p{N}'’.\-]*){0,3})\b/u);
-  if (namedAfterPreposition?.[1]) return namedAfterPreposition[1].trim().slice(0, MAX_MODEL_SEARCH_CHARS);
+  if (namedAfterPreposition?.[1]) {
+    return normalizeSearchTextArtifacts(namedAfterPreposition[1].trim()).slice(0, MAX_MODEL_SEARCH_CHARS);
+  }
 
   const namedAfterForLower = normalized.match(/\b(?:of|for)\s+([a-z][\p{L}\p{N}'’.\-]*(?:\s+[a-z][\p{L}\p{N}'’.\-]*){0,3})\b/iu);
-  if (namedAfterForLower?.[1]) return stripModelSearchNoise(namedAfterForLower[1]);
+  if (namedAfterForLower?.[1]) {
+    return normalizeSearchTextArtifacts(stripModelSearchNoise(namedAfterForLower[1])).slice(
+      0,
+      MAX_MODEL_SEARCH_CHARS,
+    );
+  }
 
-  return stripModelSearchNoise(normalized);
+  const trailing = extractFromTrailingMeasurementContext(normalized);
+  if (trailing) return trailing.slice(0, MAX_MODEL_SEARCH_CHARS);
+
+  return normalizeSearchTextArtifacts(stripModelSearchNoise(normalized)).slice(0, MAX_MODEL_SEARCH_CHARS);
 }
 
 export function buildModelInfoClarificationAnswer(searchText: string): string {
@@ -537,6 +779,7 @@ export function classifyAssistantIntent(
   message: string,
   role: ViewerRole,
   now = new Date(),
+  assistantContext: AiAssistantContext | null = null,
 ): IntentClassification {
   const normalized = message.trim();
   if (!normalized) return { intent: 'help_static' };
@@ -549,7 +792,10 @@ export function classifyAssistantIntent(
   const calendarDetailsQuestion =
     CALENDAR_DETAIL_PATTERNS.some((pattern) => pattern.test(normalized)) ||
     CALENDAR_DETAIL_PRICE_PATTERN.test(normalized);
-  const modelProfileQuestion = MODEL_PROFILE_PATTERNS.some((pattern) => pattern.test(normalized));
+  const modelIntentFolded = normalizeTextForModelIntentMatching(normalized);
+  const modelProfileQuestion = MODEL_PROFILE_PATTERNS_FOLDED.some((pattern) =>
+    pattern.test(modelIntentFolded),
+  );
   const modelInfoClarificationMatch = normalized.match(MODEL_INFO_CLARIFICATION_PATTERN);
   if (WRITE_ACTION_PATTERN.test(normalized) && !/^\s*how\s+do\s+i\b/i.test(normalized)) {
     return { intent: 'write_action' };
@@ -573,7 +819,17 @@ export function classifyAssistantIntent(
   }
 
   if (modelProfileQuestion) {
+    const contextModel =
+      assistantContext &&
+      isAssistantContextValid(assistantContext, now) &&
+      typeof assistantContext.last_model_name === 'string'
+        ? assistantContext.last_model_name.trim()
+        : '';
+
     if (isPronounModelFactsQuestion(normalized)) {
+      if (contextModel.length >= 2) {
+        return { intent: 'model_visible_profile_facts', searchText: contextModel };
+      }
       return {
         intent: 'model_visible_profile_facts',
         searchText: '',
@@ -581,13 +837,21 @@ export function classifyAssistantIntent(
         clarificationReason: 'which_model',
       };
     }
+
     const searchText = extractModelProfileSearchText(normalized);
-    if (!searchText || searchText.length < 2) return { intent: 'unknown_live_data' };
-    return { intent: 'model_visible_profile_facts', searchText };
+    if (searchText.length >= 2) {
+      return { intent: 'model_visible_profile_facts', searchText };
+    }
+    if (contextModel.length >= 2) {
+      return { intent: 'model_visible_profile_facts', searchText: contextModel };
+    }
+    return { intent: 'unknown_live_data' };
   }
 
   if (modelInfoClarificationMatch?.[1] && role === 'agency') {
-    const searchText = stripModelSearchNoise(modelInfoClarificationMatch[1]);
+    const searchText = normalizeSearchTextArtifacts(
+      stripModelSearchNoise(modelInfoClarificationMatch[1]),
+    );
     if (searchText.length >= 2) {
       return {
         intent: 'model_visible_profile_facts',

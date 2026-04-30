@@ -158,6 +158,10 @@ describe('AI Assistant full-coverage user-message smoke matrix', () => {
     ['What are the measurements of Rémi Lovisolo?', 'model_visible_profile_facts'],
     ['What are the measurements of remi lovisolo?', 'model_visible_profile_facts'],
     ['What are the measurements of Anna   Marie?', 'model_visible_profile_facts'],
+    ['What are remi lovisolos measurements?', 'model_visible_profile_facts'],
+    ['What is remis height?', 'model_visible_profile_facts'],
+    ['show remi measurements', 'model_visible_profile_facts'],
+    ['remi waist', 'model_visible_profile_facts'],
     ['What about Anna?', 'model_visible_profile_facts'],
   ] as const satisfies ReadonlyArray<readonly [string, AssistantIntent]>;
 
@@ -428,5 +432,31 @@ describe('AI Assistant full-coverage user-message smoke matrix', () => {
       3;
 
     expect(totalScenarioCount).toBeGreaterThanOrEqual(60);
+  });
+
+  it('C resolves pronoun measurement questions with last_model_name context and returns mistral facts when matched', () => {
+    const createdAt = new Date('2026-05-01T08:00:00.000Z');
+    const context = buildAssistantContext({
+      lastModelName: 'Rémi Lovisolo',
+      lastIntent: 'model_visible_profile_facts',
+      createdAt,
+    });
+    const classification = classifyAssistantIntent(
+      'What are his measurements?',
+      'agency',
+      createdAt,
+      context,
+    );
+    expect(classification.intent).toBe('model_visible_profile_facts');
+    expect(classification.intent).not.toBe('help_static');
+    if (classification.intent === 'model_visible_profile_facts') {
+      expect(classification.searchText).toBe('Rémi Lovisolo');
+    }
+    const facts = buildModelVisibleProfileFacts({
+      rows: [{ display_name: 'Rémi Lovisolo', height: 180, waist: 72 }],
+    });
+    const execution = resolveModelFactsExecutionResult({ role: 'agency', facts });
+    expect(execution.type).toBe('mistral');
+    assertNoSecurityLeak([classification, facts, execution]);
   });
 });

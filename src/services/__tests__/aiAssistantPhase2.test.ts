@@ -191,6 +191,44 @@ describe('AI Assistant Phase 2 intent router', () => {
     }
   });
 
+  it('resolves pronoun-based model facts using last_model_name context', () => {
+    const createdAt = new Date('2026-05-01T08:00:00.000Z');
+    const context = buildAssistantContext({
+      lastModelName: 'Rémi Lovisolo',
+      lastIntent: 'model_visible_profile_facts',
+      createdAt,
+    });
+    const result = classifyAssistantIntent(
+      'What are his measurements?',
+      'agency',
+      createdAt,
+      context,
+    );
+
+    expect(result.intent).toBe('model_visible_profile_facts');
+    if (result.intent === 'model_visible_profile_facts') {
+      expect(result.needsClarification).toBeFalsy();
+      expect(result.searchText).toBe('Rémi Lovisolo');
+    }
+  });
+
+  it('routes natural measurement phrasing and fuzzy possessive spellings to model facts', () => {
+    const scenarios: Array<[string, string]> = [
+      ['what are remi lovisolos measurements', 'remi lovisolo'],
+      ['What is remis height?', 'remi'],
+      ['show remi measurements', 'remi'],
+      ['rémi lovisolo waist', 'rémi lovisolo'],
+      ['remi waist', 'remi'],
+    ];
+    for (const [msg, expectedSearch] of scenarios) {
+      const result = classifyAssistantIntent(msg, 'agency', BASE_DATE);
+      expect(result.intent).toBe('model_visible_profile_facts');
+      if (result.intent === 'model_visible_profile_facts') {
+        expect(result.searchText).toBe(expectedSearch);
+      }
+    }
+  });
+
   it('routes Client model fact questions to the model facts execution path for role-specific refusal', () => {
     const result = classifyAssistantIntent(
       'What are the measurements of Mia Stone?',
