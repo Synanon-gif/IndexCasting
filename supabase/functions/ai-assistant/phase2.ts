@@ -253,6 +253,12 @@ const CALENDAR_PATTERNS = [
   /\bwhat (is|do we have|do i have).*\b(today|tomorrow|next week|this week|soon|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4}-\d{2}-\d{2})\b/i,
   /\b(?:from|between)\s+\d{4}-\d{2}-\d{2}\s+(?:to|and|-)\s+\d{4}-\d{2}-\d{2}\b/i,
   /\bwhen\s+was\s+(?:my\s+)?(?:the\s+)?last\s+(?:job|booking|casting|option)\b/i,
+  // German calendar tokens (minimal allowlist; intent only — date resolver
+  // remains English-token driven and falls back to safe defaults).
+  /\bkalender\b/iu,
+  /\b(?:morgen|heute|n[äa]chste\s+woche|diese\s+woche|n[äa]chsten?\s+\d{1,3}\s+tage?)\b/iu,
+  /\b(?:job|jobs|casting|castings|option|optionen|buchung|buchungen|termin|termine)\b.*\b(?:morgen|heute|n[äa]chste\s+woche|diese\s+woche|letzte\s+woche|am\s+\d{4}-\d{2}-\d{2})\b/iu,
+  /\bletzte[rn]?\s+(?:job|buchung|casting|option)\b/iu,
 ];
 
 const CALENDAR_DETAIL_PATTERNS = [
@@ -273,6 +279,9 @@ const CALENDAR_DETAIL_PATTERNS = [
   /\bwhen\s+does\s+(?:it|that|this)\s+(?:start|end)\??\s*$/i,
   /\bwhat\s+was\s+(?:the\s+)?title\??\s*$/i,
   /\bwhat\s+was\s+(?:the\s+)?(?:description|note)\b/i,
+  // German follow-up phrasing for the most common variants only.
+  /\bletzte[rn]?\s+(?:job|buchung|casting|option)\b/iu,
+  /^\s*(?:wann\s+war\s+)?(?:der|die|das)?\s*letzte[rn]?\s+(?:job|buchung|casting|option)\??\s*$/iu,
 ];
 
 const CALENDAR_DETAIL_PRICE_PATTERN =
@@ -283,12 +292,12 @@ const MODEL_NAME_TOK = String.raw`\b\p{L}[\p{L}\p{N}]{2,63}\b`;
 
 const MODEL_PROFILE_PATTERNS_FOLDED: RegExp[] = [
   new RegExp(
-    `\\b(measurements?|dimensions?)\\b[\\s\\S]{0,120}\\b(?:of|for)\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}`,
-    'u',
+    `\\b(measurements?|dimensions?|maße|masse|messwerte|größe|grosse)\\b[\\s\\S]{0,120}\\b(?:of|for|von|für|fuer)\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}`,
+    'iu',
   ),
   new RegExp(
-    `\\b(?:height|city|base|based|location|located|hair|eyes?|shoes?|shoe\\s+size|chest|bust|waist|hips)\\b[\\s\\S]{0,120}\\b(?:of|for|does|is|has|have)\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}`,
-    'u',
+    `\\b(?:height|city|base|based|location|located|hair|eyes?|shoes?|shoe\\s+size|chest|bust|waist|hips|größe|grosse|taille|brust|hüfte|huefte|schuhe|haare|augen)\\b[\\s\\S]{0,120}\\b(?:of|for|does|is|has|have|von|für|fuer|ist|hat|haben)\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}`,
+    'iu',
   ),
   new RegExp(
     `\\b(?:what|show|tell\\s+me|give\\s+me)\\b[\\s\\S]{0,160}\\b(?:profile\\s+facts?|basic\\s+facts?|model\\s+facts?)\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}`,
@@ -465,6 +474,36 @@ const MODEL_SEARCH_MEASUREMENT_LEXEMES = new Set([
   'an',
   'and',
   'or',
+  // Minimal German equivalents — measurement lexemes only (so the name extractor
+  // strips them from the search text). No new field exposure; routing only.
+  'maße',
+  'masse',
+  'messwerte',
+  'größe',
+  'grosse',
+  'taille',
+  'brust',
+  'hüfte',
+  'huefte',
+  'schuhe',
+  'schuhgröße',
+  'schuhgroesse',
+  'haare',
+  'augen',
+  'von',
+  'der',
+  'die',
+  'das',
+  'ist',
+  'hat',
+  'haben',
+  'zeig',
+  'zeige',
+  'zeigen',
+  'sind',
+  'wie',
+  'gross',
+  'groß',
 ]);
 
 /**
@@ -623,6 +662,11 @@ function extractFromTrailingMeasurementContext(raw: string): string | null {
 function stripModelSearchNoise(value: string): string {
   return value
     .replace(/\b(what|are|is|the|of|for|model|show|me|tell|give|basic|profile|facts|data|does|have|an|account|height|measurements?|dimensions?|city|base|based|location|located|hair|eyes?|shoes?|shoe\s+size|chest|bust|waist|hips|here|received|match|system|compare|against|with|in|on|my|our|visible)\b/giu, ' ')
+    // Minimal German equivalents (routing only).
+    .replace(
+      /\b(maße|masse|messwerte|größe|grosse|taille|brust|hüfte|huefte|schuhe|schuhgröße|schuhgroesse|haare|augen|von|der|die|das|ist|hat|haben|zeig|zeige|zeigen|sind|wie|gross|groß|für|fuer|nach|am|im|in)\b/giu,
+      ' ',
+    )
     .replace(/\b\d+(?:[.,]\d+)?\b/g, ' ')
     .replace(/[?:;,]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -643,6 +687,7 @@ function resolveCalendarDetailRequestedField(message: string): CalendarDetailReq
 
 function resolveCalendarDetailReference(message: string): 'followup' | 'last_job' {
   if (/\blast\s+job\b/i.test(message)) return 'last_job';
+  if (/\bletzte[rn]?\s+(?:job|buchung|casting|option)\b/iu.test(message)) return 'last_job';
   return 'followup';
 }
 
@@ -650,8 +695,9 @@ function resolveCalendarDetailKindHint(message: string): CalendarSummaryItem['ki
   if (/\bcasting\b/i.test(message)) return 'casting';
   if (/\boption\b/i.test(message)) return 'option';
   if (/\bjob\b/i.test(message)) return 'job';
-  if (/\bbooking\b/i.test(message)) return 'booking';
-  if (/\bprivate\s+event\b/i.test(message)) return 'private_event';
+  if (/\bbooking\b/i.test(message) || /\bbuchung\b/iu.test(message)) return 'booking';
+  if (/\bprivate\s+event\b/i.test(message) || /\bprivat(?:er)?\s+termin\b/iu.test(message))
+    return 'private_event';
   return undefined;
 }
 
@@ -801,22 +847,28 @@ export function resolveCalendarDateRange(message: string, now = new Date()): Cal
   } else if (weekdayMatch?.[1]) {
     start = nextWeekdayDate(today, WEEKDAY_TO_UTC_DAY[weekdayMatch[1]]);
     days = 1;
-  } else if (/\bwhen\s+was\s+(?:my\s+)?(?:the\s+)?last\s+(?:job|booking|casting|option)\b/i.test(normalized)) {
+  } else if (
+    /\bwhen\s+was\s+(?:my\s+)?(?:the\s+)?last\s+(?:job|booking|casting|option)\b/i.test(
+      normalized,
+    ) ||
+    /\bletzte[rn]?\s+(?:job|buchung|casting|option)\b/iu.test(normalized) ||
+    /\bletzte\s+woche\b/iu.test(normalized)
+  ) {
     start = addDays(today, -(MAX_CALENDAR_RANGE_DAYS - 1));
     days = MAX_CALENDAR_RANGE_DAYS;
-  } else if (normalized.includes('tomorrow')) {
+  } else if (normalized.includes('tomorrow') || /\bmorgen\b/iu.test(normalized)) {
     start = addDays(today, 1);
     days = 1;
-  } else if (normalized.includes('today')) {
+  } else if (normalized.includes('today') || /\bheute\b/iu.test(normalized)) {
     days = 1;
-  } else if (normalized.includes('next week')) {
+  } else if (normalized.includes('next week') || /\bn[äa]chste\s+woche\b/iu.test(normalized)) {
     start = addDays(today, 1);
     days = 7;
-  } else if (normalized.includes('this week')) {
+  } else if (normalized.includes('this week') || /\bdiese\s+woche\b/iu.test(normalized)) {
     days = 7;
   } else if (nextDaysMatch) {
     days = Number(nextDaysMatch[1]);
-  } else if (normalized.includes('month')) {
+  } else if (normalized.includes('month') || /\bmonat\b/iu.test(normalized)) {
     days = MAX_CALENDAR_RANGE_DAYS;
   }
 

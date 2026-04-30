@@ -1139,3 +1139,65 @@ describe('AI Assistant Phase 2 SQL and edge security contract', () => {
     );
   });
 });
+
+describe('AI Assistant Phase 2 minimal multilingual routing (German)', () => {
+  it('routes German calendar phrasing to calendar_summary with safe date defaults', () => {
+    const cases: Array<[string, string, string]> = [
+      ['Was habe ich morgen?', '2026-04-30', '2026-04-30'],
+      ['Kalender heute', '2026-04-29', '2026-04-29'],
+      ['Was steht im Kalender nächste Woche?', '2026-04-30', '2026-05-06'],
+      ['Habe ich Jobs morgen?', '2026-04-30', '2026-04-30'],
+    ];
+    for (const [message, startDate, endDate] of cases) {
+      const result = classifyAssistantIntent(message, 'agency', BASE_DATE);
+      expect(result.intent).toBe('calendar_summary');
+      if (result.intent === 'calendar_summary') {
+        expect(result.dateRange.startDate).toBe(startDate);
+        expect(result.dateRange.endDate).toBe(endDate);
+      }
+    }
+  });
+
+  it('routes "letzte(r) Job/Buchung/Casting/Option" to bounded calendar_item_details', () => {
+    for (const message of [
+      'Wann war der letzte Job?',
+      'Letzte Buchung?',
+      'letzter casting',
+      'letzte option',
+    ]) {
+      const result = classifyAssistantIntent(message, 'agency', BASE_DATE);
+      expect(result.intent).toBe('calendar_item_details');
+      if (result.intent === 'calendar_item_details') {
+        expect(result.reference).toBe('last_job');
+      }
+    }
+  });
+
+  it('routes German measurement phrasing to model_visible_profile_facts and strips German lexemes from search text', () => {
+    const cases: Array<[string, string]> = [
+      ['Maße von Remi Lovisolo', 'Remi Lovisolo'],
+      ['Messwerte für Johann E', 'Johann E'],
+      ['Größe von Remi', 'Remi'],
+      ['Was ist die Größe von Remi?', 'Remi'],
+    ];
+    for (const [message, expected] of cases) {
+      const result = classifyAssistantIntent(message, 'agency', BASE_DATE);
+      expect(result.intent).toBe('model_visible_profile_facts');
+      if (result.intent === 'model_visible_profile_facts') {
+        expect(result.searchText.toLowerCase()).toContain(expected.toLowerCase().split(' ')[0]);
+      }
+    }
+  });
+
+  it('Client German measurement phrasing still hits model facts execution path for role-specific refusal', () => {
+    const result = classifyAssistantIntent('Maße von Mia Stone', 'client', BASE_DATE);
+    expect(result.intent).toBe('model_visible_profile_facts');
+  });
+
+  it('does not classify random German chitchat as live-data', () => {
+    expect(classifyAssistantIntent('Hallo wie geht es dir?', 'agency', BASE_DATE).intent).toBe(
+      'help_static',
+    );
+    expect(classifyAssistantIntent('Danke schön', 'agency', BASE_DATE).intent).toBe('help_static');
+  });
+});

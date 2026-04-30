@@ -2581,6 +2581,106 @@ export const uiCopy = {
 
     // ── Manual Billing entry (separate sub-tab inside Billing) ─────────────
     subTabManualInvoices: 'Manual invoices',
+
+    // ── Invoice Overview sub-tab (Agency + Client) ─────────────────────────
+    subTabInvoiceOverview: 'Invoices',
+  },
+
+  /**
+   * Unified Invoice Overview — additive Billing sub-tab.
+   * Aggregates rows from both `invoices` (Stripe-routed) and
+   * `manual_invoices` (manual PDFs). Per-row tracking status (open/paid/problem)
+   * + short note are operator-internal and DO NOT change Stripe / payment state.
+   * English-only by design.
+   */
+  invoiceOverview: {
+    headerTitle: 'All invoices',
+    headerSubtitleAgency:
+      'One unified view across system invoices and manual invoices. Tracking status and notes are for internal bookkeeping only.',
+    headerSubtitleClient:
+      'All invoices addressed to your organization. Tracking status and notes are for internal bookkeeping only.',
+
+    // Filters
+    filterYearLabel: 'Year',
+    filterYearAll: 'All years',
+    filterMonthLabel: 'Month',
+    filterMonthAll: 'All months',
+    filterDirectionLabel: 'Direction',
+    filterDirectionAll: 'All directions',
+    filterDirectionAgencyToClient: 'Agency → Client',
+    filterDirectionAgencyToModel: 'Agency → Model',
+    filterDirectionModelToAgency: 'Model → Agency',
+    filterDirectionAgencyToAgency: 'Agency → Agency',
+    filterSourceLabel: 'Source',
+    filterSourceAll: 'All sources',
+    filterSourceSystem: 'System',
+    filterSourceManual: 'Manual',
+    filterTrackingLabel: 'Status',
+    filterTrackingAll: 'All',
+    filterTrackingOpen: 'Open',
+    filterTrackingPaid: 'Paid',
+    filterTrackingProblem: 'Problem',
+    searchPlaceholder: 'Search invoice #, name, reference, or note…',
+    clearFilters: 'Clear filters',
+
+    // Table / list columns
+    columnDate: 'Date',
+    columnDirection: 'Direction',
+    columnFrom: 'From',
+    columnTo: 'To',
+    columnClient: 'Client',
+    columnModel: 'Model',
+    columnReference: 'Reference',
+    columnAmount: 'Amount',
+    columnSource: 'Source',
+    columnTracking: 'Status',
+    columnNote: 'Internal note',
+
+    // Tracking status pills + helper text
+    statusOpenLabel: 'Open',
+    statusPaidLabel: 'Paid',
+    statusProblemLabel: 'Problem',
+    statusHelperText: 'Tracking status is for internal bookkeeping only.',
+
+    // Note editor
+    noteEditTitle: 'Internal note',
+    noteEditPlaceholder: 'Short reminder for your team. Internal only.',
+    noteSave: 'Save note',
+    noteClear: 'Clear note',
+    noteCancel: 'Cancel',
+    noteEmpty: 'No note',
+    noteMaxLengthHint: (n: number) => `${n} / 1000 characters`,
+
+    // Grouping
+    groupHeader: (year: number, month: number) =>
+      `${
+        [
+          'January',
+          'February',
+          'March',
+          'April',
+          'May',
+          'June',
+          'July',
+          'August',
+          'September',
+          'October',
+          'November',
+          'December',
+        ][Math.max(0, Math.min(11, month - 1))]
+      } ${year}`,
+    groupHeaderUnknown: 'No date',
+
+    // States
+    loading: 'Loading invoices…',
+    empty: 'No invoices found.',
+    emptyFiltered: 'No invoices match the current filters.',
+    errorLoad: 'Could not load invoices. Please try again.',
+    errorUpdate: 'Could not update this invoice. Please try again.',
+
+    // Detail link
+    openDetailsCta: 'Open details',
+    openDetailsHint: 'Open the full invoice in its existing screen.',
   },
 
   /**

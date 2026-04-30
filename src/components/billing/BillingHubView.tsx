@@ -46,10 +46,12 @@ import { OrganizationBillingDefaultsPanel } from './OrganizationBillingDefaultsP
 import { AgencyModelSettlementsPanel } from './AgencyModelSettlementsPanel';
 import { BillingPresetsPanel } from './BillingPresetsPanel';
 import { ManualBillingHubPanel } from './manual/ManualBillingHubPanel';
+import { InvoiceOverviewPanel } from './InvoiceOverviewPanel';
 
 export type BillingHubVariant = 'agency' | 'client';
 
 type AgencySubTab =
+  | 'overview'
   | 'outgoing'
   | 'incoming'
   | 'settlements'
@@ -58,7 +60,7 @@ type AgencySubTab =
   | 'defaults'
   | 'manual';
 
-type ClientSubTab = 'received' | 'profiles' | 'defaults';
+type ClientSubTab = 'overview' | 'received' | 'profiles' | 'defaults';
 
 type Props = {
   organizationId: string | null;
@@ -88,8 +90,8 @@ export const BillingHubView: React.FC<Props> = ({ organizationId, variant }) => 
     return isOwner ? 'client_owner' : 'client_member';
   }, [variant, isOwner]);
 
-  const [agencyTab, setAgencyTab] = useState<AgencySubTab>('outgoing');
-  const [clientTab, setClientTab] = useState<ClientSubTab>('received');
+  const [agencyTab, setAgencyTab] = useState<AgencySubTab>('overview');
+  const [clientTab, setClientTab] = useState<ClientSubTab>('overview');
 
   // ── Attention pipeline (lightweight pre-load) ────────────────────────────
   const [attentionLoading, setAttentionLoading] = useState(false);
@@ -141,6 +143,7 @@ export const BillingHubView: React.FC<Props> = ({ organizationId, variant }) => 
   const subTabs = useMemo(() => {
     if (variant === 'agency') {
       return [
+        { key: 'overview' as AgencySubTab, label: hub.subTabInvoiceOverview },
         { key: 'outgoing' as AgencySubTab, label: hub.subTabOutgoing },
         { key: 'incoming' as AgencySubTab, label: hub.subTabIncoming },
         { key: 'settlements' as AgencySubTab, label: hub.subTabSettlements },
@@ -151,6 +154,7 @@ export const BillingHubView: React.FC<Props> = ({ organizationId, variant }) => 
       ];
     }
     return [
+      { key: 'overview' as ClientSubTab, label: hub.subTabInvoiceOverview },
       { key: 'received' as ClientSubTab, label: hub.subTabReceived },
       { key: 'profiles' as ClientSubTab, label: hub.subTabProfiles },
       { key: 'defaults' as ClientSubTab, label: hub.subTabDefaults },
@@ -179,6 +183,8 @@ export const BillingHubView: React.FC<Props> = ({ organizationId, variant }) => 
   // gemeinsamer Tab-Strip mehr) und der Empty/Header-Kontext sofort klar ist.
   function renderAgencyBody(): React.ReactElement | null {
     switch (agencyTab) {
+      case 'overview':
+        return <InvoiceOverviewPanel organizationId={organizationId} variant="agency" />;
       case 'outgoing':
         return <InvoicesPanel organizationId={organizationId} mode="outgoing" />;
       case 'incoming':
@@ -198,6 +204,8 @@ export const BillingHubView: React.FC<Props> = ({ organizationId, variant }) => 
 
   function renderClientBody(): React.ReactElement | null {
     switch (clientTab) {
+      case 'overview':
+        return <InvoiceOverviewPanel organizationId={organizationId} variant="client" />;
       case 'received':
         return <InvoicesPanel organizationId={organizationId} mode="incoming" />;
       case 'profiles':
