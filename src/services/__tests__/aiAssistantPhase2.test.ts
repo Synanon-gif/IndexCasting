@@ -439,6 +439,42 @@ describe('AI Assistant Phase 2 intent router', () => {
   });
 });
 
+describe('AI Assistant Phase 2 role matrix (exhaustive router + execution stubs)', () => {
+  const measurementQuestion = 'What are the measurements of Remi Lovisolo?';
+  const calendarQuestion = 'What is on my calendar tomorrow?';
+
+  it.each([
+    ['agency', measurementQuestion, 'model_visible_profile_facts'],
+    ['client', measurementQuestion, 'model_visible_profile_facts'],
+    ['model', measurementQuestion, 'model_visible_profile_facts'],
+    ['agency', calendarQuestion, 'calendar_summary'],
+    ['client', calendarQuestion, 'calendar_summary'],
+    ['model', calendarQuestion, 'unknown_live_data'],
+  ] as const)(
+    'routes role %s consistently for representative live-data phrasing',
+    (role, message, intent) => {
+      expect(classifyAssistantIntent(message, role, BASE_DATE).intent).toBe(intent);
+    },
+  );
+
+  it.each([['agency'], ['client'], ['model']] as const)(
+    'blocks billing intent for every workspace role (%s)',
+    (role) => {
+      expect(classifyAssistantIntent('Show my invoices', role, BASE_DATE).intent).toBe('billing');
+    },
+  );
+
+  it('refuses model-profile facts execution in the Model workspace (not Client copy)', () => {
+    const facts = buildModelVisibleProfileFacts({
+      rows: [{ display_name: 'Sample Model', height: 180 }],
+    });
+    expect(resolveModelFactsExecutionResult({ role: 'model', facts })).toEqual({
+      type: 'answer',
+      answer: 'I can’t access agency-only model profile facts from this workspace.',
+    });
+  });
+});
+
 describe('AI Assistant Phase 2 calendar facts', () => {
   it('returns an empty safe facts object for empty calendar data', () => {
     const facts = buildCalendarFacts({
