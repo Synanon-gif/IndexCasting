@@ -3324,6 +3324,13 @@ export const uiCopy = {
     limitReached:
       'You’ve reached the AI assistant usage limit. Please try again later. Contact your organization admin if you need higher limits.',
     emptyQuestion: 'Enter a question first.',
+    consentRequiredBeforeUse:
+      'AI usage requires acceptance of AI Assistant terms. Use “Accept and continue” in the consent dialog.',
+    consentSaveFailed:
+      'We could not record your AI consent. Please check your connection and try again shortly.',
+    checkingConsent: 'Checking AI Assistant terms acknowledgment…',
+    consentVerificationFailed:
+      'AI consent could not be verified. Close this panel and reopen AI Help in a moment.',
     liveDataRefusal:
       'That request is not available in AI Help. I can help with IndexCasting workflows and supported limited live-data questions for your workspace.',
     subtitles: {

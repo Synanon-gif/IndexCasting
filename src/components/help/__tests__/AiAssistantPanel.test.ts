@@ -21,10 +21,10 @@ describe('AiAssistantPanel UI safety', () => {
     expect(panelSource).toMatch(/paddingTop: 1/);
   });
 
-  it('keeps sending disabled while a request is pending', () => {
-    expect(panelSource).toMatch(/draft\.trim\(\)\.length > 0 && !pending/);
+  it('keeps sending disabled while a request is pending or consent is unresolved', () => {
+    expect(panelSource).toMatch(/draft\.trim\(\)\.length > 0 && !pending && consentReady/);
     expect(panelSource).toMatch(/disabled=\{!canSend\}/);
-    expect(panelSource).toMatch(/editable=\{!pending\}/);
+    expect(panelSource).toMatch(/editable=\{!pending && consentReady\}/);
   });
 
   it('always clears pending after safe assistant responses such as rate-limit messages', () => {
@@ -39,5 +39,11 @@ describe('AiAssistantPanel UI safety', () => {
     expect(panelSource).toMatch(/setAssistantContext\(result\.context \?\? null\)/);
     expect(panelSource).toMatch(/if \(!visible\) setAssistantContext\(null\)/);
     expect(panelSource).toMatch(/setAssistantContext\(null\)/);
+  });
+
+  it('layers GDPR consent modal gating ahead of conversational flow', () => {
+    expect(panelSource).toMatch(/ConsentGateState/);
+    expect(panelSource).toMatch(/AiAssistantConsentModal/);
+    expect(panelSource).toMatch(/getAiAssistantConsentScope/);
   });
 });

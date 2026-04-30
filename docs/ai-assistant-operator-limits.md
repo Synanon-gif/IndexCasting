@@ -59,3 +59,29 @@ Die Edge ruft **`ai_assistant_check_rate_limit(p_request_id, p_viewer_role, p_in
 - `org_context_mismatch` — übergebene `p_organization_id` stimmt nicht mit der aus `organization_members` abgeleiteten Org überein (Spoof-Schutz).
 
 `GRANT EXECUTE` nur an `authenticated`; kein `anon`. Kein `service_role` aus der Assistant-Edge.
+
+## Explicit opt-in consent (`public.ai_assistant_user_consent`)
+
+- Eine Zeile **pro eingeloggtem Nutzer × Organisation** mit `consent_given`, `consent_version`, `consented_at`. Enthält **keine Prompts oder Assistentenantworten**.
+- Canonical Version auch in `public.ai_assistant_expected_consent_version()`; UI/Edge Konstanten unter `src/constants/aiAssistantConsent.ts` müssen zusammen mit neuer Migration hochgezogen werden, wenn juristischer Text angepasst wird.
+
+```sql
+SELECT user_id, organization_id, consent_given, consent_version, consented_at
+FROM public.ai_assistant_user_consent
+WHERE organization_id = 'ORG_UUID'::uuid
+ORDER BY consented_at DESC NULLS LAST
+LIMIT 200;
+```
+
+## Mistral — welche Daten verlassen kontrolliert die Plattform (Transparenz)
+
+**Kann gesendet werden (Engineering-Path):**
+
+- Die aktuelle Textfrage aus dem Composer.
+- Produkt-/Safety-Systeminstructions (begrenzte statische Boundary-Strings).
+- Optional kleine **Facts-JSON-Objekte**, die über schmale, unter RLS laufende Read-RPCs erzeugt werden (z. B. sichtbare Kalender-/Rosterfacetten).
+- Vereinheitlichte Navigator-/Rollen-Leitpfosten für Terminologie (“Terminology firewall”).
+
+**Über diese Assistant-Pipeline nicht zusätzlich angebunden:**
+
+- Roh-Chats/Inbox-Verläufe, verdeckte oder nicht-UI-sichtbare Roster-Spalten, Billing-/Stripe-Webhooks ohne Rolle, GDPR-Exports als LLM-Packendateien, MIME- oder Storage-Binaries, OTPs/API-Keys, freie Tabellen-SQL-„Side-quests“, Cross-Tenant Joins ohne Membership.

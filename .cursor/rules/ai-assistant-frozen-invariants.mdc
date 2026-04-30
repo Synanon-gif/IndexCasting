@@ -63,6 +63,11 @@ Server-seitige `viewerRole`/`get_my_org_context` sind maßgeblich; Client sendet
 - „AI Help could not verify usage limits right now.“ nur bei **infra**-/Parse-Failures des Limiters; Org-Kontext-Fehler des Limiters → `AI_ASSISTANT_LIMITER_ORG_CONTEXT_ANSWER` (unterscheidbar, kein Zugriff durch Abschwächung von Checks).
 - Usage-Events: **keine** vollständigen Prompts oder Antworttexte — nur minimierte Metadaten (siehe Migration / `docs/ai-assistant-operator-limits.md`).
 
-## 6. Änderungsprozess für neue Live-Intents
+## 6. Explizite Nutzer-Konsent-Protokolle (Assistenz geschlossen ohne Zustimmung)
+
+- Bei **eindeutigem** Org-Kontext (Agency-/Client-Arbeitsbereich wie `resolveServerContext`) MUSS gültige `ai_assistant_user_consent`-Version vorliegen, **bevor** Intent-Klassifikation/Live-RPC/Mistral laufen (`consentGate.ts` RPC `ai_assistant_assert_consent_for_ai`). Kein `service_role`.
+- Frontend: Blocking-Modal + Checkbox; Speicherung über `ai_assistant_upsert_user_consent` (Metadaten `consent_version`, Zeitstempel — **niemals** Prompts/Antworten). Version Konstante `AI_CONSENT_VERSION`/`ai_assistant_expected_consent_version()` gebündelt hochziehen.
+
+## 7. Änderungsprozess für neue Live-Intents
 
 **Nicht erlaubt** ohne: Datenschema-/Facts-Vertrag schriftlich, RLS-/SECURITY-DEFINER-Review, Router-Regressionstests (`aiAssistantPhase2.test.ts`), Rate-Limit-Abdeckung (Intent in CHECK + RPC), Terminologie-Firewall, und explizites Produkt-Go.

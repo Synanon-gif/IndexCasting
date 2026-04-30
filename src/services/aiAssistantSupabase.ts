@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { AI_CONSENT_VERSION } from '../constants/aiAssistantConsent';
 import type { AiAssistantViewerRole } from '../components/help/aiAssistantCopy';
 
 const FUNCTION_NAME = 'ai-assistant';
@@ -87,6 +88,60 @@ export function isAiAssistantContextFresh(
   if (expiresAt <= now) return false;
   if (expiresAt - createdAt > AI_ASSISTANT_CONTEXT_TTL_MS + 30_000) return false;
   return true;
+}
+
+export type AiAssistantConsentScope = {
+  organizationId: string | null;
+  consentRequired: boolean;
+};
+
+/**
+ * Resolves the single unambiguous B2B organization context (agency or client) that the
+ * AI assistant Edge function uses. Returns null if none or ambiguous.
+ */
+export async function resolveAiAssistantConsentOrganizationId(): Promise<string | null> {
+  const { data, error } = await supabase.rpc('get_my_org_context');
+  if (error || data == null) return null;
+  const rows = Array.isArray(data) ? data : [data];
+  const supportedRows = rows.filter(
+    (row: { org_type?: string | null }) => row.org_type === 'agency' || row.org_type === 'client',
+  );
+  if (supportedRows.length !== 1) return null;
+  const id = supportedRows[0]?.organization_id;
+  return typeof id === 'string' && id.length > 0 ? id : null;
+}
+
+export async function getAiAssistantConsentScope(): Promise<AiAssistantConsentScope> {
+  const organizationId = await resolveAiAssistantConsentOrganizationId();
+  return {
+    organizationId,
+    consentRequired: organizationId != null,
+  };
+}
+
+export async function isAiAssistantConsentSatisfied(organizationId: string): Promise<boolean> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data, error } = await supabase
+    .from('ai_assistant_user_consent')
+    .select('consent_given, consent_version')
+    .eq('user_id', user.id)
+    .eq('organization_id', organizationId)
+    .maybeSingle();
+  if (error || !data) return false;
+  return Boolean(data.consent_given) && data.consent_version === AI_CONSENT_VERSION;
+}
+
+export async function recordAiAssistantUserConsent(
+  organizationId: string,
+): Promise<{ ok: boolean }> {
+  const { error } = await supabase.rpc('ai_assistant_upsert_user_consent', {
+    p_organization_id: organizationId,
+    p_consent_version: AI_CONSENT_VERSION,
+  });
+  return { ok: error == null };
 }
 
 export async function askAiAssistant(input: {

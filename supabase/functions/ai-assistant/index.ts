@@ -7,7 +7,7 @@
  * - allowlisted live-data intents: help_static, calendar_summary, calendar_item_details,
  *   model_visible_profile_facts (Agency-only), model_calendar_availability_check (Agency-only)
  * - no service_role
- * - no free SQL, arbitrary RPCs, writes, or broad private org data access
+ * - GDPR explicit consent gate before any classify/Mistral/RPC work when an organisation context exists
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -57,6 +57,7 @@ import {
   resolveModelCalendarAvailabilityExecutionResult,
   type ViewerRole,
 } from './phase2.ts';
+import { AI_ASSISTANT_CONSENT_REQUIRED_ANSWER, gateAiAssistantConsent } from './consentGate.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
@@ -985,6 +986,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const serverContext = await resolveServerContext(supabase, requestedRole);
   const role = serverContext.role;
+
+  if (!(await gateAiAssistantConsent(supabase, serverContext.organizationId))) {
+    return assistantAnswerResponse(AI_ASSISTANT_CONSENT_REQUIRED_ANSWER, cors);
+  }
+
   const assistantContext = resolveRequestAssistantContext(payload);
   const expandedKindFollowup = expandKindOnlyCalendarFollowup(
     routingMessage,

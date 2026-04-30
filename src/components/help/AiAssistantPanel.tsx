@@ -16,12 +16,24 @@ import {
   askAiAssistant,
   type AiAssistantContext,
   type AiAssistantMessage,
+  getAiAssistantConsentScope,
+  isAiAssistantConsentSatisfied,
+  recordAiAssistantUserConsent,
 } from '../../services/aiAssistantSupabase';
+import { AI_ASSISTANT_CONSENT_REQUIRED_ANSWER } from '../../constants/aiAssistantConsent';
 import {
   getAiAssistantDisclaimer,
   getAiAssistantSubtitle,
   type AiAssistantViewerRole,
 } from './aiAssistantCopy';
+import { AiAssistantConsentModal } from './AiAssistantConsentModal';
+
+type ConsentGateState =
+  | { phase: 'idle' }
+  | { phase: 'checking' }
+  | { phase: 'error' }
+  | { phase: 'ready'; orgId: string | null }
+  | { phase: 'blocked'; orgId: string };
 
 type AiAssistantPanelProps = {
   visible: boolean;
@@ -41,6 +53,7 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [assistantContext, setAssistantContext] = useState<AiAssistantContext | null>(null);
+  const [consentGate, setConsentGate] = useState<ConsentGateState>({ phase: 'idle' });
 
   useEffect(() => {
     setAssistantContext(null);
@@ -50,7 +63,42 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
     if (!visible) setAssistantContext(null);
   }, [visible]);
 
-  const canSend = useMemo(() => draft.trim().length > 0 && !pending, [draft, pending]);
+  useEffect(() => {
+    if (!visible) {
+      setConsentGate({ phase: 'idle' });
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setConsentGate({ phase: 'checking' });
+      try {
+        const scope = await getAiAssistantConsentScope();
+        if (cancelled) return;
+        if (!scope.organizationId) {
+          setConsentGate({ phase: 'ready', orgId: null });
+          return;
+        }
+        const satisfied = await isAiAssistantConsentSatisfied(scope.organizationId);
+        if (cancelled) return;
+        if (satisfied) {
+          setConsentGate({ phase: 'ready', orgId: scope.organizationId });
+        } else {
+          setConsentGate({ phase: 'blocked', orgId: scope.organizationId });
+        }
+      } catch {
+        if (!cancelled) setConsentGate({ phase: 'error' });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
+
+  const consentReady = consentGate.phase === 'ready';
+  const canSend = useMemo(
+    () => draft.trim().length > 0 && !pending && consentReady,
+    [draft, pending, consentReady],
+  );
 
   const scrollToEnd = () => {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
@@ -63,6 +111,18 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
       return;
     }
     if (pending) return;
+    if (consentGate.phase === 'checking') {
+      setError(copy.consentRequiredBeforeUse);
+      return;
+    }
+    if (consentGate.phase === 'error') {
+      setError(copy.consentVerificationFailed);
+      return;
+    }
+    if (!consentReady) {
+      setError(copy.consentRequiredBeforeUse);
+      return;
+    }
 
     const nextMessages: AiAssistantMessage[] = [...messages, { role: 'user', content: question }];
     setMessages(nextMessages);
@@ -79,11 +139,18 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
         context: assistantContext,
       });
       if (result.ok) {
-        setAssistantContext(result.context ?? null);
-        setMessages((current) => [
-          ...current,
-          { role: 'assistant', content: result.answer, context: result.context },
-        ]);
+        if (result.answer.trim() === AI_ASSISTANT_CONSENT_REQUIRED_ANSWER) {
+          setMessages((current) => current.slice(0, -1));
+          setDraft(question);
+          setAssistantContext(null);
+          setError(copy.consentRequiredBeforeUse);
+        } else {
+          setAssistantContext(result.context ?? null);
+          setMessages((current) => [
+            ...current,
+            { role: 'assistant', content: result.answer, context: result.context },
+          ]);
+        }
       } else {
         setAssistantContext(null);
         setError(copy.unavailable);
@@ -95,93 +162,121 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
   };
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalRoot}>
-        <Pressable
-          style={styles.backdrop}
-          onPress={onClose}
-          accessibilityLabel={copy.closeLabel}
-          accessibilityRole="button"
-        />
-        <View style={styles.panel}>
-          <View style={styles.header}>
-            <View style={styles.headerText}>
-              <Text style={styles.title}>{copy.title}</Text>
-              <Text style={styles.subtitle}>{subtitle}</Text>
-            </View>
-            <Pressable
-              onPress={onClose}
-              hitSlop={10}
-              accessibilityLabel={copy.closeLabel}
-              accessibilityRole="button"
-            >
-              <Text style={styles.close}>×</Text>
-            </Pressable>
-          </View>
-
-          <Text style={styles.disclaimer}>{disclaimer}</Text>
-
-          <ScrollView
-            ref={scrollRef}
-            style={styles.messages}
-            contentContainerStyle={styles.messagesContent}
-            keyboardShouldPersistTaps="handled"
-            onContentSizeChange={scrollToEnd}
-            onLayout={scrollToEnd}
-          >
-            {messages.map((message, index) => (
-              <View
-                key={`${message.role}-${index}`}
-                style={[
-                  styles.bubble,
-                  message.role === 'user' ? styles.userBubble : styles.assistantBubble,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.bubbleText,
-                    message.role === 'user' ? styles.userBubbleText : null,
-                  ]}
-                >
-                  {message.content}
-                </Text>
+    <>
+      <AiAssistantConsentModal
+        visible={visible && consentGate.phase === 'blocked'}
+        onDecline={onClose}
+        onAccept={async () => {
+          if (consentGate.phase !== 'blocked') return;
+          const { ok } = await recordAiAssistantUserConsent(consentGate.orgId);
+          if (!ok) {
+            setError(copy.consentSaveFailed);
+            return;
+          }
+          setError(null);
+          setMessages([{ role: 'assistant', content: copy.initialMessage }]);
+          setAssistantContext(null);
+          setConsentGate({ phase: 'ready', orgId: consentGate.orgId });
+        }}
+      />
+      <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+        <View style={styles.modalRoot}>
+          <Pressable
+            style={styles.backdrop}
+            onPress={onClose}
+            accessibilityLabel={copy.closeLabel}
+            accessibilityRole="button"
+          />
+          <View style={styles.panel}>
+            <View style={styles.header}>
+              <View style={styles.headerText}>
+                <Text style={styles.title}>{copy.title}</Text>
+                <Text style={styles.subtitle}>{subtitle}</Text>
               </View>
-            ))}
-            {pending ? (
-              <View style={[styles.bubble, styles.assistantBubble, styles.loadingBubble]}>
+              <Pressable
+                onPress={onClose}
+                hitSlop={10}
+                accessibilityLabel={copy.closeLabel}
+                accessibilityRole="button"
+              >
+                <Text style={styles.close}>×</Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.disclaimer}>{disclaimer}</Text>
+
+            {consentGate.phase === 'checking' ? (
+              <View style={styles.consentCheckingRow}>
                 <ActivityIndicator size="small" color={colors.textSecondary} />
-                <Text style={styles.loadingText}>{copy.sending}</Text>
+                <Text style={styles.consentCheckingText}>{copy.checkingConsent}</Text>
               </View>
             ) : null}
-          </ScrollView>
+            {consentGate.phase === 'error' ? (
+              <Text style={styles.errorText}>{copy.consentVerificationFailed}</Text>
+            ) : null}
 
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-          <View style={styles.inputRow}>
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              placeholder={copy.inputPlaceholder}
-              placeholderTextColor={colors.textSecondary}
-              style={styles.input}
-              editable={!pending}
-              returnKeyType="send"
-              onSubmitEditing={send}
-              accessibilityLabel={copy.inputPlaceholder}
-            />
-            <Pressable
-              onPress={send}
-              disabled={!canSend}
-              style={[styles.sendButton, !canSend ? styles.sendButtonDisabled : null]}
-              accessibilityRole="button"
-              accessibilityLabel={copy.send}
+            <ScrollView
+              ref={scrollRef}
+              style={styles.messages}
+              contentContainerStyle={styles.messagesContent}
+              keyboardShouldPersistTaps="handled"
+              onContentSizeChange={scrollToEnd}
+              onLayout={scrollToEnd}
             >
-              <Text style={styles.sendButtonText}>{pending ? copy.sending : copy.send}</Text>
-            </Pressable>
+              {messages.map((message, index) => (
+                <View
+                  key={`${message.role}-${index}`}
+                  style={[
+                    styles.bubble,
+                    message.role === 'user' ? styles.userBubble : styles.assistantBubble,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.bubbleText,
+                      message.role === 'user' ? styles.userBubbleText : null,
+                    ]}
+                  >
+                    {message.content}
+                  </Text>
+                </View>
+              ))}
+              {pending ? (
+                <View style={[styles.bubble, styles.assistantBubble, styles.loadingBubble]}>
+                  <ActivityIndicator size="small" color={colors.textSecondary} />
+                  <Text style={styles.loadingText}>{copy.sending}</Text>
+                </View>
+              ) : null}
+            </ScrollView>
+
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+            <View style={styles.inputRow}>
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                placeholder={copy.inputPlaceholder}
+                placeholderTextColor={colors.textSecondary}
+                style={styles.input}
+                editable={!pending && consentReady}
+                returnKeyType="send"
+                onSubmitEditing={send}
+                accessibilityLabel={copy.inputPlaceholder}
+              />
+              <Pressable
+                onPress={send}
+                disabled={!canSend}
+                style={[styles.sendButton, !canSend ? styles.sendButtonDisabled : null]}
+                accessibilityRole="button"
+                accessibilityLabel={copy.send}
+              >
+                <Text style={styles.sendButtonText}>{pending ? copy.sending : copy.send}</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
-      </View>
-    </Modal>
+      </Modal>
+    </>
   );
 }
 
@@ -246,6 +341,18 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: colors.textSecondary,
     paddingVertical: spacing.xs,
+  },
+  consentCheckingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  consentCheckingText: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    flex: 1,
   },
   messages: {
     flexGrow: 1,
