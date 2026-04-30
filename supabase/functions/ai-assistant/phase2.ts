@@ -271,8 +271,15 @@ const FORBIDDEN_PATTERNS: Array<
   ['team_management', /\b(invite|invitation|team member|team members|member list|members list|organization members|remove member|add member)\b/i],
   ['admin_security', /\b(admin|security|api key|secret|system prompt|developer instruction|policy|policies|permissions)\b/i],
   ['admin_security', /\b(ignore|override|forget)\b.*\b(previous rules|all rules|system instructions|developer instructions)\b/i],
-  ['database_schema', /\b(service[_\s-]?role|sql|query the database|database|schema|table|tables|rpc|rls|migration|supabase internals?|internal ids?|org ids?|organization ids?|uuids?)\b/i],
-  ['raw_messages', /\b(raw messages?|chat history|message dump|all messages?|what did .* (say|write|send)|show .* messages?)\b/i],
+  ['database_schema', /\b(service[_\s-]?role|sql|query the database|database|schema|table|tables|rpc|rls|migration|supabase internals?|internal ids?|org ids?|organization_?ids?|model_?ids?|uuids?|option_requests)\b|\bquery\b[\s\S]{0,80}\boption_requests\b/i],
+  [
+    'model_hidden_data',
+    /\b(output|dump|export)\b[\s\S]{0,120}\b(hidden|private)\b[\s\S]{0,120}\bdata\b/i,
+  ],
+  [
+    'raw_messages',
+    /\b(raw messages?|chat history|message dump|all messages?|show .* messages?|what did (?![\s\S]{0,240}calendar item)[\s\S]{0,240}?\b(say|write|send))\b/i,
+  ],
   ['model_hidden_data', /\b(hidden|private|invisible|not visible)\b.*\b(agency\s+)?models?\b/i],
   ['model_hidden_data', /\b(show|give|tell|list|what(?:'s| is)?)\b.*\b(emails?|e-mails?|phone|phone numbers?|private notes?|hidden notes?|admin notes?|private pictures?|private photos?|hidden pictures?|hidden photos?|raw storage|file urls?|storage paths?|mediaslide|sync id|internal ids?)\b/i],
   ['model_hidden_data', /\b(model email|model emails|email address|all models from|private model|private models|hidden model|hidden models|not visible model|invisible model)\b/i],
@@ -298,7 +305,9 @@ const CALENDAR_PATTERNS = [
   /\bdo\s+(?:i|we)\s+have\s+any\s+(?:bookings?|options?|castings?|jobs?|requests?)\b/i,
   /\b(what|show|list|tell me|do i|do we|have|what's|what is|who)\b.*\b(today|tomorrow|this week|next week|next \d+ days?|month|soon|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4}-\d{2}-\d{2})\b.*\b(options?|castings?|jobs?|bookings?|booked|requests?)\b/i,
   /\b(options?|castings?|jobs?|bookings?|booked|requests?)\b.*\b(today|tomorrow|this week|next week|next \d+ days?|month|soon|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4}-\d{2}-\d{2})\b/i,
-  /\bwhat (is|do we have|do i have).*\b(today|tomorrow|next week|this week|soon|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4}-\d{2}-\d{2})\b/i,
+  /\bwhat (is|do we have|do i have).*\b(today|tomorrow|next week|this week|soon|upcoming|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4}-\d{2}-\d{2})\b/i,
+  /\bwhat\s+is\s+upcoming\b/i,
+  /\bwhat\s+is\s+next\b/i,
   /\b(?:from|between)\s+\d{4}-\d{2}-\d{2}\s+(?:to|and|-)\s+\d{4}-\d{2}-\d{2}\b/i,
   /\bwhen\s+was\s+(?:my\s+)?(?:the\s+)?last\s+(?:job|booking|casting|option)\b/i,
   // German calendar tokens (minimal allowlist; intent only — date resolver
@@ -310,7 +319,7 @@ const CALENDAR_PATTERNS = [
 ];
 
 const CALENDAR_DETAIL_PATTERNS = [
-  /^\s*tell me more\s*$/i,
+  /^\s*tell me more\.?\s*$/i,
   /^\s*what\s+job\??\s*$/i,
   /\b(details?|more|tell me more)\b.*\b(that|this|last|job|booking|casting|option|calendar item|event)\b/i,
   /\b(that|this|last)\s+(job|booking|casting|option|calendar item|event)\b/i,
@@ -326,7 +335,9 @@ const CALENDAR_DETAIL_PATTERNS = [
   /\bhow\s+long\s+(?:was|is)\s+(?:it|that|this)\??\s*$/i,
   /\bwhen\s+does\s+(?:it|that|this)\s+(?:start|end)\??\s*$/i,
   /\bwhat\s+was\s+(?:the\s+)?title\??\s*$/i,
-  /\bwhat\s+was\s+(?:the\s+)?(?:description|note)\b/i,
+  /\bwhat\s+was\s+(?:the\s+)?(?:description|notes?)\b/i,
+  /\bwhat\s+were\s+(?:the\s+)?notes?\b/i,
+  /\bwhat\s+did\s+that\s+calendar\s+item\s+say\b/i,
   // German follow-up phrasing for the most common variants only.
   /\bletzte[rn]?\s+(?:job|buchung|casting|option)\b/iu,
   /^\s*(?:wann\s+war\s+)?(?:der|die|das)?\s*letzte[rn]?\s+(?:job|buchung|casting|option)\??\s*$/iu,
@@ -398,13 +409,21 @@ const MODEL_PROFILE_PATTERNS_FOLDED: RegExp[] = [
     `\\bwhat\\s+is\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+model\\s+size\\b`,
     'u',
   ),
+  new RegExp(
+    `\\bwhat\\s+are\\b[\\s\\S]{0,40}${MODEL_NAME_TOK}(?:\\s+\\p{L}{1,4}){0,2}\\s+\\bmeasurements?\\b`,
+    'u',
+  ),
+  new RegExp(
+    `\\bis\\b[\\s\\S]{0,40}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}[\\s\\S]{0,40}\\bcm\\b`,
+    'iu',
+  ),
 ];
 
 const MODEL_INFO_CLARIFICATION_PATTERN =
   /^\s*what\s+about\s+([a-z\p{L}\p{N}'’.\-\s]{2,80})\??\s*$/iu;
 
 const WRITE_ACTION_PATTERN =
-  /^(please\s+)?(create|add|book|confirm|cancel|delete|remove|update|send|invite)\b|\b(create|add|book|confirm|cancel|delete|remove|update|send|invite)\b.*\b(for me|now|today|tomorrow|next week)\b/i;
+  /^(please\s+)?(create|add|book|confirm|cancel|delete|remove|update|send|invite|change)\b|\b(create|add|book|confirm|cancel|delete|remove|update|send|invite|change)\b.*\b(for me|now|today|tomorrow|next week|to\s+\d+)\b/i;
 
 const POLITE_CAPABILITY_QUESTION =
   /^\s*(can|could|may|would|should)\s+(i|we)\b/i;
@@ -724,6 +743,9 @@ function hasModelCalendarAvailabilitySignal(message: string, folded: string): bo
     ) ||
     /\bist\s+[A-ZÄÖÜa-zäöüß][\p{L}\p{N}'’.\-\s]{0,48}\b(?:morgen|heute|frei|zeit|kalender|gebucht|verfügbar|verfuegbar)\b/iu.test(
       m,
+    ) ||
+    /\bwhat\s+about\b[\s\S]{0,200}\b(?:on|for)\b[\s\S]{0,120}\b(?:\d{4}-\d{2}-\d{2}|may\s+\d{1,2}|january|february|march|april|june|july|august|september|october|november|december)\b/i.test(
+      m,
     )
   );
 }
@@ -822,15 +844,6 @@ function classifyModelCalendarAvailabilityIntent(
   }
 
   const dateRes = resolveAvailabilityCheckDate(message, now, assistantContext);
-  if (
-    /\bbooked\b/i.test(message) &&
-    dateRes.kind === 'missing' &&
-    !ctxAvailDate &&
-    !messageHasImplicitAvailabilityDate(message)
-  ) {
-    return null;
-  }
-
   if (dateRes.kind === 'ambiguous') {
     return {
       intent: 'model_calendar_availability_check',
@@ -1021,6 +1034,7 @@ const MODEL_SEARCH_NAME_DENYLIST = new Set([
   'his',
   'him',
   'its',
+  'it',
   'who',
   'why',
   'how',
@@ -1162,12 +1176,13 @@ function stripModelSearchNoise(value: string): string {
 
 function resolveCalendarDetailRequestedField(message: string): CalendarDetailRequestedField {
   if (CALENDAR_DETAIL_PRICE_PATTERN.test(message)) return 'pricing';
+  if (/\bwhat\s+did\s+that\s+calendar\s+item\s+say\b/i.test(message)) return 'description';
   if (/\bwhich\s+model\b|\bmodel\b.*\b(in|for)\b/i.test(message)) return 'model';
   if (/\b(client|agency|counterparty|who\s+was\s+it\s+with|who\s+was\s+.*with)\b/i.test(message)) {
     return 'counterparty';
   }
   if (/\bwhen|date|time|start|end|how\s+long\b/i.test(message)) return 'date';
-  if (/\b(description|note)\b/i.test(message)) return 'description';
+  if (/\b(description|notes?)\b/i.test(message)) return 'description';
   return 'summary';
 }
 

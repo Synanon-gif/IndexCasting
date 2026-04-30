@@ -180,7 +180,7 @@ describe('AI Assistant full-coverage user-message smoke matrix', () => {
   });
 
   const modelQuestionScenarios = [
-    ['Is Anna booked?', 'unknown_live_data'],
+    ['Is Anna booked?', 'model_calendar_availability_check'],
     ['When is John working?', 'unknown_live_data'],
     ['Find bookings for Anna', 'unknown_live_data'],
     ['What is the height of Anna-Marie Stone?', 'model_visible_profile_facts'],
