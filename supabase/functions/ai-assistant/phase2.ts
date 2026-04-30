@@ -311,8 +311,8 @@ const MODEL_PROFILE_PATTERNS_FOLDED: RegExp[] = [
     `\\bdoes\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}[\\s\\S]{0,120}\\bmatch\\s+the\\s+system\\b`,
     'u',
   ),
-  /\b(?:her|his|their)\s+(?:measurements?|dimensions?|height|city|location|shoes?|shoe\s+size|chest|bust|waist|hips|hair|eyes?)\b/u,
-  /\b(?:this|that)\s+model\b[\s\S]{0,120}\b(?:measurements?|dimensions?|height|city|location|shoes?|shoe\s+size|chest|bust|waist|hips|hair|eyes?|account)\b/u,
+  /\b(?:her|his|their)\s+(?:measurements?|dimensions?|height|city|location|shoes?|shoe\s+size|chest|bust|waist|hips|hair|eyes?)\b/iu,
+  /\b(?:this|that)\s+model\b[\s\S]{0,120}\b(?:measurements?|dimensions?|height|city|location|shoes?|shoe\s+size|chest|bust|waist|hips|hair|eyes?|account)\b/iu,
   new RegExp(
     `${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+\\b(?:measurements?|dimensions?)\\b`,
     'u',
@@ -331,6 +331,14 @@ const MODEL_PROFILE_PATTERNS_FOLDED: RegExp[] = [
   ),
   new RegExp(
     `${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+\\b(?:waist|chest|hips|height)\\b`,
+    'u',
+  ),
+  new RegExp(
+    `${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+model\\s+size\\b`,
+    'u',
+  ),
+  new RegExp(
+    `\\bwhat\\s+is\\b[\\s\\S]{0,120}${MODEL_NAME_TOK}(?:\\s+${MODEL_NAME_TOK}){0,3}\\s+model\\s+size\\b`,
     'u',
   ),
 ];
@@ -465,10 +473,64 @@ const MODEL_SEARCH_MEASUREMENT_LEXEMES = new Set([
  */
 export function normalizeTextForModelIntentMatching(message: string): string {
   let s = message.trim().normalize('NFKC').toLowerCase();
-  s = s.replace(/\b(\p{L}+)'s\b/gu, '$1');
+  s = s.replace(/\b(\p{L}+)['\u2019]s\b/gu, '$1');
   s = s.replace(/[^\p{L}\p{N}\s]+/gu, ' ');
   s = s.replace(/\s+/g, ' ').trim();
   return normalizeModelNamePluralArtifacts(s);
+}
+
+/** Tokens that match MODEL_NAME_TOK shape but are not plausible display names (fail-closed for routing). */
+const MODEL_SEARCH_NAME_DENYLIST = new Set([
+  'the',
+  'our',
+  'your',
+  'my',
+  'all',
+  'any',
+  'and',
+  'for',
+  'not',
+  'you',
+  'she',
+  'her',
+  'his',
+  'him',
+  'its',
+  'who',
+  'why',
+  'how',
+  'are',
+  'was',
+  'but',
+  'did',
+  'does',
+  'has',
+  'have',
+]);
+
+function isDenylistOnlyModelSearchName(searchText: string): boolean {
+  const parts = searchText
+    .trim()
+    .normalize('NFKC')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return true;
+  return parts.every((p) => MODEL_SEARCH_NAME_DENYLIST.has(p));
+}
+
+/** True when at least one token looks like a name, not only measurement/stop words (prevents lone "size" / "our size"). */
+function hasPlausibleModelNameToken(searchText: string): boolean {
+  const parts = searchText
+    .trim()
+    .normalize('NFKC')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return false;
+  return parts.some(
+    (p) => !MODEL_SEARCH_MEASUREMENT_LEXEMES.has(p) && !MODEL_SEARCH_NAME_DENYLIST.has(p),
+  );
 }
 
 function normalizeModelNamePluralArtifacts(s: string): string {
@@ -595,10 +657,10 @@ function resolveCalendarDetailKindHint(message: string): CalendarSummaryItem['ki
 
 function isPronounModelFactsQuestion(message: string): boolean {
   return (
-    /\b(?:her|his|their)\s+(?:measurements?|dimensions?|height|city|location|shoes?|shoe\s+size|chest|bust|waist|hips|hair|eyes?)\b/i.test(
+    /\b(?:her|his|their)\s+(?:measurements?|dimensions?|height|city|location|shoes?|shoe\s+size|chest|bust|waist|hips|hair|eyes?)\b/iu.test(
       message,
     ) ||
-    /\b(?:this|that)\s+model\b.*\b(?:measurements?|dimensions?|height|city|location|shoes?|shoe\s+size|chest|bust|waist|hips|hair|eyes?|account)\b/i.test(
+    /\b(?:this|that)\s+model\b.*\b(?:measurements?|dimensions?|height|city|location|shoes?|shoe\s+size|chest|bust|waist|hips|hair|eyes?|account)\b/iu.test(
       message,
     )
   );
@@ -839,7 +901,11 @@ export function classifyAssistantIntent(
     }
 
     const searchText = extractModelProfileSearchText(normalized);
-    if (searchText.length >= 2) {
+    if (
+      searchText.length >= 2 &&
+      !isDenylistOnlyModelSearchName(searchText) &&
+      hasPlausibleModelNameToken(searchText)
+    ) {
       return { intent: 'model_visible_profile_facts', searchText };
     }
     if (contextModel.length >= 2) {
@@ -852,7 +918,11 @@ export function classifyAssistantIntent(
     const searchText = normalizeSearchTextArtifacts(
       stripModelSearchNoise(modelInfoClarificationMatch[1]),
     );
-    if (searchText.length >= 2) {
+    if (
+      searchText.length >= 2 &&
+      !isDenylistOnlyModelSearchName(searchText) &&
+      hasPlausibleModelNameToken(searchText)
+    ) {
       return {
         intent: 'model_visible_profile_facts',
         searchText,

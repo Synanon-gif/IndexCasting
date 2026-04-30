@@ -150,6 +150,35 @@ describe('AI Assistant full-coverage user-message smoke matrix', () => {
     assertNoSecurityLeak(resolveCalendarItemDetailsAnswer(ambiguousFacts));
   });
 
+  it('C/N resolves pronoun measurement follow-up using last_model_name context without static fallback', () => {
+    const createdAt = new Date('2026-05-01T08:00:00.000Z');
+    const context = buildAssistantContext({
+      lastModelName: 'Rémi Lovisolo',
+      lastIntent: 'model_visible_profile_facts',
+      createdAt,
+    });
+    const first = classifyAssistantIntent(
+      'What are his measurements?',
+      'agency',
+      createdAt,
+      context,
+    );
+    expect(first.intent).toBe('model_visible_profile_facts');
+    expect(first.intent).not.toBe('help_static');
+    if (first.intent === 'model_visible_profile_facts') {
+      expect(first.needsClarification).toBeFalsy();
+      expect(first.searchText).toBe('Rémi Lovisolo');
+    }
+    const second = classifyAssistantIntent(
+      'What are his measurements?',
+      'agency',
+      createdAt,
+      context,
+    );
+    expect(second).toEqual(first);
+    assertNoSecurityLeak(first);
+  });
+
   const modelQuestionScenarios = [
     ['Is Anna booked?', 'unknown_live_data'],
     ['When is John working?', 'unknown_live_data'],

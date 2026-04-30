@@ -13,6 +13,7 @@ import {
   CLIENT_MODEL_FACTS_REFUSAL,
   classifyAssistantIntent,
   extractModelProfileSearchText,
+  normalizeTextForModelIntentMatching,
   findSingleCalendarReferenceFromFacts,
   forbiddenIntentAnswer,
   MAX_CALENDAR_DETAIL_LOOKBACK_DAYS,
@@ -219,6 +220,9 @@ describe('AI Assistant Phase 2 intent router', () => {
       ['show remi measurements', 'remi'],
       ['rémi lovisolo waist', 'rémi lovisolo'],
       ['remi waist', 'remi'],
+      [`What are Rémi\u2019s measurements?`, 'Rémi'],
+      ['What is remi model size?', 'remi'],
+      ['remi model size', 'remi'],
     ];
     for (const [msg, expectedSearch] of scenarios) {
       const result = classifyAssistantIntent(msg, 'agency', BASE_DATE);
@@ -226,6 +230,32 @@ describe('AI Assistant Phase 2 intent router', () => {
       if (result.intent === 'model_visible_profile_facts') {
         expect(result.searchText).toBe(expectedSearch);
       }
+    }
+  });
+
+  it('normalizes user text for model intent matching (case, punctuation, possessives, plural typos)', () => {
+    expect(normalizeTextForModelIntentMatching(`Rémi\u2019s measurements?`)).toBe(
+      'rémi measurements',
+    );
+    expect(normalizeTextForModelIntentMatching(`lovisolo's  measurements`)).toBe(
+      'lovisolo measurements',
+    );
+    expect(normalizeTextForModelIntentMatching('lovisolos measurements')).toBe(
+      'lovisolo measurements',
+    );
+  });
+
+  it('does not treat generic tokens as model names for measurement routing (fail-closed)', () => {
+    const result = classifyAssistantIntent('What is our model size?', 'agency', BASE_DATE);
+    expect(result.intent).toBe('unknown_live_data');
+  });
+
+  it('treats capitalized pronouns like HIS as model-facts phrasing (clarify without context)', () => {
+    const result = classifyAssistantIntent('What are HIS measurements?', 'agency', BASE_DATE);
+    expect(result.intent).toBe('model_visible_profile_facts');
+    if (result.intent === 'model_visible_profile_facts') {
+      expect(result.needsClarification).toBe(true);
+      expect(result.searchText).toBe('');
     }
   });
 
