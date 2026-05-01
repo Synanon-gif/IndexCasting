@@ -50,7 +50,10 @@ export function AiAssistantConsentModal({
     const rootPadY = spacing.md * 2;
     const inset = Platform.OS === 'web' ? 0 : insets.top + insets.bottom;
     const usable = Math.max(0, windowHeight - rootPadY - inset);
-    const target = Math.min(Math.round(windowHeight * 0.92), 740);
+    // Web: use more vertical space so the legal scroll region is usable on desktop (old 740px cap was too tight).
+    const viewportFraction = Platform.OS === 'web' ? 0.94 : 0.92;
+    const softMax = Platform.OS === 'web' ? 920 : 800;
+    const target = Math.min(Math.round(windowHeight * viewportFraction), softMax);
     const sheetHeight = Math.min(target, usable);
     return { sheetHeight: sheetHeight > 0 ? sheetHeight : target };
   }, [windowHeight, insets.top, insets.bottom]);
