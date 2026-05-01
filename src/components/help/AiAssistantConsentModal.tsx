@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Dimensions,
   Linking,
   Modal,
   Platform,
@@ -9,8 +8,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   AI_ASSISTANT_LEGAL_SECTIONS,
   AI_ASSISTANT_CONSENT_PLAIN_SUMMARY,
@@ -25,6 +26,12 @@ import {
 } from '../../constants/aiAssistantConsent';
 import { colors, spacing, typography } from '../../theme/theme';
 
+/** Web: explicit overflow helps wheel / trackpad; RN-Web maps to the scrollable div. */
+const platformScrollChrome = Platform.select({
+  web: { overflow: 'scroll' as const },
+  default: {},
+});
+
 export type AiAssistantConsentModalProps = {
   visible: boolean;
   onAccept: () => Promise<void>;
@@ -38,14 +45,18 @@ export function AiAssistantConsentModal({
 }: AiAssistantConsentModalProps) {
   const [agreed, setAgreed] = useState(false);
   const [pending, setPending] = useState(false);
+  const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
+  /** Fits viewport on app + web; updates on resize/orientation (useWindowDimensions). */
   const layout = useMemo(() => {
-    const h = Dimensions.get('window').height;
-    return {
-      /** Fixed sheet height so column flex gives the legal ScrollView a bounded area (web + native). */
-      sheetHeight: Math.min(Math.round(h * 0.92), 740),
-    };
-  }, []);
+    const rootPadY = spacing.md * 2;
+    const inset = Platform.OS === 'web' ? 0 : insets.top + insets.bottom;
+    const usable = Math.max(0, windowHeight - rootPadY - inset);
+    const target = Math.min(Math.round(windowHeight * 0.92), 740);
+    const sheetHeight = Math.min(target, usable);
+    return { sheetHeight: sheetHeight > 0 ? sheetHeight : target };
+  }, [windowHeight, insets.top, insets.bottom]);
 
   useEffect(() => {
     if (!visible) {
@@ -102,11 +113,17 @@ export function AiAssistantConsentModal({
 
           <View style={styles.scrollStage}>
             <ScrollView
-              style={styles.scroll}
+              style={[styles.scroll, platformScrollChrome]}
               contentContainerStyle={styles.scrollContent}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator
               nestedScrollEnabled
+              overScrollMode="always"
+              bounces
+              scrollEventThrottle={16}
+              {...(Platform.OS === 'ios'
+                ? { contentInsetAdjustmentBehavior: 'never' as const }
+                : {})}
             >
               {AI_ASSISTANT_LEGAL_SECTIONS.map((section) => (
                 <View key={section.title} style={styles.section}>
@@ -266,6 +283,10 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     alignSelf: 'stretch',
+    ...Platform.select({
+      web: { overflow: 'hidden' as const },
+      default: {},
+    }),
   },
   scroll: {
     flex: 1,
