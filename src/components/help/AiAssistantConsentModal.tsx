@@ -42,8 +42,8 @@ export function AiAssistantConsentModal({
   const layout = useMemo(() => {
     const h = Dimensions.get('window').height;
     return {
-      sheetMaxHeight: Math.min(Math.round(h * 0.92), 740),
-      scrollMinHeight: Math.min(Math.max(Math.round(h * 0.38), 220), 420),
+      /** Fixed sheet height so column flex gives the legal ScrollView a bounded area (web + native). */
+      sheetHeight: Math.min(Math.round(h * 0.92), 740),
     };
   }, []);
 
@@ -84,7 +84,8 @@ export function AiAssistantConsentModal({
           style={[
             styles.sheet,
             {
-              maxHeight: layout.sheetMaxHeight,
+              height: layout.sheetHeight,
+              maxHeight: layout.sheetHeight,
             },
           ]}
         >
@@ -99,53 +100,56 @@ export function AiAssistantConsentModal({
           </View>
           <Text style={styles.hint}>{AI_ASSISTANT_CONSENT_SCROLL_HINT}</Text>
 
-          <ScrollView
-            style={[styles.scroll, { minHeight: layout.scrollMinHeight }]}
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator
-          >
-            {AI_ASSISTANT_LEGAL_SECTIONS.map((section) => (
-              <View key={section.title} style={styles.section}>
-                <Text style={styles.sectionTitle}>{section.title}</Text>
-                {section.paragraphs.map((p, i) => (
-                  <Text key={`${section.title}-${i}`} style={styles.paragraph}>
-                    {p}
-                  </Text>
-                ))}
+          <View style={styles.scrollStage}>
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator
+              nestedScrollEnabled
+            >
+              {AI_ASSISTANT_LEGAL_SECTIONS.map((section) => (
+                <View key={section.title} style={styles.section}>
+                  <Text style={styles.sectionTitle}>{section.title}</Text>
+                  {section.paragraphs.map((p, i) => (
+                    <Text key={`${section.title}-${i}`} style={styles.paragraph}>
+                      {p}
+                    </Text>
+                  ))}
+                </View>
+              ))}
+              <Text style={styles.paragraphMuted}>
+                Privacy Notice, Trust GDPR overview, and Sub-processors (open in browser):
+              </Text>
+              <View style={styles.linkRow}>
+                <Pressable
+                  onPress={() => openUrl(INDEXCASTING_PUBLIC_PRIVACY_URL)}
+                  accessibilityRole="link"
+                  accessibilityLabel="Open privacy notice in browser"
+                >
+                  <Text style={styles.linkText}>{INDEXCASTING_PUBLIC_PRIVACY_URL}</Text>
+                </Pressable>
               </View>
-            ))}
-            <Text style={styles.paragraphMuted}>
-              Privacy Notice, Trust GDPR overview, and Sub-processors (open in browser):
-            </Text>
-            <View style={styles.linkRow}>
-              <Pressable
-                onPress={() => openUrl(INDEXCASTING_PUBLIC_PRIVACY_URL)}
-                accessibilityRole="link"
-                accessibilityLabel="Open privacy notice in browser"
-              >
-                <Text style={styles.linkText}>{INDEXCASTING_PUBLIC_PRIVACY_URL}</Text>
-              </Pressable>
-            </View>
-            <View style={styles.linkRow}>
-              <Pressable
-                onPress={() => openUrl(INDEXCASTING_PUBLIC_TRUST_GDPR_URL)}
-                accessibilityRole="link"
-                accessibilityLabel="Open trust center GDPR overview in browser"
-              >
-                <Text style={styles.linkText}>{INDEXCASTING_PUBLIC_TRUST_GDPR_URL}</Text>
-              </Pressable>
-            </View>
-            <View style={styles.linkRow}>
-              <Pressable
-                onPress={() => openUrl(INDEXCASTING_PUBLIC_TRUST_SUBPROCESSORS_URL)}
-                accessibilityRole="link"
-                accessibilityLabel="Open trust center sub-processors in browser"
-              >
-                <Text style={styles.linkText}>{INDEXCASTING_PUBLIC_TRUST_SUBPROCESSORS_URL}</Text>
-              </Pressable>
-            </View>
-          </ScrollView>
+              <View style={styles.linkRow}>
+                <Pressable
+                  onPress={() => openUrl(INDEXCASTING_PUBLIC_TRUST_GDPR_URL)}
+                  accessibilityRole="link"
+                  accessibilityLabel="Open trust center GDPR overview in browser"
+                >
+                  <Text style={styles.linkText}>{INDEXCASTING_PUBLIC_TRUST_GDPR_URL}</Text>
+                </Pressable>
+              </View>
+              <View style={styles.linkRow}>
+                <Pressable
+                  onPress={() => openUrl(INDEXCASTING_PUBLIC_TRUST_SUBPROCESSORS_URL)}
+                  accessibilityRole="link"
+                  accessibilityLabel="Open trust center sub-processors in browser"
+                >
+                  <Text style={styles.linkText}>{INDEXCASTING_PUBLIC_TRUST_SUBPROCESSORS_URL}</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          </View>
 
           <View style={styles.meta}>
             <Text style={styles.metaLabel}>Third-party inference (Mistral)</Text>
@@ -216,6 +220,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 560,
     flexShrink: 1,
+    flexDirection: 'column',
     backgroundColor: colors.surface,
     borderRadius: 16,
     paddingHorizontal: spacing.lg,
@@ -235,10 +240,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: colors.textPrimary,
     textAlign: 'center',
+    flexShrink: 0,
   },
   summaryBlock: {
     gap: spacing.xs,
     alignSelf: 'stretch',
+    flexShrink: 0,
   },
   summaryLine: {
     ...typography.body,
@@ -252,10 +259,16 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     color: colors.textSecondary,
     textAlign: 'center',
+    flexShrink: 0,
+  },
+  /** Lets ScrollView shrink inside fixed-height sheet (critical for web flex + overflow). */
+  scrollStage: {
+    flex: 1,
+    minHeight: 0,
+    alignSelf: 'stretch',
   },
   scroll: {
-    flexGrow: 1,
-    flexShrink: 1,
+    flex: 1,
   },
   scrollContent: {
     gap: spacing.md,
@@ -302,6 +315,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
+    flexShrink: 0,
   },
   metaLabel: {
     ...typography.label,
@@ -320,12 +334,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.35,
     color: colors.textSecondary,
     marginTop: 2,
+    flexShrink: 0,
   },
   checkboxWrap: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
     marginTop: spacing.xs,
+    flexShrink: 0,
   },
   checkboxOuter: {
     width: 22,
@@ -360,6 +376,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     flexWrap: 'wrap',
     paddingTop: spacing.xs,
+    flexShrink: 0,
   },
   secondaryBtn: {
     paddingHorizontal: spacing.md,
