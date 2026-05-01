@@ -26,20 +26,17 @@ import {
 } from '../../constants/aiAssistantConsent';
 import { colors, spacing, typography } from '../../theme/theme';
 
-/** Web: explicit overflow helps wheel / trackpad; RN-Web maps to the scrollable div. */
-const platformScrollChrome = Platform.select({
-  web: { overflow: 'scroll' as const },
-  default: {},
-});
-
 export type AiAssistantConsentModalProps = {
   visible: boolean;
+  /** Shown inside the modal when acknowledgement RPC fails (panel is hidden until consent resolves). */
+  persistError?: string | null;
   onAccept: () => Promise<void>;
   onDecline: () => void;
 };
 
 export function AiAssistantConsentModal({
   visible,
+  persistError,
   onAccept,
   onDecline,
 }: AiAssistantConsentModalProps) {
@@ -87,17 +84,26 @@ export function AiAssistantConsentModal({
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={handleDecline}>
-      <View style={styles.root}>
-        <Pressable style={styles.backdrop} accessibilityElementsHidden accessibilityLabel="" />
+      <View
+        pointerEvents="box-none"
+        style={[styles.root, ...(Platform.OS === 'web' ? [{ position: 'relative' as const }] : [])]}
+      >
+        <Pressable
+          style={[styles.backdrop, ...(Platform.OS === 'web' ? [styles.backdropWeb] : [])]}
+          onPress={handleDecline}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss AI Assistant consent dialog"
+        />
 
         <View
-          accessibilityRole="none"
+          pointerEvents="box-none"
           style={[
             styles.sheet,
             {
               height: layout.sheetHeight,
               maxHeight: layout.sheetHeight,
             },
+            ...(Platform.OS === 'web' ? [styles.sheetWeb] : []),
           ]}
         >
           <Text style={styles.title}>AI Assistant Usage</Text>
@@ -113,7 +119,7 @@ export function AiAssistantConsentModal({
 
           <View style={styles.scrollStage}>
             <ScrollView
-              style={[styles.scroll, platformScrollChrome]}
+              style={[styles.scroll, ...(Platform.OS === 'web' ? [styles.scrollWeb] : [])]}
               contentContainerStyle={styles.scrollContent}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator
@@ -180,6 +186,8 @@ export function AiAssistantConsentModal({
 
           <Text style={styles.versionFoot}>{AI_ASSISTANT_CONSENT_FOOTNOTE_VERSION}</Text>
 
+          {persistError ? <Text style={styles.persistErrorText}>{persistError}</Text> : null}
+
           <Pressable
             style={styles.checkboxWrap}
             onPress={() => setAgreed(!agreed)}
@@ -233,6 +241,12 @@ const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
   },
+  backdropWeb: {
+    ...Platform.select({
+      web: { zIndex: 0 },
+      default: {},
+    }),
+  },
   sheet: {
     width: '100%',
     maxWidth: 560,
@@ -251,6 +265,15 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
     gap: spacing.sm,
+  },
+  sheetWeb: {
+    ...Platform.select({
+      web: {
+        position: 'relative',
+        zIndex: 2,
+      },
+      default: {},
+    }),
   },
   title: {
     ...typography.headingCompact,
@@ -290,6 +313,15 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
+  },
+  scrollWeb: {
+    ...Platform.select({
+      web: {
+        overflow: 'scroll' as const,
+        flexGrow: 1,
+      },
+      default: {},
+    }),
   },
   scrollContent: {
     gap: spacing.md,
@@ -355,6 +387,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.35,
     color: colors.textSecondary,
     marginTop: 2,
+    flexShrink: 0,
+  },
+  persistErrorText: {
+    ...typography.body,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.errorDark,
+    alignSelf: 'stretch',
     flexShrink: 0,
   },
   checkboxWrap: {

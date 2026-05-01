@@ -119,19 +119,27 @@ export async function getAiAssistantConsentScope(): Promise<AiAssistantConsentSc
   };
 }
 
+/**
+ * Uses `ai_assistant_assert_consent_for_ai` (same truth as Edge `consentGate` + Postgres
+ * `ai_assistant_expected_consent_version`). Avoids direct REST reads on `ai_assistant_user_consent`,
+ * which surface PGRST205 when the relation is missing from schema cache until migrations land.
+ */
 export async function isAiAssistantConsentSatisfied(organizationId: string): Promise<boolean> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return false;
-  const { data, error } = await supabase
-    .from('ai_assistant_user_consent')
-    .select('consent_given, consent_version')
-    .eq('user_id', user.id)
-    .eq('organization_id', organizationId)
-    .maybeSingle();
-  if (error || !data) return false;
-  return Boolean(data.consent_given) && data.consent_version === AI_CONSENT_VERSION;
+  const { data, error } = await supabase.rpc('ai_assistant_assert_consent_for_ai', {
+    p_organization_id: organizationId,
+  });
+  if (error) {
+    console.warn('[aiAssistant][consent]', {
+      event: 'assert_rpc_failed',
+      code:
+        typeof (error as { code?: string }).code === 'string'
+          ? (error as { code?: string }).code
+          : 'unknown_rpc_error',
+      message: error.message?.slice?.(0, 200),
+    });
+    return false;
+  }
+  return data === true;
 }
 
 export async function recordAiAssistantUserConsent(

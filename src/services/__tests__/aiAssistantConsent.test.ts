@@ -117,6 +117,7 @@ describe('AI Assistant frontend privacy integration', () => {
 
   it('delegates acknowledgement persistence through narrow RPC wrappers', () => {
     expect(frontendService).toMatch(/ai_assistant_upsert_user_consent/);
+    expect(frontendService).toMatch(/ai_assistant_assert_consent_for_ai/);
     expect(frontendService).toMatch(/ai_assistant_user_consent/);
     expect(frontendService).not.toMatch(/\b(prompt_text|assistant_answer_text|raw_prompt)\b/i);
     expect(panel).not.toMatch(/AsyncStorage\.setItem\(.*consent/i);

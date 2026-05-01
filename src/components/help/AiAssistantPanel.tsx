@@ -56,6 +56,7 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
   const [error, setError] = useState<string | null>(null);
   const [assistantContext, setAssistantContext] = useState<AiAssistantContext | null>(null);
   const [consentGate, setConsentGate] = useState<ConsentGateState>({ phase: 'idle' });
+  const [consentPersistError, setConsentPersistError] = useState<string | null>(null);
 
   useEffect(() => {
     setAssistantContext(null);
@@ -95,6 +96,13 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
       cancelled = true;
     };
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible || consentGate.phase !== 'blocked') setConsentPersistError(null);
+  }, [visible, consentGate.phase]);
+
+  /** While consent is blocking, hide the Help chat modal entirely — its full-screen backdrop would otherwise sit above the consent sheet on web/native and swallow taps → false “Cancel”. */
+  const mainPanelModalVisible = visible && consentGate.phase !== 'blocked';
 
   const consentReady = consentGate.phase === 'ready';
   const canSend = useMemo(
@@ -167,12 +175,14 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
     <>
       <AiAssistantConsentModal
         visible={visible && consentGate.phase === 'blocked'}
+        persistError={consentPersistError}
         onDecline={onClose}
         onAccept={async () => {
           if (consentGate.phase !== 'blocked') return;
+          setConsentPersistError(null);
           const { ok } = await recordAiAssistantUserConsent(consentGate.orgId);
           if (!ok) {
-            setError(copy.consentSaveFailed);
+            setConsentPersistError(copy.consentSaveFailed);
             return;
           }
           setError(null);
@@ -181,7 +191,12 @@ export function AiAssistantPanel({ visible, viewerRole, onClose }: AiAssistantPa
           setConsentGate({ phase: 'ready', orgId: consentGate.orgId });
         }}
       />
-      <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <Modal
+        transparent
+        visible={mainPanelModalVisible}
+        animationType="fade"
+        onRequestClose={onClose}
+      >
         <View style={styles.modalRoot}>
           <Pressable
             style={styles.backdrop}
