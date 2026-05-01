@@ -105,7 +105,7 @@ describe('AI setup guidance — Client deterministic copy', () => {
   it('14 Explain Discover only for Client (conceptually)', () => {
     const r = det('Explain Discover', 'client');
     expect(r?.answer).toMatch(/Discover/);
-    expect(r?.answer).toMatch(/visible/i);
+    expect(r?.answer).toMatch(/visibility/i);
   });
 
   it('15 Where do I review bookings says Calendar', () => {
@@ -181,9 +181,146 @@ describe('AI setup guidance — Security / role firewall', () => {
 
 describe('AI setup guidance — Quick prompts', () => {
   it('exports Agency and Client quick prompts', () => {
-    expect(getAiAssistantQuickPrompts('agency').length).toBe(5);
-    expect(getAiAssistantQuickPrompts('client').length).toBe(5);
+    expect(getAiAssistantQuickPrompts('agency')).toEqual([
+      'How does an option work?',
+      'How does price negotiation work?',
+      'How should I communicate with models?',
+      'Explain Billing',
+      'Help me set up my agency',
+    ]);
+    expect(getAiAssistantQuickPrompts('client')).toEqual([
+      'How do I request an option?',
+      'How does price negotiation work?',
+      'How do I communicate with agencies?',
+      'Explain My Projects',
+      'Help me set up my workspace',
+    ]);
     expect(getAiAssistantQuickPrompts('model').length).toBe(0);
+  });
+});
+
+describe('AI setup guidance — Expanded workflow education (Agency)', () => {
+  it('manual option explains Calendar Add Option + assistant limits', () => {
+    const r = det('How does a manual option work?', 'agency');
+    expect(r?.answer).toMatch(/Add Option/i);
+    expect(r?.answer).toMatch(/Calendar/i);
+    expect(r?.answer).toMatch(/visible calendar conflicts/i);
+  });
+
+  it('casting explains Add Casting', () => {
+    const r = det('How does casting work?', 'agency');
+    expect(r?.answer).toMatch(/Add Casting/i);
+    expect(r?.answer).toMatch(/Calendar/i);
+  });
+
+  it('difference option casting job gives conceptual distinction', () => {
+    const r = det('What is the difference between option, casting and job?', 'agency');
+    expect(r?.answer).toMatch(/\*\*Option:\*\*/);
+    expect(r?.answer).toMatch(/\*\*Job:\*\*/);
+    expect(
+      classifyAssistantIntent(
+        'What is the difference between option, casting and job?',
+        'agency',
+        BASE_DATE,
+      ).intent,
+    ).toBe('help_static');
+  });
+
+  it('communicate with models uses Messages guidance', () => {
+    const r = det('How should I communicate with models?', 'agency');
+    expect(r?.answer).toMatch(/\*\*Messages\*\*/);
+    expect(r?.answer).not.toMatch(/\*\*Discover\*\*/);
+  });
+
+  it('communicate with clients uses Clients/Messages', () => {
+    const r = det('How do I communicate with clients?', 'agency');
+    expect(r?.answer).toMatch(/\*\*Clients\*\*/);
+    expect(r?.answer).toMatch(/\*\*Messages\*\*/);
+  });
+
+  it('price negotiation explains workflow without amounts', () => {
+    const r = det('How does price negotiation work?', 'agency');
+    expect(r?.answer).toMatch(/pending/i);
+    expect(r?.answer).toMatch(/thread/i);
+    expect(r?.answer).not.toMatch(/\$\d|[€£]\s*\d/);
+  });
+
+  it('counteroffers conceptual Agency', () => {
+    const r = det('How do counteroffers work?', 'agency');
+    expect(r?.answer).toMatch(/counter/i);
+    expect(r?.answer).not.toMatch(/\$\d/);
+  });
+
+  it('manual invoicing points to Billing manual invoices', () => {
+    const r = det('How does manual invoicing work?', 'agency');
+    expect(r?.answer).toMatch(/Manual invoices/i);
+    expect(r?.answer).toMatch(/\*\*Billing/);
+  });
+
+  it('Open Paid Problem short phrase internal tracking only', () => {
+    const r = det('What does Open/Paid/Problem mean?', 'agency');
+    expect(r?.answer).toMatch(/internal/i);
+  });
+});
+
+describe('AI setup guidance — Expanded workflow education (Client)', () => {
+  it('request option uses Discover/My Projects', () => {
+    const r = det('How do I request an option?', 'client');
+    expect(r?.answer).toMatch(/Request option/i);
+    expect(r?.answer).toMatch(/Discover|My Projects/);
+    expect(r?.answer).not.toMatch(/\*\*My Models\*\*/);
+  });
+
+  it('casting client perspective', () => {
+    const r = det('How does casting work?', 'client');
+    expect(r?.answer).toMatch(/Request casting/i);
+  });
+
+  it('difference triple client perspective', () => {
+    const r = det('What is the difference between option, casting and job?', 'client');
+    expect(r?.answer).toMatch(/\*\*Job:\*\*/);
+    expect(r?.answer).toMatch(/\*\*Discover\*\*|\*\*My Projects\*\*/);
+    expect(
+      classifyAssistantIntent(
+        'What is the difference between option, casting and job?',
+        'client',
+        BASE_DATE,
+      ).intent,
+    ).toBe('help_static');
+  });
+
+  it('communicate with agencies', () => {
+    const r = det('How do I communicate with agencies?', 'client');
+    expect(r?.answer).toMatch(/\*\*Messages\*\*/);
+  });
+
+  it('price negotiation client no agency-internal leaks', () => {
+    const r = det('How does price negotiation work?', 'client');
+    expect(r?.answer).toMatch(/Request|thread|Messages/i);
+    expect(r?.answer).not.toMatch(/\*\*My Models\*\*/);
+    expect(r?.answer).not.toMatch(/Add Option/);
+  });
+
+  it('Explain My Projects client', () => {
+    const r = det('Explain My Projects', 'client');
+    expect(r?.answer).toMatch(/\*\*My Projects\*\*/);
+  });
+
+  it('Explain Discover client', () => {
+    const r = det('Explain Discover', 'client');
+    expect(r?.answer).toMatch(/\*\*Discover\*\*/);
+  });
+
+  it('client answer no Agency-only creation actions', () => {
+    const r = det('How do I request an option?', 'client');
+    expect(r?.answer).not.toMatch(/Add Option/);
+    expect(r?.answer).not.toMatch(/\*\*My Models\*\*/);
+  });
+
+  it('What is My Projects routes help_static not unknown live data', () => {
+    expect(classifyAssistantIntent('What is My Projects?', 'client', BASE_DATE).intent).toBe(
+      'help_static',
+    );
   });
 });
 

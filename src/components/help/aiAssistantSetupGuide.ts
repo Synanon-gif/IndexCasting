@@ -19,20 +19,20 @@ export type AiAssistantSetupSection = (typeof AI_ASSISTANT_SETUP_SECTIONS)[numbe
 export function getAiAssistantQuickPrompts(role: AiAssistantViewerRole): readonly string[] {
   if (role === 'agency') {
     return Object.freeze([
-      'Help me set up my agency',
-      'What should I do first?',
-      'Explain Calendar',
+      'How does an option work?',
+      'How does price negotiation work?',
+      'How should I communicate with models?',
       'Explain Billing',
-      'How do I add models?',
+      'Help me set up my agency',
     ]);
   }
   if (role === 'client') {
     return Object.freeze([
-      'Help me set up my client workspace',
-      'What should I do first?',
+      'How do I request an option?',
+      'How does price negotiation work?',
+      'How do I communicate with agencies?',
       'Explain My Projects',
-      'Explain Calendar',
-      'Explain Billing',
+      'Help me set up my workspace',
     ]);
   }
   return Object.freeze([] as string[]);

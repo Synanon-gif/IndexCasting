@@ -1,6 +1,7 @@
 import {
   isProductCalendarEducationQuestion,
   shouldExemptBillingOrTeamForbidden,
+  tryDeterministicSetupResponse,
   type HelpStaticSubtype,
 } from './setupGuide.ts';
 
@@ -1668,6 +1669,14 @@ export function classifyAssistantIntent(
   }
 
   if (isProductCalendarEducationQuestion(normalized)) {
+    return { intent: 'help_static', helpSubtype: 'feature_explanation' };
+  }
+
+  /** Product education with deterministic copy: avoid false LIVE_DATA route (e.g. "what … option/project"). */
+  if (
+    (role === 'agency' || role === 'client') &&
+    tryDeterministicSetupResponse(normalized, role) != null
+  ) {
     return { intent: 'help_static', helpSubtype: 'feature_explanation' };
   }
 

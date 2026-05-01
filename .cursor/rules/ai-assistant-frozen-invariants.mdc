@@ -18,7 +18,7 @@ Operator-Hinweise (SQL, Tabellen): `docs/ai-assistant-operator-limits.md`.
 
 **Ausführbare** Intents (Router + Edge dürfen nur diese mit Live-Daten/Mistral-Facts ausführen):
 
-- `help_static` — statische Produkthilfe (Mistral nur mit Server-Systemprompt, keine Live-RPCs).
+- `help_static` — statische Produkthilfe (Mistral nur mit Server-Systemprompt, keine Live-RPCs). Produkt-Schulungstext und deterministische Workflow-Antworten dürfen hier **additiv** wachsen; **keine** neuen Live-RPCs, **keine** Preisfelder aus der DB, **keine** Rollen-Terminologie vermischen, **keine** Schreib-Aktionen behaupten.
 - `calendar_summary` — nur Agency/Client, nur `ai_read_calendar_summary`, Facts an Mistral gebunden.
 - `calendar_item_details` — nur Agency/Client, nur `ai_read_calendar_item_details`, keine Preis-RPCs.
 - `model_visible_profile_facts` — **nur Agency**, nur `ai_read_model_visible_profile_facts`.

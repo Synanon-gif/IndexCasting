@@ -235,6 +235,349 @@ export function tryDeterministicSetupResponse(
     };
   }
 
+  // ——— Product education: options, castings, jobs, comms, negotiation, billing concepts ———
+  const diffTriple =
+    /\bdifference\b[\s\S]{0,120}\boption\b[\s\S]{0,120}\bcasting\b[\s\S]{0,120}\bjob\b|\boption\b[\s\S]{0,80}\bcasting\b[\s\S]{0,80}\bjob\b[\s\S]{0,80}\bdifference\b/i.test(
+      norm,
+    );
+  if (diffTriple) {
+    if (role === 'agency') {
+      return {
+        subtype: 'feature_explanation',
+        answer:
+          '**Option:** a tentative scheduling / availability workflow step tied to **Calendar**. Agencies often create it with **Calendar → Add Option**; it continues through confirmations and negotiation.\n\n**Casting:** a casting-shaped request/workflow (same creation hub: **Calendar → Add Casting**). Colour and lifecycle labels differ from a plain option, but both sit earlier than final confirmation.\n\n**Job:** confirmed commercial outcome — once finalized in the workflow, **Calendar** shows it as job/booking-style timing.\n\n**Next:** open **Calendar**, tap an entry for authoritative detail. I cannot read live statuses, prices, or messages here.',
+      };
+    }
+    if (role === 'client') {
+      return {
+        subtype: 'feature_explanation',
+        answer:
+          '**Option / Casting:** client request types you send from **Discover** or **My Projects** (**Request option** / **Request casting**) — they are **not** the same as a confirmed booking.\n\n**Job:** the confirmed outcome in the shared workflow; you will see it on **Calendar** when the parties have reached that stage.\n\n**Next:** review the request thread and **Calendar** entries in the app for current terms. I cannot read live negotiation or prices here.',
+      };
+    }
+  }
+
+  if (
+    /\bdifference\b[\s\S]{0,100}\boption\b[\s\S]{0,80}\bcasting\b|\boption\b\s+vs\.?\s*casting\b|\bcasting\b\s+vs\.?\s*option\b/i.test(
+      norm,
+    )
+  ) {
+    if (role === 'agency') {
+      return {
+        subtype: 'feature_explanation',
+        answer:
+          'Both are created from **Calendar** (**Add Option** vs **Add Casting**). **Options** cover the standard option workflow; **castings** use the casting request type so **Calendar**, messages, and attention match a casting lifecycle. Neither label by itself guarantees a **job** — that comes after the agreed confirmation steps.\n\nI cannot tell you which type is "active" on a live row without you opening the item.',
+      };
+    }
+    if (role === 'client') {
+      return {
+        subtype: 'feature_explanation',
+        answer:
+          'Use **Request option** vs **Request casting** from **Discover** or **My Projects** depending on what the UI offers for that model or package. Casting requests are labeled as castings end-to-end (including **Calendar**). I cannot see your live requests here — open the thread for status.',
+      };
+    }
+  }
+
+  if (
+    role === 'agency' &&
+    /\bmanual\s+options?\b|\bhow\s+does\s+a\s+manual\s+option\b|\bhow\s+do\s+manual\s+options\b/i.test(norm)
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        '**Manual options** are agency-created options from **Calendar → Add Option** (not client-pushed requests). Pick the **model**, **client** when applicable, date/time, and details the form shows, then save. Before sending, sanity-check roster data in **My Models**, territories if you use them, and that downstream messaging stays in **Messages** / the request thread.\n\n**Assistant limits:** I can explain the flow. I cannot create the option, read private negotiation, or prove final availability. The separate availability check only surfaces **visible calendar conflicts** for a model/day you specify — it is **not** final confirmation.',
+    };
+  }
+
+  if (
+    role === 'agency' &&
+    /\bhow\s+does\s+an?\s+option\s+work\b|\bhow\s+do\s+options\s+work\b|\bwie\s+funktioniert\s+(?:eine\s+)?option\b/i.test(norm)
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        'In the **Agency** workspace open **Calendar**, tap **Add Option**, choose **model**, **client** (when involved), date/time, and details, then save. The item lands on **Calendar** and moves through negotiation, model confirmation (when applicable), and toward a **job** when everyone completes their steps.\n\nI cannot see your live pipeline here — open the item and **Messages** for truth. Availability questions in this assistant only check **visible calendar conflicts**, not final holds.',
+    };
+  }
+
+  if (role === 'agency' && /\bhow\s+does\s+casting\b|\bhow\s+do\s+castings\b|\bwie\s+funktioniert\s+casting\b/i.test(norm)) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        'Use **Calendar → Add Casting**, enter the casting details, models, timing, and clients as the form asks, then save. **Castings** stay in the casting-colored workflow; they are **not** automatically **jobs** until the confirmation stages finish.\n\nClients and models only see what visibility rules already allow — open each participant\'s thread/calendar row for specifics.\n\nI cannot create castings or read hidden statuses.',
+    };
+  }
+
+  if (role === 'client' && /\bhow\s+does\s+casting\b|\bhow\s+do\s+castings\b|\bwie\s+funktioniert\s+casting\b/i.test(norm)) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        'Open **Discover** or **My Projects**, choose **Request casting**, fill date/time and details, then send. Track replies in **Messages** and timing on **Calendar**.\n\nI cannot send requests or show live statuses — open the thread in the app.',
+    };
+  }
+
+  if (
+    role === 'agency' &&
+    /\bprivate\s+events?\b|\bwhat\s+is\s+a\s+private\s+event\b|\badd\s+a\s+private\s+event\b/i.test(norm)
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        '**Private Event** lives under **Calendar** alongside **Add Option** / **Add Casting**. Use it for agency-internal or non-public scheduling blocks so they stay visually distinct from client-visible option/casting rows.\n\nI cannot verify attendees or overlaps beyond what your calendar surfaces.',
+    };
+  }
+
+  if (
+    role === 'agency' &&
+    /\bwhat\s+is\s+a\s+job\b|\bwhat\s+does\s+job\b[\s\S]{0,40}\bmean\b|\bjob\b[\s\S]{0,60}\b(booking|workflow|confirmed)\b/i.test(norm)
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        'A **job** is the confirmed engagement stage after option/casting negotiation completes on both pricing (when applicable) and availability sides. **Calendar** upgrades colours/titles accordingly.\n\nAlways open the row itself for timing, countersignatures, and briefing notes — I cannot promote or edit jobs.',
+    };
+  }
+
+  if (
+    role === 'client' &&
+    /\bwhat\s+is\s+a\s+job\b|\bwhat\s+does\s+job\b[\s\S]{0,40}\bmean\b|\bjob\b[\s\S]{0,60}\b(booking|workflow|confirmed)\b/i.test(norm)
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        'A **job** is the confirmed booking state after your request clears the workflow steps your agency configured. You will see it on **Calendar** with job-style presentation.\n\nOpen the row for exact times and briefs — I cannot confirm or alter live jobs.',
+    };
+  }
+
+  if (
+    role === 'agency' &&
+    /\bhow\s+should\s+i\s+communicate\s+with\s+models\b|\bcommunicat(e|ing)\s+with\s+models\b/i.test(norm)
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        'Use **Messages** and the model-facing chat surfaces your product shows around a roster entry or booking context. Keep confirmations that affect availability or fees inside the official threads so notifications stay aligned.\n\nI cannot send chats or bind confirmations — I only explain where to tap.',
+    };
+  }
+
+  if (
+    role === 'agency' &&
+    /\bhow\s+do\s+i\s+communicate\s+with\s+clients\b|\bcommunicat(e|ing)\s+with\s+clients\b/i.test(norm)
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        'Primary surfaces are **Clients**, **Messages**, and each option/casting negotiation thread tied to **Calendar**. Route pricing discussions through those threads rather than side channels when possible.\n\nI cannot send messages or read unread state for you.',
+    };
+  }
+
+  if (
+    role === 'client' &&
+    /\bhow\s+do\s+i\s+communicate\s+with\s+agenc(y|ies)\b|\bcommunicat(e|ing)\s+with\s+agenc(y|ies)\b/i.test(norm)
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        'Use **Messages** for ongoing agency conversations and each request thread opened from **Discover** or **My Projects**. **Calendar** shows timing but not the full negotiation transcript.\n\nI cannot send messages on your behalf.',
+    };
+  }
+
+  if (
+    /\bhow\s+does\s+price\s+negotiation\b|\bpreisverhandlung\b|\bexplain\s+price\s+negotiation\b/i.test(norm) ||
+    /\bnegotiation\b[\s\S]{0,80}\b(explain|how|work)\b/i.test(norm)
+  ) {
+    if (role === 'agency') {
+      return {
+        subtype: 'feature_explanation',
+        answer:
+          'Price negotiation runs on **Axis 1** in the option thread: clients propose, agencies can **Accept proposed fee**, **Make counter offer**, or decline. States show as **pending / accepted / rejected** in the UI.\n\nI can only describe the workflow — open the live thread for amounts, currencies, and who must act next. I will not guess live numbers.',
+      };
+    }
+    if (role === 'client') {
+      return {
+        subtype: 'feature_explanation',
+        answer:
+          'You negotiate fees with the agency inside the option/casting thread in **Messages** (and related summary cards). Typical steps: proposed fee → possible agency counter → **Accept** / **Decline agency proposal**.\n\nLabels like **pending / accepted / rejected** describe the commercial line, not model availability.\n\nOpen the request for current numbers — I cannot read them here.',
+      };
+    }
+  }
+
+  if (
+    /\bhow\s+do\s+counter\s*offers\b|\bhow\s+does\s+a\s+counter\s*offer\b|\bcounteroffer\b|\bcounter\s+offer\b[\s\S]{0,40}\b(explain|how|work)\b|\bcounteroffer\s+erkl/i.test(norm)
+  ) {
+    if (role === 'agency') {
+      return {
+        subtype: 'feature_explanation',
+        answer:
+          'Agencies respond with **Make counter offer** (same thread). That typically moves **client price status** back to **pending** until the client accepts or declines — availability axes stay independent.\n\nI cannot submit counters or show stored amounts.',
+      };
+    }
+    if (role === 'client') {
+      return {
+        subtype: 'feature_explanation',
+        answer:
+          'When an agency counters, review the amount in the thread and choose **Accept agency proposal** or **Decline agency proposal** as your workflow shows.\n\nI cannot display live counters — open the request.',
+      };
+    }
+  }
+
+  if (
+    /\bwhat\s+does\b[\s\S]{0,60}\b(pending|accepted|rejected)\b[\s\S]{0,80}\bmean\b|\b(pending|accepted|rejected)\b[\s\S]{0,80}\b(price|fee|negotiation|counter|offer|commercial)\b/i.test(
+      norm,
+    )
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        'In negotiation UI, **pending** usually means waiting on the next actor\'s fee decision, **accepted** means the commercial line cleared for that step, and **rejected** closes that counter/proposal path.\n\nExact wording mirrors your screen — open the thread for the authoritative combination with availability states.\n\nI cannot read live flags.',
+    };
+  }
+
+  if (
+    role === 'agency' &&
+    (/\bhow\s+does\s+manual\s+invoic/i.test(norm) ||
+      /\bmanuelle\s+rechnung\b[\s\S]{0,40}\b(erklae|explain|how)\b/i.test(norm))
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        'Go to **Billing → Manual invoices** (labels match the UI). Draft recipients, line items, VAT treatments, then issue/export as enabled.\n\nThe unified **invoice overview** aggregates Stripe-routed and manual rows for tracking.\n\nI cannot create invoices, mark them paid, or show balances.',
+    };
+  }
+
+  if (
+    role === 'agency' &&
+    /\b(unified\s+)?invoice\s+overview\b|\bexplain\s+(the\s+)?invoice\s+overview\b/i.test(norm)
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        'The **unified invoice overview** (under **Billing**) lists Stripe-sourced **invoices** plus **manual invoices** with the same operational view. Use it to spot what still needs attention versus what cleared.\n\n**Open / Paid / Problem** are internal operator labels only — not customer payment promises.\n\nI cannot refresh or change rows here.',
+    };
+  }
+
+  if (
+    /\b(billing\s+profile|recipient\s+data)\b/i.test(norm) &&
+    /\b(explain|what\s+is|how\s+do\s+i\s+set|complete|finish)\b/i.test(norm)
+  ) {
+    if (role === 'agency') {
+      return {
+        subtype: 'setup_guidance',
+        answer:
+          '**Billing profile** + **recipient data** are completed inside **Billing**. The UI surfaces missing fields via banners or section highlights; they must be accurate before invoices or payouts behave.\n\nI cannot see which field is incomplete for your org.',
+      };
+    }
+    if (role === 'client') {
+      return {
+        subtype: 'setup_guidance',
+        answer:
+          'When **Billing** is visible for your Client org, complete the **billing profile** (and any **recipient data** prompts) exactly as the screen requests — this is separate from agency roster billing.\n\nI cannot validate live completion.',
+      };
+    }
+  }
+
+  if (
+    role === 'agency' &&
+    /\blinks\b[\s\S]{0,80}\b(package|guest|share|import)\b|\b(import\s+)?package\b[\s\S]{0,60}\b(link|url|share)\b|\bagency\s+share\b|\broster\s+share\b/i.test(norm) &&
+    /\b(explain|how|what\s+is|where)\b/i.test(norm)
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        'Use **Links** for **guest links** / shareable packages and **My Models → Import package** for Mediaslide / Netwalk-style imports. **Roster share** flows (when enabled) import territory snapshots from partner agencies.\n\nI cannot mint links, upload packages, or verify share validity.',
+    };
+  }
+
+  if (
+    /\btroubleshoot|\btroubleshooting\b|\bsomething\s+is\s+wrong\b|\bnot\s+working\b|\bwhy\s+doesn'?t\b/i.test(
+      norm,
+    )
+  ) {
+    if (role === 'agency') {
+      return {
+        subtype: 'troubleshooting_help',
+        answer:
+          '**Quick checks:** confirm you are on Wi‑Fi, pull **Calendar → Refresh**, re-open **My Models** after saves, finish any **Billing** banner, and retry uploads with supported file types.\n\nIf a thread looks stuck, open **Messages** and the request row — I cannot inspect live errors.',
+      };
+    }
+    if (role === 'client') {
+      return {
+        subtype: 'troubleshooting_help',
+        answer:
+          '**Quick checks:** reload the workspace, verify **Discover** filters, reopen **My Projects**, and confirm **Calendar** dates. For payment or access blocks, finish **Billing** prompts if shown.\n\nI cannot see server-side error codes.',
+      };
+    }
+  }
+
+  if (
+    /\broles?\b[\s\S]{0,80}\bpermissions?\b|\b(owner|booker|employee)\b[\s\S]{0,80}\b(only|versus|vs\.?|difference)\b|\bpermissions?\b[\s\S]{0,60}\b(owner|booker|employee)\b/i.test(
+      norm,
+    )
+  ) {
+    if (role === 'agency') {
+      return {
+        subtype: 'feature_explanation',
+        answer:
+          '**Agency Owner** handles **Team** invites, billing checkout, org deletion. **Bookers** share day-to-day **Calendar**, **My Models**, **Messages**, **Clients** power with owners.\n\nIf a control is disabled, your account likely lacks Owner rights — ask the org owner.\n\nI cannot change roles.',
+      };
+    }
+    if (role === 'client') {
+      return {
+        subtype: 'feature_explanation',
+        answer:
+          '**Client Owner** manages **Team**, billing, and org removal. **Employees** match owners on casting/option work except Owner-only billing areas.\n\nI cannot elevate permissions.',
+      };
+    }
+  }
+
+  if (
+    role === 'client' &&
+    /\bhow\s+(do\s+i|to)\s+request\s+an?\s+option\b|\brequest\s+an?\s+option\b[\s\S]{0,40}\bhow\b/i.test(norm)
+  ) {
+    return {
+      subtype: 'navigation_help',
+      answer:
+        'Open **Discover** or **My Projects**, choose the model/package row, tap **Request option**, fill date/time plus brief fields, send.\n\nTrack replies under **Messages** and deadlines on **Calendar**.\n\nI cannot submit for you.',
+    };
+  }
+
+  if (
+    role === 'client' &&
+    /\bexplain\s+(?:my\s+)?projects\b|\bwhat\s+is\s+my\s+projects\b|\btell\s+me\s+about\s+my\s+projects\b/i.test(norm)
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        '**My Projects** groups curated models for your organisation — create boards, revisit selections, and jump back into **Request option** / **Request casting** actions where enabled.\n\nIt complements **Discover** but keeps internal structure.\n\nI cannot read project membership live.',
+    };
+  }
+
+  if (
+    role === 'client' &&
+    /\bexplain\s+discover\b|\bwhat\s+is\s+discover\b|\bhow\s+does\s+discover\b/i.test(norm)
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        '**Discover** is the Client browsing hub for agencies/models exposed to your workspace (visibility + paywall rules apply). Open a card to start packages, chats, or requests when the buttons show.\n\nI cannot list hidden rosters.',
+    };
+  }
+
+  if (
+    role === 'client' &&
+    /\bhelp\s+me\s+set\s+up\s+my\s+workspace\b|\bset\s+up\s+my\s+workspace\b|\bhow\s+should\s+i\s+set\s+up\s+my\s+client\s+workspace\b/i.test(norm)
+  ) {
+    return { subtype: 'setup_guidance', answer: clientSetupChecklist() };
+  }
+
+  if (
+    role === 'agency' &&
+    /\bhow\s+should\s+i\s+set\s+up\s+my\s+agenc(y|ies)\b/i.test(norm) &&
+    !/\bhelp\s+me\s+set\s+up/i.test(norm)
+  ) {
+    return { subtype: 'setup_guidance', answer: agencySetupChecklist() };
+  }
+
   // ——— Agency: prioritized “first steps” ———
   if (
     role === 'agency' &&
@@ -338,11 +681,26 @@ export function tryDeterministicSetupResponse(
   }
 
   // ——— Billing education (static only) ———
-  if (/\bwhat\s+does\b.*\b(open|paid|problem)\b/i.test(norm) && /\b(invoice|status|tracking)\b/i.test(norm)) {
+  if (
+    /\bwhat\s+does\b.*\b(open|paid|problem)\b/i.test(norm) &&
+    /\b(invoice|status|tracking|overview|billing)\b/i.test(norm)
+  ) {
     return {
       subtype: 'feature_explanation',
       answer:
         '**Open**, **Paid**, and **Problem** in invoice tracking are **internal status labels** for your organization’s follow-up — not something to share as a client-facing payment guarantee. They help teams see what still needs action versus what cleared or needs attention.\n\nOpen **Billing** to view details in the product. I cannot see live invoice status here.',
+    };
+  }
+
+  if (
+    /\b(open|paid|problem)\b/i.test(norm) &&
+    /\b(mean|meaning)\b/i.test(norm) &&
+    (/\b(invoice|overview|tracking|billing)\b/i.test(norm) || /\bwhat\s+does\b/i.test(norm))
+  ) {
+    return {
+      subtype: 'feature_explanation',
+      answer:
+        '**Open**, **Paid**, and **Problem** are **internal invoice-overview labels** so operators know what needs follow-up versus what cleared.\n\nThey are **not** proof of funds movement — confirm externally when needed.\n\nOpen **Billing** for authoritative rows; I cannot read live statuses.',
     };
   }
 
@@ -380,22 +738,6 @@ export function tryDeterministicSetupResponse(
   }
 
   // ——— Client: Discover / My Projects / Calendar bookings ———
-  if (role === 'client' && /\bexplain\s+discover\b/i.test(norm)) {
-    return {
-      subtype: 'feature_explanation',
-      answer:
-        '**Discover** lets you browse **agencies and models that are visible** to your client workspace (according to permissions and sharing).\n\n**Next:** open a card to start a project flow or request when the UI offers it.\n\nI cannot show models that are not visible to you.',
-    };
-  }
-
-  if (role === 'client' && /\bexplain\s+my\s+projects\b/i.test(norm)) {
-    return {
-      subtype: 'feature_explanation',
-      answer:
-        '**My Projects** organizes your client-side work: create or review **projects**, track selections, and continue agency conversations tied to those projects.\n\n**Next:** add a project or open an existing one, then use **Messages** or **Calendar** from there as needed.\n\nI cannot create a project for you.',
-    };
-  }
-
   if (role === 'client' && /\bwhere\b.*\b(review\s+)?bookings?\b/i.test(norm)) {
     return {
       subtype: 'navigation_help',
