@@ -264,6 +264,11 @@ import ModelEditDetailsPanel, {
   type ModelEditState,
 } from '../components/ModelEditDetailsPanel';
 import { importModelAndMerge } from '../services/modelCreationFacade';
+import {
+  persistImagesForPackageImport,
+  classifyImagePersistResult,
+} from '../services/packageImagePersistence';
+import { createSupabasePackageImageFetchImpl } from '../services/packageImageProxyClient';
 import { runMediaslideCronSync } from '../services/mediaslideSyncService';
 import { runNetwalkCronSync } from '../services/netwalkSyncService';
 import { searchMediaslideModelsByEmail } from '../services/mediaslideConnector';
@@ -4046,9 +4051,14 @@ const MyModelsTab: React.FC<{
         Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
 
       const portfolioImages = toArr(data.portfolio_images);
+      const polaroidArr = toArr(data.polaroids);
       const territoryCodes = toArr(data.territories ?? data.territory_codes);
       const mediaslideSyncId = toStr(data.mediaslide_sync_id);
       const netwalkModelId = toStr(data.netwalk_model_id ?? data.netwalk_id);
+
+      const persistImagesEligible =
+        (portfolioImages.length > 0 || polaroidArr.length > 0) &&
+        Boolean(mediaslideSyncId || netwalkModelId);
 
       // Convert flat country-code strings to the ModelMergeTerritoryInput shape
       // (each territory must also carry the current agency_id for DB upsert).
@@ -4076,10 +4086,13 @@ const MyModelsTab: React.FC<{
         ethnicity: toStr(data.ethnicity),
         sex: data.sex === 'male' || data.sex === 'female' ? data.sex : null,
         categories: toArr(data.categories).length > 0 ? toArr(data.categories) : null,
-        portfolio_images: portfolioImages,
-        polaroids: toArr(data.polaroids),
+        portfolio_images: persistImagesEligible ? null : portfolioImages,
+        polaroids: persistImagesEligible ? null : polaroidArr,
         territories: territoriesInput.length > 0 ? territoriesInput : undefined,
         forceUpdateMeasurements: Boolean(mediaslideSyncId || netwalkModelId),
+        ...(persistImagesEligible
+          ? { photo_source: mediaslideSyncId ? ('mediaslide' as const) : ('netwalk' as const) }
+          : {}),
       });
 
       if (!result) {
@@ -4087,11 +4100,51 @@ const MyModelsTab: React.FC<{
         return;
       }
 
+      let imagePersistMsg = '';
+      let imagesPersistedCount = 0;
+      if (persistImagesEligible) {
+        try {
+          const provider = mediaslideSyncId ? ('mediaslide' as const) : ('netwalk' as const);
+          const providerExternalId = (mediaslideSyncId ?? netwalkModelId)!;
+          const persistRes = await persistImagesForPackageImport({
+            modelId: result.model_id,
+            provider,
+            providerExternalId,
+            portfolioUrls: portfolioImages,
+            polaroidUrls: polaroidArr,
+            options: {
+              ...(Platform.OS === 'web'
+                ? { fetchImpl: createSupabasePackageImageFetchImpl() }
+                : {}),
+            },
+          });
+          imagesPersistedCount = persistRes.portfolioPersisted + persistRes.polaroidPersisted;
+          const klass = classifyImagePersistResult(persistRes);
+          const attempted = persistRes.portfolioAttempted + persistRes.polaroidAttempted;
+          const persisted = imagesPersistedCount;
+          if (klass === 'all_failed' && attempted > 0) {
+            imagePersistMsg = uiCopy.modelRoster.linkImportImagesAllFailedWarning;
+          } else if (klass === 'partial') {
+            imagePersistMsg = uiCopy.modelRoster.linkImportImagesPartialWarning(
+              persisted,
+              attempted,
+            );
+          }
+          if (!persistRes.mirrorRebuilt && persisted > 0) {
+            imagePersistMsg += uiCopy.modelRoster.linkImportImagesMirrorRebuildWarning;
+          }
+        } catch (pe) {
+          console.error('handleImportByLink: persistImagesForPackageImport error:', pe);
+          imagePersistMsg = uiCopy.modelRoster.linkImportImagesAllFailedWarning;
+        }
+      }
+
       // Check which mandatory fields are missing in the imported payload so the
       // agency immediately knows what to fix — even before opening the model.
       const missingRequired: string[] = [];
-      if (portfolioImages.length === 0) missingRequired.push('Photos');
-      if (territoryCodes.length === 0) missingRequired.push('Territory');
+      if (portfolioImages.length === 0 && polaroidArr.length === 0 && imagesPersistedCount === 0) {
+        missingRequired.push('Photos');
+      }
       const baseMsg = result.created
         ? `Model "${name}" added to My Models.`
         : `Model "${name}" merged with existing profile.`;
@@ -4104,7 +4157,10 @@ const MyModelsTab: React.FC<{
         ? uiCopy.modelRoster.externalSyncIdsPersistWarning
         : '';
 
-      setImportLinkFeedback({ ok: true, message: baseMsg + warningMsg + syncWarn });
+      setImportLinkFeedback({
+        ok: true,
+        message: baseMsg + warningMsg + syncWarn + imagePersistMsg,
+      });
       setImportLinkUrl('');
       onRefresh();
     } catch (e: any) {

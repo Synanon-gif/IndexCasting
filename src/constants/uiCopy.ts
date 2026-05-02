@@ -922,6 +922,13 @@ export const uiCopy = {
     /** Shown after merge/import when Mediaslide/Netwalk sync IDs could not be saved to an existing row. */
     externalSyncIdsPersistWarning:
       ' External sync IDs (Mediaslide/Netwalk) could not be saved — try saving again from the integration or contact support.',
+    /** JSON link import: some package images could not be copied to IndexCasting storage. */
+    linkImportImagesPartialWarning: (saved: number, total: number) =>
+      ` Some package images could not be saved to IndexCasting storage (${saved}/${total}). Try again or use Import package (preview).`,
+    linkImportImagesAllFailedWarning:
+      ' Package images could not be saved to IndexCasting storage — try again or use Import package (preview).',
+    linkImportImagesMirrorRebuildWarning:
+      ' Photos were saved but the portfolio preview list may be stale — open the model and tap Save if thumbnails look wrong.',
     /** Bulk pair-by-email — finds Mediaslide / Netwalk records for unpaired models with an email on file. */
     bulkPairTitle: 'Auto-pair models by email',
     bulkPairSubtitle:

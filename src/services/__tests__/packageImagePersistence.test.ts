@@ -56,6 +56,7 @@ import {
   persistImagesForPackageImport,
   type PackageImagePersistResult,
 } from '../packageImagePersistence';
+import { assertLocalIndexCastingPhotoUrlOrPath } from '../../utils/assertLocalIndexCastingPhotoUrlOrPath';
 
 // ---------------------------------------------------------------------------
 // Helpers — fake fetch, upload, addPhoto, rebuild
@@ -128,7 +129,7 @@ function makeUpload(
       return null;
     }
     return {
-      url: `supabase-storage://documentspictures/${modelId}/img-${counter}.jpg`,
+      url: `supabase-storage://documentspictures/model-photos/${modelId}/img-${counter}.jpg`,
       fileSizeBytes: file.size,
     };
   });
@@ -355,6 +356,70 @@ describe('persistImagesForPackageImport — bounded-parallel downloads', () => {
   });
 });
 
+describe('persistImagesForPackageImport — Phase-2 URL contract (no external display URLs)', () => {
+  it('persists six portfolio images (cover + five gallery) with local storage-backed URIs', async () => {
+    const portfolioUrls = Array.from({ length: 6 }, (_, i) => PORTFOLIO_URL(i + 1));
+    const { fetchImpl } = makeFetch({
+      responses: Object.fromEntries(
+        portfolioUrls.map((u) => [u, { contentType: 'image/jpeg', bytes: 64 }]),
+      ),
+    });
+    const { uploadImpl } = makeUpload();
+    const { addPhotoImpl, inserts } = makeAddPhoto();
+    const rebuilds = makeRebuilds();
+
+    const res = await persistImagesForPackageImport({
+      modelId: 'model-six-pack',
+      provider: 'mediaslide',
+      providerExternalId: 'MS-6',
+      portfolioUrls,
+      polaroidUrls: [],
+      options: {
+        fetchImpl,
+        uploadImpl,
+        addPhotoImpl,
+        ...rebuilds,
+        clearPreviousPackagePhotos: false,
+      },
+    });
+
+    expect(res.portfolioPersisted).toBe(6);
+    expect(inserts).toHaveLength(6);
+    expect(inserts.every((r) => r.type === 'portfolio')).toBe(true);
+    inserts.forEach((row) => assertLocalIndexCastingPhotoUrlOrPath(row.url));
+  });
+
+  it('persists multiple images for a Netwalk-keyed package with the same URI contract', async () => {
+    const portfolioUrls = [PORTFOLIO_URL(10), PORTFOLIO_URL(11), PORTFOLIO_URL(12)];
+    const { fetchImpl } = makeFetch({
+      responses: Object.fromEntries(
+        portfolioUrls.map((u) => [u, { contentType: 'image/jpeg', bytes: 32 }]),
+      ),
+    });
+    const { uploadImpl } = makeUpload();
+    const { addPhotoImpl, inserts } = makeAddPhoto();
+    const rebuilds = makeRebuilds();
+
+    const res = await persistImagesForPackageImport({
+      modelId: 'model-nw',
+      provider: 'netwalk',
+      providerExternalId: 'NW-99',
+      portfolioUrls,
+      polaroidUrls: [],
+      options: {
+        fetchImpl,
+        uploadImpl,
+        addPhotoImpl,
+        ...rebuilds,
+        clearPreviousPackagePhotos: false,
+      },
+    });
+
+    expect(res.portfolioPersisted).toBe(3);
+    inserts.forEach((row) => assertLocalIndexCastingPhotoUrlOrPath(row.url));
+  });
+});
+
 describe('persistImagesForPackageImport — happy path', () => {
   it('downloads, uploads, and addPhoto for portfolio THEN polaroids in input order', async () => {
     const portfolioUrls = [PORTFOLIO_URL(1), PORTFOLIO_URL(2), PORTFOLIO_URL(3)];
@@ -402,6 +467,7 @@ describe('persistImagesForPackageImport — happy path', () => {
     expect(portfolioCalls).toEqual(['model-A']);
     expect(polaroidCalls).toEqual(['model-A']);
     expect(classifyImagePersistResult(result)).toBe('all_ok');
+    inserts.forEach((row) => assertLocalIndexCastingPhotoUrlOrPath(row.url));
   });
 });
 
@@ -766,7 +832,7 @@ describe('persistImagesForPackageImport — per-failure reason codes', () => {
     const { fetchImpl } = makeFetch({ responses: { [url]: { contentType: 'image/jpeg' } } });
     const { uploadImpl, uploads } = makeUpload();
     const { addPhotoImpl } = makeAddPhoto({
-      failUrls: new Set(['supabase-storage://documentspictures/m/img-1.jpg']),
+      failUrls: new Set(['supabase-storage://documentspictures/model-photos/m/img-1.jpg']),
     });
     const rebuilds = makeRebuilds();
 
