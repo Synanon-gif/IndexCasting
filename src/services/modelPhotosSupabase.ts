@@ -86,10 +86,38 @@ export type UploadPhotoResult = {
   fileSizeBytes: number;
 };
 
-export async function getPhotosForModel(
+/** Detailed fetch result for UI error/retry (e.g. statement timeout 57014). */
+export type GetModelPhotosResult =
+  | { ok: true; photos: ModelPhoto[] }
+  | {
+      ok: false;
+      photos: [];
+      errorCode?: string;
+      errorMessage?: string;
+    };
+
+function mapModelPhotoRows(raw: unknown[] | null | undefined): ModelPhoto[] {
+  return (raw ?? []).map((row) => {
+    const r = row as ModelPhoto & { visible?: boolean };
+    const isVisibleToClients = Boolean(r.is_visible_to_clients ?? r.visible ?? true);
+    return {
+      ...r,
+      visible: isVisibleToClients,
+      is_visible_to_clients: r.is_visible_to_clients ?? isVisibleToClients,
+    };
+  });
+}
+
+/**
+ * Same as {@link getPhotosForModel} but surfaces PostgREST errors for timeout/retry UI.
+ */
+export async function getPhotosForModelResult(
   modelId: string,
   type?: ModelPhotoType,
-): Promise<ModelPhoto[]> {
+): Promise<GetModelPhotosResult> {
+  if (!modelId?.trim()) {
+    return { ok: true, photos: [] };
+  }
   try {
     let query = supabase.from('model_photos').select('*').eq('model_id', modelId);
 
@@ -101,24 +129,32 @@ export async function getPhotosForModel(
 
     const { data, error } = await query;
     if (error) {
-      console.error('getPhotosForModel error:', error);
-      return [];
+      console.error('getPhotosForModel error:', error.code, error.message);
+      return {
+        ok: false,
+        photos: [],
+        errorCode: error.code,
+        errorMessage: error.message,
+      };
     }
 
-    // Keep legacy `visible` in sync with `is_visible_to_clients` for older UI code.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data ?? []).map((row: any) => {
-      const isVisibleToClients = Boolean(row.is_visible_to_clients ?? row.visible ?? true);
-      return {
-        ...(row as ModelPhoto),
-        visible: isVisibleToClients,
-        is_visible_to_clients: row.is_visible_to_clients ?? isVisibleToClients,
-      };
-    });
+    return { ok: true, photos: mapModelPhotoRows(data) };
   } catch (e) {
     console.error('getPhotosForModel exception:', e);
-    return [];
+    return {
+      ok: false,
+      photos: [],
+      errorMessage: e instanceof Error ? e.message : 'unknown',
+    };
   }
+}
+
+export async function getPhotosForModel(
+  modelId: string,
+  type?: ModelPhotoType,
+): Promise<ModelPhoto[]> {
+  const r = await getPhotosForModelResult(modelId, type);
+  return r.ok ? r.photos : [];
 }
 
 /**

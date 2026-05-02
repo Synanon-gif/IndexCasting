@@ -39,6 +39,59 @@ const CACHE_GRACE_SECONDS = 120;
 /** How long a "not found" result is cached before retrying (5 minutes). */
 const NEGATIVE_CACHE_TTL_SECONDS = 300;
 
+/** Limit parallel Storage sign requests — avoids gateway overload / 504 storms in grids. */
+const MAX_CONCURRENT_STORAGE_SIGNS = 5;
+
+/** Retries for transient gateway / timeout errors only (not 404). */
+const SIGN_MAX_ATTEMPTS = 3;
+
+let activeSignCount = 0;
+const signWaitQueue: Array<() => void> = [];
+
+function acquireSignSlot(): Promise<void> {
+  if (activeSignCount < MAX_CONCURRENT_STORAGE_SIGNS) {
+    activeSignCount += 1;
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    signWaitQueue.push(() => {
+      activeSignCount += 1;
+      resolve();
+    });
+  });
+}
+
+function releaseSignSlot(): void {
+  activeSignCount -= 1;
+  const next = signWaitQueue.shift();
+  if (next) next();
+}
+
+/** Exported for unit tests — classifies gateway / timeout errors that should retry. */
+export function isRetryableStorageSignError(error: unknown): boolean {
+  const o = error as { message?: string; statusCode?: string | number } | null;
+  const code = o?.statusCode;
+  if (
+    code === 502 ||
+    code === 503 ||
+    code === 504 ||
+    code === '502' ||
+    code === '503' ||
+    code === '504'
+  ) {
+    return true;
+  }
+  const msg = (o?.message ?? String(error ?? '')).toLowerCase();
+  return (
+    msg.includes('502') ||
+    msg.includes('503') ||
+    msg.includes('504') ||
+    msg.includes('gateway') ||
+    msg.includes('timeout') ||
+    msg.includes('timed out')
+  );
+}
+
 // ─── In-memory signed URL cache ───────────────────────────────────────────────
 // Key: canonical raw URI  →  Value: { signedUrl, expiresAt (unix seconds) }
 // LRU-bounded: evicts oldest entries when exceeding MAX_URL_CACHE_SIZE.
@@ -198,11 +251,36 @@ export async function resolveStorageUrl(
   if (existing) return existing;
 
   const signPromise = (async (): Promise<string | null> => {
+    await acquireSignSlot();
     try {
-      const { data, error } = await supabase.storage
-        .from(extracted.bucket)
-        .createSignedUrl(extracted.path, ttlSeconds);
+      let data: { signedUrl: string } | null = null;
+      let lastError: unknown;
 
+      for (let attempt = 0; attempt < SIGN_MAX_ATTEMPTS; attempt++) {
+        try {
+          const res = await supabase.storage
+            .from(extracted.bucket)
+            .createSignedUrl(extracted.path, ttlSeconds);
+          if (!res.error && res.data?.signedUrl) {
+            data = res.data;
+            lastError = null;
+            break;
+          }
+          lastError = res.error;
+          if (!isRetryableStorageSignError(res.error) || attempt === SIGN_MAX_ATTEMPTS - 1) {
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+        } catch (e) {
+          lastError = e;
+          if (!isRetryableStorageSignError(e) || attempt === SIGN_MAX_ATTEMPTS - 1) {
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+        }
+      }
+
+      const error = lastError;
       if (error || !data?.signedUrl) {
         const errMsg = (error as { message?: string })?.message ?? '';
         const isNotFound =
@@ -245,6 +323,7 @@ export async function resolveStorageUrl(
       }
       return null;
     } finally {
+      releaseSignSlot();
       inflightRequests.delete(url);
     }
   })();
@@ -261,8 +340,20 @@ export async function resolveStorageUrls(
   urls: string[],
   ttlSeconds: number = DEFAULT_SIGNED_TTL_SECONDS,
 ): Promise<string[]> {
-  const results = await Promise.all(urls.map((u) => resolveStorageUrl(u, ttlSeconds)));
-  return results.filter((u): u is string => u !== null);
+  const concurrency = Math.min(MAX_CONCURRENT_STORAGE_SIGNS, Math.max(1, urls.length));
+  const out: (string | null)[] = new Array(urls.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      const i = nextIndex++;
+      if (i >= urls.length) return;
+      out[i] = await resolveStorageUrl(urls[i]!, ttlSeconds);
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return out.filter((u): u is string => u !== null);
 }
 
 /**

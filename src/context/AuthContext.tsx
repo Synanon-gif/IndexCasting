@@ -149,6 +149,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('[Auth] getSession resolved, user:', s?.user?.id ?? 'none');
         setSession(s);
         if (s?.user) {
+          if (profileLoadInFlightRef.current) {
+            console.log('[Auth] getSession: bootstrap already in flight — skip duplicate');
+            setLoading(false);
+            return;
+          }
+          if (profileRef.current?.id === s.user.id) {
+            console.log('[Auth] getSession: profile already loaded — skip bootstrap');
+            setLoading(false);
+            return;
+          }
           void bootstrapThenLoadProfile(s.user.id).finally(() => setLoading(false));
         } else {
           setLoading(false);

@@ -111,7 +111,7 @@ export function StorageImage({
         setResolvedUri(resolved);
         if (!resolved) {
           setResolutionFailed(true);
-          console.warn('[StorageImage] resolution failed', { uri });
+          // Failures are already log-once in storageUrl.ts — avoid duplicate console noise.
         }
       }
     });

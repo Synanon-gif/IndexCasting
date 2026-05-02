@@ -827,6 +827,10 @@ export const uiCopy = {
     settingsPhotosPolaroidsLabel: (n: number) => `Polaroids (${n})`,
     settingsPhotosEmpty:
       'No portfolio or polaroid photos yet. When your agency adds images, they will appear here.',
+    /** Model Settings — photos section failed to load (network / DB timeout). */
+    settingsPhotosLoadTimeout: 'Photos took too long to load. Check your connection and tap Retry.',
+    settingsPhotosLoadErrorGeneric: 'Photos could not be loaded. Tap Retry.',
+    settingsPhotosRetry: 'Retry',
   },
   login: {
     /** Role-picker entry (e.g. dev / secondary entry) — not a full auth product path. */

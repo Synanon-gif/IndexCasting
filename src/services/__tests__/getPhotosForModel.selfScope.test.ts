@@ -3,7 +3,7 @@
  * RLS decides row visibility server-side; the client must scope by model_id only.
  */
 
-import { getPhotosForModel } from '../modelPhotosSupabase';
+import { getPhotosForModel, getPhotosForModelResult } from '../modelPhotosSupabase';
 
 const mockFrom = jest.fn();
 
@@ -36,6 +36,28 @@ describe('getPhotosForModel — model_id scope', () => {
     expect(chain.select).toHaveBeenCalledWith('*');
     expect(calls.find((c) => c.col === 'model_id')?.val).toBe('model-uuid-abc');
     expect(chain.order).toHaveBeenCalledWith('sort_order', { ascending: true });
+  });
+
+  it('getPhotosForModelResult surfaces timeout error without throwing', async () => {
+    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const chain: Record<string, unknown> = {};
+    chain.select = jest.fn().mockReturnValue(chain);
+    chain.eq = jest.fn().mockReturnValue(chain);
+    chain.order = jest.fn().mockResolvedValue({
+      data: null,
+      error: { code: '57014', message: 'canceling statement due to statement timeout' },
+    });
+    mockFrom.mockReturnValue(chain);
+
+    const r = await getPhotosForModelResult('m-timeout');
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.errorCode).toBe('57014');
+      expect(r.photos).toEqual([]);
+    }
+    const empty = await getPhotosForModel('m-timeout');
+    expect(empty).toEqual([]);
+    errSpy.mockRestore();
   });
 
   it('adds photo_type filter when type arg is set', async () => {

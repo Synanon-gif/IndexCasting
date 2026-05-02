@@ -31,7 +31,7 @@ import {
   locationSourceLabel,
   type ModelLocation,
 } from '../services/modelLocationsSupabase';
-import { getPhotosForModel, type ModelPhoto } from '../services/modelPhotosSupabase';
+import { getPhotosForModelResult, type ModelPhoto } from '../services/modelPhotosSupabase';
 import { StorageImage } from '../components/StorageImage';
 import { supabase } from '../../lib/supabase';
 import { UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';
@@ -297,6 +297,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   // Portfolio / polaroid rows the agency manages for this model (private excluded in fetch)
   const [modelPhotos, setModelPhotos] = useState<ModelPhoto[]>([]);
   const [modelPhotosLoading, setModelPhotosLoading] = useState(false);
+  const [modelPhotosLoadError, setModelPhotosLoadError] = useState<string | null>(null);
+  const [photosRetryTick, setPhotosRetryTick] = useState(0);
 
   // Location state — active source + manual 'current' city input
   const [modelLocation, setModelLocation] = useState<ModelLocation | null>(null);
@@ -844,16 +846,31 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     if (!profile?.id) return;
     let cancelled = false;
     setModelPhotosLoading(true);
-    void getPhotosForModel(profile.id).then((photos) => {
-      if (!cancelled) {
-        setModelPhotos(photos.filter((p) => p.photo_type !== 'private'));
-        setModelPhotosLoading(false);
+    setModelPhotosLoadError(null);
+    void getPhotosForModelResult(profile.id).then((r) => {
+      if (cancelled) return;
+      setModelPhotosLoading(false);
+      if (r.ok) {
+        setModelPhotos(r.photos.filter((p) => p.photo_type !== 'private'));
+        setModelPhotosLoadError(null);
+        return;
       }
+      setModelPhotos([]);
+      const msg = (r.errorMessage ?? '').toLowerCase();
+      const timeout =
+        r.errorCode === '57014' ||
+        msg.includes('statement timeout') ||
+        msg.includes('canceling statement');
+      setModelPhotosLoadError(
+        timeout
+          ? uiCopy.model.settingsPhotosLoadTimeout
+          : uiCopy.model.settingsPhotosLoadErrorGeneric,
+      );
     });
     return () => {
       cancelled = true;
     };
-  }, [profile?.id]);
+  }, [profile?.id, photosRetryTick]);
 
   useEffect(() => {
     setOptions(getOptionRequests());
@@ -1539,6 +1556,32 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               {modelPhotosLoading ? (
                 <View style={{ paddingVertical: spacing.md, alignItems: 'center' }}>
                   <ActivityIndicator size="small" color={colors.textSecondary} />
+                </View>
+              ) : modelPhotosLoadError ? (
+                <View style={{ gap: spacing.sm }}>
+                  <Text
+                    style={{
+                      ...typography.body,
+                      fontSize: 12,
+                      color: colors.textSecondary,
+                    }}
+                  >
+                    {modelPhotosLoadError}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setPhotosRetryTick((t) => t + 1)}
+                    style={{
+                      alignSelf: 'flex-start',
+                      paddingVertical: 8,
+                      paddingHorizontal: 14,
+                      borderRadius: 8,
+                      backgroundColor: colors.accentGreen,
+                    }}
+                  >
+                    <Text style={{ ...typography.label, color: '#fff', fontSize: 12 }}>
+                      {uiCopy.model.settingsPhotosRetry}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               ) : settingsTabPortfolioPhotos.length === 0 &&
                 settingsTabPolaroidPhotos.length === 0 ? (
