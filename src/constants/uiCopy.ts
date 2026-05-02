@@ -819,6 +819,14 @@ export const uiCopy = {
     composerPlaceholder: 'Message…',
     /** Label above job_description in option/casting thread header (model). */
     optionThreadRoleDetails: 'Role / details',
+    /** Model Settings — agency-managed imagery (mirror of roster media; view-only). */
+    settingsPhotosSectionTitle: 'Photos',
+    settingsPhotosHint:
+      'Portfolio and polaroid images managed by your agency. Contact your agency if something looks wrong.',
+    settingsPhotosPortfolioLabel: (n: number) => `Portfolio (${n})`,
+    settingsPhotosPolaroidsLabel: (n: number) => `Polaroids (${n})`,
+    settingsPhotosEmpty:
+      'No portfolio or polaroid photos yet. When your agency adds images, they will appear here.',
   },
   login: {
     /** Role-picker entry (e.g. dev / secondary entry) — not a full auth product path. */

@@ -294,8 +294,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   } | null>(null);
   const [addingEntry, setAddingEntry] = useState(false);
 
-  // Portfolio photos the agency uploaded for this model
+  // Portfolio / polaroid rows the agency manages for this model (private excluded in fetch)
   const [modelPhotos, setModelPhotos] = useState<ModelPhoto[]>([]);
+  const [modelPhotosLoading, setModelPhotosLoading] = useState(false);
 
   // Location state — active source + manual 'current' city input
   const [modelLocation, setModelLocation] = useState<ModelLocation | null>(null);
@@ -842,8 +843,12 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   useEffect(() => {
     if (!profile?.id) return;
     let cancelled = false;
+    setModelPhotosLoading(true);
     void getPhotosForModel(profile.id).then((photos) => {
-      if (!cancelled) setModelPhotos(photos.filter((p) => p.photo_type !== 'private'));
+      if (!cancelled) {
+        setModelPhotos(photos.filter((p) => p.photo_type !== 'private'));
+        setModelPhotosLoading(false);
+      }
     });
     return () => {
       cancelled = true;
@@ -994,6 +999,15 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     const confirmedIds = new Set(pendingConfirmations.map((c) => c.id));
     return all.filter((o) => !confirmedIds.has(o.threadId));
   }, [profile, pendingConfirmations]);
+
+  const settingsTabPortfolioPhotos = useMemo(
+    () => modelPhotos.filter((p) => p.photo_type === 'portfolio'),
+    [modelPhotos],
+  );
+  const settingsTabPolaroidPhotos = useMemo(
+    () => modelPhotos.filter((p) => p.photo_type === 'polaroid'),
+    [modelPhotos],
+  );
 
   const jobTickets = useMemo(
     () =>
@@ -1509,110 +1523,123 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               </View>
             </View>
 
-            {/* ── My Portfolio Section ──────────────────────── */}
-            {modelPhotos.length > 0 && (
-              <View style={st.section}>
-                <Text style={st.sectionLabel}>My Portfolio</Text>
+            {/* ── Photos (agency-managed, view-only) ───────── */}
+            <View style={st.section}>
+              <Text style={st.sectionLabel}>{uiCopy.model.settingsPhotosSectionTitle}</Text>
+              <Text
+                style={{
+                  ...typography.body,
+                  fontSize: 11,
+                  color: colors.textSecondary,
+                  marginBottom: spacing.sm,
+                }}
+              >
+                {uiCopy.model.settingsPhotosHint}
+              </Text>
+              {modelPhotosLoading ? (
+                <View style={{ paddingVertical: spacing.md, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color={colors.textSecondary} />
+                </View>
+              ) : settingsTabPortfolioPhotos.length === 0 &&
+                settingsTabPolaroidPhotos.length === 0 ? (
                 <Text
                   style={{
                     ...typography.body,
-                    fontSize: 11,
+                    fontSize: 12,
                     color: colors.textSecondary,
-                    marginBottom: spacing.sm,
                   }}
                 >
-                  Photos managed by your agency. Contact your agency if you want to update these.
+                  {uiCopy.model.settingsPhotosEmpty}
                 </Text>
-                {(() => {
-                  const portfolioPhotos = modelPhotos.filter((p) => p.photo_type === 'portfolio');
-                  const polaroidPhotos = modelPhotos.filter((p) => p.photo_type === 'polaroid');
-                  return (
+              ) : (
+                <>
+                  {settingsTabPortfolioPhotos.length > 0 && (
                     <>
-                      {portfolioPhotos.length > 0 && (
-                        <>
-                          <Text
-                            style={{
-                              ...typography.label,
-                              fontSize: 11,
-                              color: colors.textSecondary,
-                              marginBottom: 4,
-                            }}
-                          >
-                            Portfolio ({portfolioPhotos.length})
-                          </Text>
+                      <Text
+                        style={{
+                          ...typography.label,
+                          fontSize: 11,
+                          color: colors.textSecondary,
+                          marginBottom: 4,
+                        }}
+                      >
+                        {uiCopy.model.settingsPhotosPortfolioLabel(
+                          settingsTabPortfolioPhotos.length,
+                        )}
+                      </Text>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          flexWrap: 'wrap',
+                          gap: spacing.sm,
+                          marginBottom: spacing.md,
+                        }}
+                      >
+                        {settingsTabPortfolioPhotos.map((photo) => (
                           <View
+                            key={photo.id}
                             style={{
-                              flexDirection: 'row',
-                              flexWrap: 'wrap',
-                              gap: spacing.sm,
-                              marginBottom: spacing.md,
+                              width: isMobileModel ? 100 : 120,
+                              height: isMobileModel ? 140 : 168,
+                              borderRadius: 8,
+                              overflow: 'hidden',
+                              borderWidth: 1,
+                              borderColor: colors.border,
+                              backgroundColor: '#f5f5f5',
                             }}
                           >
-                            {portfolioPhotos.map((photo) => (
-                              <View
-                                key={photo.id}
-                                style={{
-                                  width: isMobileModel ? 100 : 120,
-                                  height: isMobileModel ? 140 : 168,
-                                  borderRadius: 8,
-                                  overflow: 'hidden',
-                                  borderWidth: 1,
-                                  borderColor: colors.border,
-                                  backgroundColor: '#f5f5f5',
-                                }}
-                              >
-                                <StorageImage
-                                  uri={photo.url}
-                                  style={{ width: '100%', height: '100%' }}
-                                  resizeMode="contain"
-                                />
-                              </View>
-                            ))}
+                            <StorageImage
+                              uri={photo.url}
+                              style={{ width: '100%', height: '100%' }}
+                              resizeMode="contain"
+                            />
                           </View>
-                        </>
-                      )}
-                      {polaroidPhotos.length > 0 && (
-                        <>
-                          <Text
-                            style={{
-                              ...typography.label,
-                              fontSize: 11,
-                              color: colors.textSecondary,
-                              marginBottom: 4,
-                            }}
-                          >
-                            Polaroids ({polaroidPhotos.length})
-                          </Text>
-                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
-                            {polaroidPhotos.map((photo) => (
-                              <View
-                                key={photo.id}
-                                style={{
-                                  width: isMobileModel ? 80 : 100,
-                                  height: isMobileModel ? 80 : 100,
-                                  borderRadius: 8,
-                                  overflow: 'hidden',
-                                  borderWidth: 1,
-                                  borderColor: colors.border,
-                                  backgroundColor: '#f5f5f5',
-                                }}
-                              >
-                                <StorageImage
-                                  uri={photo.url}
-                                  style={{ width: '100%', height: '100%' }}
-                                  resizeMode="contain"
-                                />
-                              </View>
-                            ))}
-                          </View>
-                        </>
-                      )}
+                        ))}
+                      </View>
                     </>
-                  );
-                })()}
-              </View>
-            )}
-            {/* ── End My Portfolio Section ──────────────────── */}
+                  )}
+                  {settingsTabPolaroidPhotos.length > 0 && (
+                    <>
+                      <Text
+                        style={{
+                          ...typography.label,
+                          fontSize: 11,
+                          color: colors.textSecondary,
+                          marginBottom: 4,
+                        }}
+                      >
+                        {uiCopy.model.settingsPhotosPolaroidsLabel(
+                          settingsTabPolaroidPhotos.length,
+                        )}
+                      </Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+                        {settingsTabPolaroidPhotos.map((photo) => (
+                          <View
+                            key={photo.id}
+                            style={{
+                              width: isMobileModel ? 80 : 100,
+                              height: isMobileModel ? 80 : 100,
+                              borderRadius: 8,
+                              overflow: 'hidden',
+                              borderWidth: 1,
+                              borderColor: colors.border,
+                              backgroundColor: '#f5f5f5',
+                            }}
+                          >
+                            <StorageImage
+                              uri={photo.url}
+                              style={{ width: '100%', height: '100%' }}
+                              resizeMode="contain"
+                            />
+                          </View>
+                        ))}
+                      </View>
+                    </>
+                  )}
+                </>
+              )}
+            </View>
+            {/* ── End Photos section ─────────────────────────── */}
 
             <View
               style={[
