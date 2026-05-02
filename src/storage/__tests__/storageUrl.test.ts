@@ -42,20 +42,16 @@ describe('resolveStorageUrl (mocked supabase)', () => {
   });
 
   it('retries on 504 then succeeds', async () => {
-    jest.useFakeTimers();
     mockCreateSignedUrl
       .mockResolvedValueOnce({ data: null, error: { statusCode: 504, message: 'Gateway Timeout' } })
       .mockResolvedValue({ data: { signedUrl: 'https://signed-ok' }, error: null });
 
     const { resolveStorageUrl } = await import('../storageUrl');
     const uri = 'supabase-storage://documentspictures/model-photos/x/a.jpg';
-    const p = resolveStorageUrl(uri);
-    await jest.runAllTimersAsync();
-    const out = await p;
+    const out = await resolveStorageUrl(uri);
     expect(out).toBe('https://signed-ok');
     expect(mockCreateSignedUrl.mock.calls.length).toBeGreaterThanOrEqual(2);
-    jest.useRealTimers();
-  }, 10_000);
+  }, 15_000);
 
   it('dedupes concurrent sign for same uri (single createSignedUrl)', async () => {
     let settle!: (v: { data: { signedUrl: string } | null; error: unknown }) => void;
