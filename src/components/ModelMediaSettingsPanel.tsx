@@ -38,7 +38,7 @@ import {
   hasRecentImageRightsConfirmation,
   IMAGE_RIGHTS_WINDOW_MINUTES,
 } from '../services/gdprComplianceSupabase';
-import { resolveStorageUrl } from '../storage/storageUrl';
+import { resolveStorageUrl, resolveStorageUrls } from '../storage/storageUrl';
 import { convertHeicToJpegWithStatus } from '../services/imageUtils';
 import {
   addPhoto,
@@ -87,6 +87,15 @@ const legalCopy = uiCopy.legal;
 // M-3 fix: portfolio and polaroid photos now live in a private bucket and
 // require signed URL resolution, identical to private photos.
 // ---------------------------------------------------------------------------
+async function resolvePhotosDisplayUrls(photos: ModelPhoto[]): Promise<ResolvedPhoto[]> {
+  if (photos.length === 0) return [];
+  const signed = await resolveStorageUrls(
+    photos.map((p) => p.url),
+    3_600,
+  );
+  return photos.map((p, i) => ({ ...p, displayUrl: signed[i] ?? null }));
+}
+
 async function resolveDisplayUrl(photo: ModelPhoto): Promise<ResolvedPhoto> {
   const displayUrl = await resolveStorageUrl(photo.url, 3_600);
   return { ...photo, displayUrl };
@@ -206,9 +215,9 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
       getPhotosForModel(modelId, 'private'),
     ]);
     const [resolvedPort, resolvedPola, resolvedPriv] = await Promise.all([
-      Promise.all(port.map(resolveDisplayUrl)),
-      Promise.all(pola.map(resolveDisplayUrl)),
-      Promise.all(priv.map(resolveDisplayUrl)),
+      resolvePhotosDisplayUrls(port),
+      resolvePhotosDisplayUrls(pola),
+      resolvePhotosDisplayUrls(priv),
     ]);
     setPortfolio(resolvedPort);
     setPolaroids(resolvedPola);

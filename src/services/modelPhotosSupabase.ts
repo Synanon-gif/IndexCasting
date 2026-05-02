@@ -96,6 +96,14 @@ export type GetModelPhotosResult =
       errorMessage?: string;
     };
 
+/** Safety cap — abnormal row counts should not blow up PostgREST payloads or memory. */
+export const MAX_MODEL_PHOTOS_PER_QUERY = 2500;
+
+const MODEL_PHOTOS_COVER_URL_BATCH = 100;
+
+const inflightGetPhotosByKey = new Map<string, Promise<GetModelPhotosResult>>();
+let photosFetchInflightJoinCount = 0;
+
 function mapModelPhotoRows(raw: unknown[] | null | undefined): ModelPhoto[] {
   return (raw ?? []).map((row) => {
     const r = row as ModelPhoto & { visible?: boolean };
@@ -118,35 +126,57 @@ export async function getPhotosForModelResult(
   if (!modelId?.trim()) {
     return { ok: true, photos: [] };
   }
-  try {
-    let query = supabase.from('model_photos').select('*').eq('model_id', modelId);
-
-    if (type) {
-      query = query.eq('photo_type', type);
+  const key = `${modelId}\u0000${type ?? 'all'}`;
+  const existing = inflightGetPhotosByKey.get(key);
+  if (existing) {
+    photosFetchInflightJoinCount += 1;
+    if (photosFetchInflightJoinCount % 100 === 0) {
+      logger.debug(
+        'modelPhotos',
+        'getPhotos_inflight_join_batch',
+        { count: photosFetchInflightJoinCount },
+        { ship: false },
+      );
     }
+    return existing;
+  }
 
-    query = query.order('sort_order', { ascending: true });
+  const p = (async (): Promise<GetModelPhotosResult> => {
+    try {
+      let query = supabase.from('model_photos').select('*').eq('model_id', modelId);
 
-    const { data, error } = await query;
-    if (error) {
-      console.error('getPhotosForModel error:', error.code, error.message);
+      if (type) {
+        query = query.eq('photo_type', type);
+      }
+
+      query = query.order('sort_order', { ascending: true }).limit(MAX_MODEL_PHOTOS_PER_QUERY);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('getPhotosForModel error:', error.code, error.message);
+        return {
+          ok: false,
+          photos: [],
+          errorCode: error.code,
+          errorMessage: error.message,
+        };
+      }
+
+      return { ok: true, photos: mapModelPhotoRows(data) };
+    } catch (e) {
+      console.error('getPhotosForModel exception:', e);
       return {
         ok: false,
         photos: [],
-        errorCode: error.code,
-        errorMessage: error.message,
+        errorMessage: e instanceof Error ? e.message : 'unknown',
       };
+    } finally {
+      inflightGetPhotosByKey.delete(key);
     }
+  })();
 
-    return { ok: true, photos: mapModelPhotoRows(data) };
-  } catch (e) {
-    console.error('getPhotosForModel exception:', e);
-    return {
-      ok: false,
-      photos: [],
-      errorMessage: e instanceof Error ? e.message : 'unknown',
-    };
-  }
+  inflightGetPhotosByKey.set(key, p);
+  return p;
 }
 
 export async function getPhotosForModel(
@@ -181,29 +211,32 @@ export async function getFirstClientVisiblePortfolioUrlForModels(
   const out = new Map<string, string>();
   const unique = [...new Set(modelIds.filter((id) => id?.trim()))];
   if (unique.length === 0) return out;
+  const byModel = new Map<string, Array<{ url: string; sort_order: number; vis: boolean }>>();
   try {
-    const { data, error } = await supabase
-      .from('model_photos')
-      .select('model_id, url, sort_order, is_visible_to_clients, visible')
-      .eq('photo_type', 'portfolio')
-      .in('model_id', unique);
-    if (error) {
-      console.error('getFirstClientVisiblePortfolioUrlForModels error:', error);
-      return out;
-    }
-    const byModel = new Map<string, Array<{ url: string; sort_order: number; vis: boolean }>>();
-    for (const row of data ?? []) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const r = row as any;
-      const mid = r.model_id as string;
-      const vis = Boolean(r.is_visible_to_clients ?? r.visible ?? true);
-      if (!mid || !r.url) continue;
-      if (!byModel.has(mid)) byModel.set(mid, []);
-      byModel.get(mid)!.push({
-        url: r.url as string,
-        sort_order: Number(r.sort_order ?? 0),
-        vis,
-      });
+    for (let off = 0; off < unique.length; off += MODEL_PHOTOS_COVER_URL_BATCH) {
+      const chunk = unique.slice(off, off + MODEL_PHOTOS_COVER_URL_BATCH);
+      const { data, error } = await supabase
+        .from('model_photos')
+        .select('model_id, url, sort_order, is_visible_to_clients, visible')
+        .eq('photo_type', 'portfolio')
+        .in('model_id', chunk);
+      if (error) {
+        console.error('getFirstClientVisiblePortfolioUrlForModels chunk error:', error);
+        continue;
+      }
+      for (const row of data ?? []) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const r = row as any;
+        const mid = r.model_id as string;
+        const vis = Boolean(r.is_visible_to_clients ?? r.visible ?? true);
+        if (!mid || !r.url) continue;
+        if (!byModel.has(mid)) byModel.set(mid, []);
+        byModel.get(mid)!.push({
+          url: r.url as string,
+          sort_order: Number(r.sort_order ?? 0),
+          vis,
+        });
+      }
     }
     for (const [mid, rows] of byModel) {
       rows.sort((a, b) => a.sort_order - b.sort_order);

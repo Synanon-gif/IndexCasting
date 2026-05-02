@@ -3,7 +3,11 @@
  * RLS decides row visibility server-side; the client must scope by model_id only.
  */
 
-import { getPhotosForModel, getPhotosForModelResult } from '../modelPhotosSupabase';
+import {
+  getPhotosForModel,
+  getPhotosForModelResult,
+  MAX_MODEL_PHOTOS_PER_QUERY,
+} from '../modelPhotosSupabase';
 
 const mockFrom = jest.fn();
 
@@ -27,7 +31,8 @@ describe('getPhotosForModel — model_id scope', () => {
       calls.push({ col, val });
       return chain;
     });
-    chain.order = jest.fn().mockResolvedValue(resolved);
+    chain.order = jest.fn().mockReturnValue(chain);
+    chain.limit = jest.fn().mockResolvedValue(resolved);
     mockFrom.mockReturnValue(chain);
 
     await getPhotosForModel('model-uuid-abc');
@@ -36,6 +41,7 @@ describe('getPhotosForModel — model_id scope', () => {
     expect(chain.select).toHaveBeenCalledWith('*');
     expect(calls.find((c) => c.col === 'model_id')?.val).toBe('model-uuid-abc');
     expect(chain.order).toHaveBeenCalledWith('sort_order', { ascending: true });
+    expect(chain.limit).toHaveBeenCalledWith(MAX_MODEL_PHOTOS_PER_QUERY);
   });
 
   it('getPhotosForModelResult surfaces timeout error without throwing', async () => {
@@ -43,7 +49,8 @@ describe('getPhotosForModel — model_id scope', () => {
     const chain: Record<string, unknown> = {};
     chain.select = jest.fn().mockReturnValue(chain);
     chain.eq = jest.fn().mockReturnValue(chain);
-    chain.order = jest.fn().mockResolvedValue({
+    chain.order = jest.fn().mockReturnValue(chain);
+    chain.limit = jest.fn().mockResolvedValue({
       data: null,
       error: { code: '57014', message: 'canceling statement due to statement timeout' },
     });
@@ -69,7 +76,8 @@ describe('getPhotosForModel — model_id scope', () => {
       calls.push({ col, val });
       return chain;
     });
-    chain.order = jest.fn().mockResolvedValue(resolved);
+    chain.order = jest.fn().mockReturnValue(chain);
+    chain.limit = jest.fn().mockResolvedValue(resolved);
     mockFrom.mockReturnValue(chain);
 
     await getPhotosForModel('m1', 'portfolio');
@@ -80,5 +88,26 @@ describe('getPhotosForModel — model_id scope', () => {
         { col: 'photo_type', val: 'portfolio' },
       ]),
     );
+  });
+
+  it('coalesces concurrent getPhotosForModelResult for same model (single query chain)', async () => {
+    const resolved = { data: [], error: null };
+    const chain: Record<string, unknown> = {};
+    let limitHits = 0;
+    chain.select = jest.fn().mockReturnValue(chain);
+    chain.eq = jest.fn().mockReturnValue(chain);
+    chain.order = jest.fn().mockReturnValue(chain);
+    chain.limit = jest.fn().mockImplementation(() => {
+      limitHits += 1;
+      return Promise.resolve(resolved);
+    });
+    mockFrom.mockReturnValue(chain);
+
+    const [a, b] = await Promise.all([
+      getPhotosForModelResult('same-id'),
+      getPhotosForModelResult('same-id'),
+    ]);
+    expect(a.ok && b.ok).toBe(true);
+    expect(limitHits).toBe(1);
   });
 });

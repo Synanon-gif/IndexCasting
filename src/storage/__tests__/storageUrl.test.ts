@@ -10,6 +10,16 @@ jest.mock('../../../lib/supabase', () => ({
   },
 }));
 
+jest.mock('../../utils/logger', () => ({
+  logger: {
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    fatal: jest.fn(),
+  },
+}));
+
 import { isRetryableStorageSignError } from '../storageUrl';
 
 describe('storageUrl — isRetryableStorageSignError', () => {
@@ -72,4 +82,38 @@ describe('resolveStorageUrl (mocked supabase)', () => {
     expect(b).toBe('https://signed');
     expect(mockCreateSignedUrl).toHaveBeenCalledTimes(1);
   });
+
+  it('dedupes public URL and supabase-storage URI for same object (one createSignedUrl)', async () => {
+    mockCreateSignedUrl.mockResolvedValue({
+      data: { signedUrl: 'https://signed-one' },
+      error: null,
+    });
+    const { resolveStorageUrl } = await import('../storageUrl');
+    const pub = 'https://abc.supabase.co/storage/v1/object/public/documentspictures/folder/img.jpg';
+    const canon = 'supabase-storage://documentspictures/folder/img.jpg';
+    const [a, b] = await Promise.all([resolveStorageUrl(pub), resolveStorageUrl(canon)]);
+    expect(a).toBe('https://signed-one');
+    expect(b).toBe('https://signed-one');
+    expect(mockCreateSignedUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it('never exceeds 5 concurrent createSignedUrl calls under burst', async () => {
+    let inFlight = 0;
+    let maxSeen = 0;
+    mockCreateSignedUrl.mockImplementation(async () => {
+      inFlight += 1;
+      maxSeen = Math.max(maxSeen, inFlight);
+      await new Promise((r) => setTimeout(r, 20));
+      inFlight -= 1;
+      return { data: { signedUrl: 'https://signed' }, error: null };
+    });
+    const { resolveStorageUrl } = await import('../storageUrl');
+    const uris = Array.from(
+      { length: 40 },
+      (_, i) => `supabase-storage://documentspictures/burst/${i}.jpg`,
+    );
+    await Promise.all(uris.map((u) => resolveStorageUrl(u)));
+    expect(maxSeen).toBeLessThanOrEqual(5);
+    expect(mockCreateSignedUrl).toHaveBeenCalledTimes(40);
+  }, 35_000);
 });

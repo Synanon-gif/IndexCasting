@@ -24,6 +24,7 @@
  */
 
 import { supabase } from '../../lib/supabase';
+import { logger } from '../utils/logger';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,13 @@ const MAX_CONCURRENT_STORAGE_SIGNS = 5;
 
 /** Retries for transient gateway / timeout errors only (not 404). */
 const SIGN_MAX_ATTEMPTS = 3;
+
+/** Per-attempt ceiling for createSignedUrl (soft timeout → retry or fail). */
+const SIGN_PER_ATTEMPT_TIMEOUT_MS = 22_000;
+
+/** Lightweight counters for debug / load triage (no URLs, no PII). */
+let signCacheHitCount = 0;
+let signInflightJoinCount = 0;
 
 let activeSignCount = 0;
 const signWaitQueue: Array<() => void> = [];
@@ -88,12 +96,13 @@ export function isRetryableStorageSignError(error: unknown): boolean {
     msg.includes('504') ||
     msg.includes('gateway') ||
     msg.includes('timeout') ||
-    msg.includes('timed out')
+    msg.includes('timed out') ||
+    msg.includes('storage_sign_timeout')
   );
 }
 
 // ─── In-memory signed URL cache ───────────────────────────────────────────────
-// Key: canonical raw URI  →  Value: { signedUrl, expiresAt (unix seconds) }
+// Key: bucket+\0+path  →  Value: { signedUrl, expiresAt (unix seconds) }
 // LRU-bounded: evicts oldest entries when exceeding MAX_URL_CACHE_SIZE.
 
 const MAX_URL_CACHE_SIZE = 5_000;
@@ -116,10 +125,10 @@ function trimMap<V>(map: Map<string, V>, maxSize: number): void {
   }
 }
 
-// In-flight dedup: pending sign requests keyed by raw URL.
+// In-flight dedup: pending sign requests keyed by bucket+\0+path (not raw URL).
 const inflightRequests = new Map<string, Promise<string | null>>();
 
-// Log-once guard: tracks which URLs have already been logged this session.
+// Log-once guard: tracks which object keys have already been logged this session.
 const loggedUrls = new Set<string>();
 
 // ─── URI helpers ──────────────────────────────────────────────────────────────
@@ -191,10 +200,12 @@ export function needsResolution(url: string): boolean {
  */
 export function isKnownBrokenUrl(url: string): boolean {
   if (!url) return false;
-  const expiresAt = brokenUrlCache.get(url);
+  const key = storageObjectCacheKey(url);
+  if (!key) return false;
+  const expiresAt = brokenUrlCache.get(key);
   if (expiresAt === undefined) return false;
   if (expiresAt > Date.now() / 1_000) return true;
-  brokenUrlCache.delete(url);
+  brokenUrlCache.delete(key);
   return false;
 }
 
@@ -208,6 +219,29 @@ export function publicUrlToStorageUri(url: string): string {
   if (!extracted) return url;
   if (url.startsWith('supabase-storage://') || url.startsWith('supabase-private://')) return url;
   return toStorageUri(extracted.bucket, extracted.path);
+}
+
+/** Canonical cache/dedup key for one storage object (public URL vs supabase-storage URI share one key). */
+export function storageObjectCacheKey(url: string): string | null {
+  const ex = extractBucketAndPath(url.trim());
+  if (!ex) return null;
+  return `${ex.bucket}\u0000${ex.path}`;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('storage_sign_timeout')), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
 }
 
 // ─── Resolver ─────────────────────────────────────────────────────────────────
@@ -232,23 +266,54 @@ export async function resolveStorageUrl(
 ): Promise<string | null> {
   if (!url) return null;
 
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  // Non-storage URLs: no signing, no shared semaphore (avoid polluting dedup maps).
+  if (!extractBucketAndPath(trimmed)) {
+    return trimmed;
+  }
+
+  const normalized = publicUrlToStorageUri(trimmed);
+  const extracted = extractBucketAndPath(normalized);
+  if (!extracted) {
+    return trimmed;
+  }
+
+  const cacheKey = `${extracted.bucket}\u0000${extracted.path}`;
+
   // Fast path: negative cache — known broken, don't retry
-  if (isKnownBrokenUrl(url)) return null;
+  if (isKnownBrokenUrl(normalized)) return null;
 
   // Fast path: already a valid, non-expired signed URL in cache
-  const cached = urlCache.get(url);
+  const cached = urlCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now() / 1_000 + CACHE_GRACE_SECONDS) {
+    signCacheHitCount += 1;
+    if (signCacheHitCount % 200 === 0) {
+      logger.debug(
+        'storageUrl',
+        'sign_cache_hits_batch',
+        { count: signCacheHitCount },
+        { ship: false },
+      );
+    }
     return cached.signedUrl;
   }
 
-  const extracted = extractBucketAndPath(url);
-  if (!extracted) {
-    return url;
+  // In-flight dedup: 20 callers for the same object → one network stack (global module state).
+  const existing = inflightRequests.get(cacheKey);
+  if (existing) {
+    signInflightJoinCount += 1;
+    if (signInflightJoinCount % 200 === 0) {
+      logger.debug(
+        'storageUrl',
+        'sign_inflight_join_batch',
+        { count: signInflightJoinCount },
+        { ship: false },
+      );
+    }
+    return existing;
   }
-
-  // In-flight dedup: if another caller is already signing this URL, piggyback
-  const existing = inflightRequests.get(url);
-  if (existing) return existing;
 
   const signPromise = (async (): Promise<string | null> => {
     await acquireSignSlot();
@@ -258,9 +323,10 @@ export async function resolveStorageUrl(
 
       for (let attempt = 0; attempt < SIGN_MAX_ATTEMPTS; attempt++) {
         try {
-          const res = await supabase.storage
-            .from(extracted.bucket)
-            .createSignedUrl(extracted.path, ttlSeconds);
+          const res = await withTimeout(
+            supabase.storage.from(extracted.bucket).createSignedUrl(extracted.path, ttlSeconds),
+            SIGN_PER_ATTEMPT_TIMEOUT_MS,
+          );
           if (!res.error && res.data?.signedUrl) {
             data = res.data;
             lastError = null;
@@ -270,13 +336,27 @@ export async function resolveStorageUrl(
           if (!isRetryableStorageSignError(res.error) || attempt === SIGN_MAX_ATTEMPTS - 1) {
             break;
           }
-          await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+          const backoffMs = Math.min(4000, 180 * 2 ** attempt);
+          logger.debug(
+            'storageUrl',
+            'sign_retry',
+            { attempt: attempt + 1, max: SIGN_MAX_ATTEMPTS, backoffMs },
+            { ship: false },
+          );
+          await new Promise((r) => setTimeout(r, backoffMs));
         } catch (e) {
           lastError = e;
           if (!isRetryableStorageSignError(e) || attempt === SIGN_MAX_ATTEMPTS - 1) {
             break;
           }
-          await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+          const backoffMs = Math.min(4000, 180 * 2 ** attempt);
+          logger.debug(
+            'storageUrl',
+            'sign_retry',
+            { attempt: attempt + 1, max: SIGN_MAX_ATTEMPTS, backoffMs, fromCatch: true },
+            { ship: false },
+          );
+          await new Promise((r) => setTimeout(r, backoffMs));
         }
       }
 
@@ -289,12 +369,21 @@ export async function resolveStorageUrl(
           (error as { statusCode?: string | number })?.statusCode === '404';
 
         if (isNotFound) {
-          brokenUrlCache.set(url, Date.now() / 1_000 + NEGATIVE_CACHE_TTL_SECONDS);
+          brokenUrlCache.set(cacheKey, Date.now() / 1_000 + NEGATIVE_CACHE_TTL_SECONDS);
           trimMap(brokenUrlCache, MAX_BROKEN_CACHE_SIZE);
         }
 
-        if (!loggedUrls.has(url)) {
-          loggedUrls.add(url);
+        if (isRetryableStorageSignError(error)) {
+          logger.debug(
+            'storageUrl',
+            'sign_exhausted_retryable',
+            { attempts: SIGN_MAX_ATTEMPTS, code: 'last_failed' },
+            { ship: false },
+          );
+        }
+
+        if (!loggedUrls.has(cacheKey)) {
+          loggedUrls.add(cacheKey);
           console.warn('[storageUrl] resolveStorageUrl failed (logged once)', {
             bucket: extracted.bucket,
             path: extracted.path,
@@ -305,7 +394,7 @@ export async function resolveStorageUrl(
         return null;
       }
 
-      urlCache.set(url, {
+      urlCache.set(cacheKey, {
         signedUrl: data.signedUrl,
         expiresAt: Date.now() / 1_000 + ttlSeconds,
       });
@@ -313,8 +402,8 @@ export async function resolveStorageUrl(
 
       return data.signedUrl;
     } catch (e) {
-      if (!loggedUrls.has(url)) {
-        loggedUrls.add(url);
+      if (!loggedUrls.has(cacheKey)) {
+        loggedUrls.add(cacheKey);
         console.warn('[storageUrl] resolveStorageUrl exception (logged once)', {
           bucket: extracted.bucket,
           path: extracted.path,
@@ -324,24 +413,24 @@ export async function resolveStorageUrl(
       return null;
     } finally {
       releaseSignSlot();
-      inflightRequests.delete(url);
+      inflightRequests.delete(cacheKey);
     }
   })();
 
-  inflightRequests.set(url, signPromise);
+  inflightRequests.set(cacheKey, signPromise);
   return signPromise;
 }
 
 /**
- * Resolves multiple storage URLs in parallel.
- * URLs that fail to sign are omitted from the result (null-safe).
+ * Resolves multiple storage URLs with a bounded worker pool.
+ * Result length matches input length; failed signs are `null` at that index (callers may show placeholders).
  */
 export async function resolveStorageUrls(
   urls: string[],
   ttlSeconds: number = DEFAULT_SIGNED_TTL_SECONDS,
-): Promise<string[]> {
+): Promise<Array<string | null>> {
   const concurrency = Math.min(MAX_CONCURRENT_STORAGE_SIGNS, Math.max(1, urls.length));
-  const out: (string | null)[] = new Array(urls.length);
+  const out: Array<string | null> = new Array(urls.length);
   let nextIndex = 0;
 
   async function worker(): Promise<void> {
@@ -353,7 +442,7 @@ export async function resolveStorageUrls(
   }
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
-  return out.filter((u): u is string => u !== null);
+  return out;
 }
 
 /**
@@ -361,9 +450,12 @@ export async function resolveStorageUrls(
  * Call after deleting or replacing a file so the next render fetches a fresh URL.
  */
 export function invalidateStorageUrlCache(url: string): void {
-  urlCache.delete(url);
-  brokenUrlCache.delete(url);
-  loggedUrls.delete(url);
+  const key = storageObjectCacheKey(url);
+  if (key) {
+    urlCache.delete(key);
+    brokenUrlCache.delete(key);
+    loggedUrls.delete(key);
+  }
 }
 
 /**

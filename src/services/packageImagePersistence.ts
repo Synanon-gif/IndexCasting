@@ -89,7 +89,8 @@ export type PackageImagePersistFailureReason =
   | 'too_large'
   | 'upload_failed'
   | 'addphoto_failed'
-  | 'invalid_url';
+  | 'invalid_url'
+  | 'duplicate_source_url';
 
 export type PackageImagePersistResult = {
   /** Anzahl erfolgreich persistierter Portfolio-Bilder. */
@@ -225,6 +226,12 @@ export type PersistImagesForModelInput = {
  *  werden vermieden.
  *  Portfolio wird vor Polaroids verarbeitet (UI-Erwartung).
  */
+function normalizePackageSourceUrlForDedupe(url: string): string {
+  const t = url.trim();
+  if (/^https?:\/\//i.test(t)) return t.toLowerCase();
+  return t;
+}
+
 export async function persistImagesForPackageImport(
   input: PersistImagesForModelInput,
 ): Promise<PackageImagePersistResult> {
@@ -278,6 +285,7 @@ export async function persistImagesForPackageImport(
     type: 'portfolio' | 'polaroid',
   ): Promise<number> => {
     let persisted = 0;
+    const seenSourceInAlbum = new Set<string>();
     for (let i = 0; i < urls.length; i++) {
       if (opts.signal?.aborted) {
         failures.push({
@@ -302,6 +310,19 @@ export async function persistImagesForPackageImport(
         opts.onImageProgress?.({ total, done, type, index: i, outcome: 'failed' });
         continue;
       }
+      const dedupeKey = normalizePackageSourceUrlForDedupe(url);
+      if (seenSourceInAlbum.has(dedupeKey)) {
+        failures.push({
+          index: i,
+          type,
+          maskedUrl: redactPackageUrl(url),
+          reason: 'duplicate_source_url',
+        });
+        done++;
+        opts.onImageProgress?.({ total, done, type, index: i, outcome: 'failed' });
+        continue;
+      }
+      seenSourceInAlbum.add(dedupeKey);
       const dl = await persistOnePackageImageDownloadOnly({
         modelId: input.modelId,
         provider: input.provider,
@@ -348,6 +369,8 @@ export async function persistImagesForPackageImport(
 
     // Vorab-Validierung: leere/ungültige URLs sofort als invalid markieren,
     // sie blockieren keinen Concurrency-Slot.
+    // First occurrence wins; later duplicates get a deterministic failure (no extra DB row).
+    const seenSourceInAlbum = new Set<string>();
     const slots: Slot[] = urls.map((url, i) => {
       if (!url || typeof url !== 'string' || !url.trim()) {
         return {
@@ -361,6 +384,20 @@ export async function persistImagesForPackageImport(
           },
         };
       }
+      const dedupeKey = normalizePackageSourceUrlForDedupe(url);
+      if (seenSourceInAlbum.has(dedupeKey)) {
+        return {
+          kind: 'invalid',
+          index: i,
+          failure: {
+            index: i,
+            type,
+            maskedUrl: redactPackageUrl(url),
+            reason: 'duplicate_source_url',
+          },
+        };
+      }
+      seenSourceInAlbum.add(dedupeKey);
       return { kind: 'persist', index: i, url };
     });
 

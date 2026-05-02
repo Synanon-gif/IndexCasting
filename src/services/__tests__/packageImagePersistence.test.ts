@@ -580,6 +580,37 @@ describe('persistImagesForPackageImport — per-failure reason codes', () => {
     expect(getReasons(res)).toEqual(['invalid_url', 'invalid_url', 'invalid_url']);
   });
 
+  it('duplicate_source_url skips later identical URLs (one fetch per unique URL)', async () => {
+    const url = PORTFOLIO_URL(1);
+    const u2 = PORTFOLIO_URL(2);
+    const { fetchImpl, calls } = makeFetch({
+      responses: {
+        [url]: { contentType: 'image/jpeg', bytes: 16 },
+        [u2]: { contentType: 'image/jpeg', bytes: 16 },
+      },
+    });
+    const { uploadImpl, uploads } = makeUpload();
+    const { addPhotoImpl, inserts } = makeAddPhoto();
+    const rebuilds = makeRebuilds();
+
+    const res = await persistImagesForPackageImport({
+      modelId: 'm',
+      provider: 'mediaslide',
+      providerExternalId: 'X',
+      portfolioUrls: [url, url, u2],
+      polaroidUrls: [],
+      options: { fetchImpl, uploadImpl, addPhotoImpl, ...rebuilds },
+    });
+
+    expect(calls).toHaveLength(2);
+    expect(uploads).toHaveLength(2);
+    expect(inserts).toHaveLength(2);
+    expect(res.failures.some((f) => f.reason === 'duplicate_source_url' && f.index === 1)).toBe(
+      true,
+    );
+    expect(res.portfolioPersisted).toBe(2);
+  });
+
   it('invalid_content_type when server returns text/html', async () => {
     const url = PORTFOLIO_URL(1);
     const { fetchImpl } = makeFetch({
