@@ -178,6 +178,16 @@ Vollständige englische/kanonische Regeln: [.cursor/rules/option-requests-chat-h
 
 **Vollständige Detail-Regeln, Tabellen und Regression-Checkliste:** [.cursor/rules/client-web-gallery-guest-shared-audit.mdc](.cursor/rules/client-web-gallery-guest-shared-audit.mdc).
 
+### 4c.6 Package-Bild-Persistenz — **EINGEFROREN** (nur bewusste Änderung)
+
+**STATUS: CHANGE FREEZE.** Diese Regeln sind **produkt- und sicherheitskritisch**. Änderungen an den beschriebenen Pfaden, Datenverträgen oder Tests sind **nur** nach **expliziter** Nutzer-/Product-**(und ggf. Security-)Freigabe** zulässig — **kein** Drive-by-Refactor, kein „vorerst wieder externe URLs in `model_photos`“, kein Entfernen von `persistImages: true` am Preview-Commit, kein Ausklinken der JSON-Link-Persistenz ohne dokumentierten Ersatz.
+
+- **Zwei Einstiege — gleiche Speicher-Wahrheit:** Bilder aus Mediaslide-/Netwalk-/Package-URLs müssen nach Commit in **IndexCasting-Storage** liegen: Bucket **`documentspictures`**, Objektpfad **`model-photos/<model_id>/…`** (vgl. `uploadModelPhoto` in `modelPhotosSupabase.ts`). **`model_photos.url`** (Display-Quelle nach erfolgreichem Spiegeln) = kanonisch **`supabase-storage://documentspictures/model-photos/…`** — **nicht** Mediaslide-/Netwalk-CDN oder andere externe **http(s)**-URLs als primäre Zeilen-URL nach erfolgreicher Persistenz.
+  1. **Preview-Import (kanonisch):** `PackageImportPane` → `commitPreview` mit **`persistImages: true`** → nach erfolgreichem `importModelAndMerge` immer **`persistImagesForPackageImport`** (`packageImporter.ts` / `packageImagePersistence.ts`). Keine externen Bild-URLs in den `ImportModelAndMerge`-Mirror-Feldern, solange Persist aktiv ist.
+  2. **JSON-Link-Import (`handleImportByLink` in `AgencyControllerView.tsx`):** Wenn das JSON **Portfolio- und/oder Polaroid-URL-Arrays** enthält **und** **`mediaslide_sync_id`** oder **`netwalk_model_id`** gesetzt ist: nach erfolgreichem `importModelAndMerge` **dieselbe** `persistImagesForPackageImport`-Pipeline; `portfolio_images` / `polaroids` dabei **`null`** an den Importer (kein Leak externer URLs in Mirror-Spalten vor dem Spiegeln); **`photo_source`** `mediaslide` bzw. `netwalk` setzen; auf **Web** Download über **`createSupabasePackageImageFetchImpl`** (`packageImageProxyClient.ts`). **Ohne** Sync-ID bleibt das Legacy-Verhalten (externe URLs nur in Mirror-Spalten) — Änderung nur mit Product-Review.
+- **Test-/URL-Vertrag:** `src/utils/assertLocalIndexCastingPhotoUrlOrPath.ts` prüft den Display-URL-Vertrag für persistierte Package-Fotos; zugehörige Jest-Tests und `packageImagePersistence.test.ts`-Regressionen **nicht** entfernen oder abschwächen ohne gleichwertigen Schutz.
+- **Detail-Doku:** `.cursor/rules/package-import-invariants.mdc` §D2 (Persistenz, Partials, Re-Import-Idempotenz, LEGACY-MIRROR-SCHUTZ).
+
 ## 4b. UI-Sprache & Copy (verbindlich)
 - **Die gesamte Nutzeroberfläche ist Englisch (English-only):** alle sichtbaren Texte für Agency, Client und Model — Buttons, Labels, Alerts, Placeholder, leere Zustände, Fehlermeldungen aus dem Produkt.
 - **Zentrale Quelle:** Nutzer-Texte kommen aus `src/constants/uiCopy.ts` (`uiCopy`). Keine neuen deutschsprachigen UI-Strings; keine Hardcodes derselben Phrase an vielen Stellen — lieber ein Key in `uiCopy` erweitern.
@@ -918,6 +928,7 @@ Ergänzt Kalender-Farb-Disziplin (§28.2) und feste Domänen aus dem Release-Tag
 - **Ein Eingabefeld für alle Provider:** `PackageImportPane` nimmt EINE URL und nutzt `getProviderForUrl` (Auto-Detect). Netwalk-URLs liefern `netwalk_provider_not_implemented` mit Friendly-Copy — KEIN stiller Fallback auf MediaSlide, KEIN separates Eingabefeld pro Provider.
 - **Pane ist collapsible:** Im My-Models-Tab default `false` (`packageImportExpanded`) — die Liste/Galerie ist das Hauptelement; Import wird bei Bedarf aufgeklappt.
 - **Quick-Import-Sektion** ("External services & advanced import" collapsible) bündelt: API-Keys + Sync (für bereits verknüpfte Models), Auto-pair-by-email, generic JSON Link-Import. Diese Pfade sind ALLE *"no preview"* und müssen so gelabelt sein. Die Sektion macht klar: API-Keys sind NICHT für den Package-Preview-Import (die laden öffentliche HTML-Pakete via Edge-Proxy).
+- **JSON-Link & Bild-Persistenz (Pflicht, eingefroren):** Trotz „no preview“ gilt: Enthält das JSON Bild-URLs **und** eine Mediaslide-/Netwalk-Sync-ID, **muss** dieselbe Storage-/model_photos-Pipeline wie bei `commitPreview(persistImages: true)` laufen — **§4c.6** (CHANGE FREEZE). Nicht regressieren.
 - Vollständig: [.cursor/rules/package-import-invariants.mdc](.cursor/rules/package-import-invariants.mdc) §H1 (Discoverability & UI-Hierarchie).
 
 ## 31. AI Help Assistant — Role Terminology & Phase 2 Live Data
