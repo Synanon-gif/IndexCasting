@@ -78,6 +78,7 @@ export function AgencyOrgProfileScreen({
 
   // ── Phase 3A.2: public settings state (owner-only) ──
   const [slugDraft, setSlugDraft] = useState('');
+  const [isPublicDraft, setIsPublicDraft] = useState(false);
   const [publicSaving, setPublicSaving] = useState(false);
   const [publicFeedback, setPublicFeedback] = useState<string | null>(null);
   const [publicFeedbackIsError, setPublicFeedbackIsError] = useState(false);
@@ -105,6 +106,7 @@ export function AgencyOrgProfileScreen({
     void getOrganizationProfile(organizationId).then((p) => {
       setOrgProfile(p);
       setSlugDraft(p?.slug ?? '');
+      setIsPublicDraft(p?.is_public ?? false);
       setLoadingProfile(false);
     });
   }, [organizationId]);
@@ -200,7 +202,7 @@ export function AgencyOrgProfileScreen({
   // ── Phase 3A.2: public settings handlers (owner-only) ──
 
   const handleToggleIsPublic = useCallback((value: boolean) => {
-    setOrgProfile((prev) => (prev ? { ...prev, is_public: value } : prev));
+    setIsPublicDraft(value);
     setPublicFeedback(null);
   }, []);
 
@@ -208,7 +210,7 @@ export function AgencyOrgProfileScreen({
     if (!organizationId || !isOwner || publicSaving) return;
 
     const trimmedSlug = slugDraft.trim();
-    const currentIsPublic = orgProfile?.is_public ?? false;
+    const currentIsPublic = isPublicDraft;
 
     // Slug validation is required when profile is public or when a slug is being set
     if (currentIsPublic || trimmedSlug) {
@@ -231,7 +233,29 @@ export function AgencyOrgProfileScreen({
     setPublicSaving(false);
 
     if (result.ok) {
-      setOrgProfile((prev) => (prev ? { ...prev, slug: trimmedSlug || null } : prev));
+      setOrgProfile((prev) => {
+        const update = {
+          slug: trimmedSlug || null,
+          is_public: currentIsPublic,
+          updated_at: new Date().toISOString(),
+        };
+        if (prev) return { ...prev, ...update };
+        // First-ever save created the row — hydrate local state so the Switch works without a reload.
+        return {
+          organization_id: organizationId ?? '',
+          logo_url: null,
+          description: null,
+          address_line_1: null,
+          city: null,
+          postal_code: null,
+          country: null,
+          website_url: null,
+          contact_email: null,
+          contact_phone: null,
+          ...update,
+          created_at: new Date().toISOString(),
+        };
+      });
       setPublicFeedback('Saved.');
       setPublicFeedbackIsError(false);
     } else if (result.slugTaken) {
@@ -241,7 +265,7 @@ export function AgencyOrgProfileScreen({
       setPublicFeedback('Could not save. Please try again.');
       setPublicFeedbackIsError(true);
     }
-  }, [organizationId, isOwner, publicSaving, slugDraft, orgProfile]);
+  }, [organizationId, isOwner, publicSaving, slugDraft, isPublicDraft]);
 
   const renderModel = useCallback(
     ({ item }: ListRenderItemInfo<SupabaseModel>) => {
@@ -393,9 +417,9 @@ export function AgencyOrgProfileScreen({
 
               {/* is_public toggle */}
               <View style={s.publicRow}>
-                <Text style={s.publicLabel}>{orgProfile?.is_public ? 'Public' : 'Private'}</Text>
+                <Text style={s.publicLabel}>{isPublicDraft ? 'Public' : 'Private'}</Text>
                 <Switch
-                  value={orgProfile?.is_public ?? false}
+                  value={isPublicDraft}
                   onValueChange={handleToggleIsPublic}
                   trackColor={{ false: colors.border, true: colors.accent }}
                   thumbColor="#fff"
@@ -403,30 +427,29 @@ export function AgencyOrgProfileScreen({
                 />
               </View>
 
-              {/* Slug input — shown when public or when there's a slug draft */}
-              {(orgProfile?.is_public || slugDraft.length > 0) && (
-                <>
-                  <Text style={s.publicInputLabel}>Public URL slug</Text>
-                  <TextInput
-                    style={s.publicInput}
-                    value={slugDraft}
-                    onChangeText={(v) => {
-                      setSlugDraft(v);
-                      setPublicFeedback(null);
-                    }}
-                    placeholder="e.g. my-agency"
-                    placeholderTextColor={colors.textSecondary}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    accessibilityLabel="Public URL slug"
-                  />
-                  {/* Live URL preview */}
-                  {slugDraft.trim().length > 0 && (
-                    <Text style={s.publicPreviewUrl} numberOfLines={1}>
-                      {publicAgencyUrl(slugDraft) ?? ''}
-                    </Text>
-                  )}
-                </>
+              {/* Slug input — always visible so owners can set a slug before enabling public */}
+              <Text style={s.publicInputLabel}>Public URL slug</Text>
+              <Text style={s.publicInputHint}>
+                Choose the public URL for your agency page, e.g. berlin-models.
+              </Text>
+              <TextInput
+                style={s.publicInput}
+                value={slugDraft}
+                onChangeText={(v) => {
+                  setSlugDraft(v);
+                  setPublicFeedback(null);
+                }}
+                placeholder="e.g. my-agency"
+                placeholderTextColor={colors.textSecondary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                accessibilityLabel="Public URL slug"
+              />
+              {/* Live URL preview */}
+              {slugDraft.trim().length > 0 && (
+                <Text style={s.publicPreviewUrl} numberOfLines={1}>
+                  {publicAgencyUrl(slugDraft) ?? ''}
+                </Text>
               )}
 
               {/* Feedback text */}
@@ -445,11 +468,10 @@ export function AgencyOrgProfileScreen({
               <TouchableOpacity
                 style={[
                   s.publicSaveBtn,
-                  (publicSaving || (orgProfile?.is_public && !slugDraft.trim())) &&
-                    s.publicSaveBtnDisabled,
+                  (publicSaving || (isPublicDraft && !slugDraft.trim())) && s.publicSaveBtnDisabled,
                 ]}
                 onPress={() => void handleSavePublicSettings()}
-                disabled={publicSaving || (orgProfile?.is_public && !slugDraft.trim())}
+                disabled={publicSaving || (isPublicDraft && !slugDraft.trim())}
                 accessibilityLabel="Save public settings"
                 accessibilityRole="button"
               >
@@ -459,6 +481,11 @@ export function AgencyOrgProfileScreen({
                   <Text style={s.publicSaveBtnText}>Save</Text>
                 )}
               </TouchableOpacity>
+
+              {/* Guide owners through the two-step flow */}
+              {!isPublicDraft && (
+                <Text style={s.publicInputHint}>Save this slug, then turn Public Profile on.</Text>
+              )}
             </View>
           )}
         </View>
@@ -502,6 +529,7 @@ export function AgencyOrgProfileScreen({
     handleOpenShareLink,
     handleSavePublicSettings,
     handleToggleIsPublic,
+    isPublicDraft,
     publicFeedback,
     publicFeedbackIsError,
     publicSaving,
@@ -525,7 +553,7 @@ export function AgencyOrgProfileScreen({
         numColumns={3}
         keyExtractor={(item) => item.id}
         renderItem={renderModel}
-        ListHeaderComponent={renderHeader}
+        ListHeaderComponent={renderHeader()}
         columnWrapperStyle={s.row}
         contentContainerStyle={s.listContent}
         style={{ flex: 1, backgroundColor: colors.background }}
@@ -768,7 +796,13 @@ const s = StyleSheet.create({
     ...typography.label,
     fontSize: 12,
     color: colors.textSecondary,
-    marginBottom: 4,
+    marginBottom: 2,
+  },
+  publicInputHint: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
   },
   publicInput: {
     borderWidth: 1,

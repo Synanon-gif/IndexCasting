@@ -1,5 +1,5 @@
 /**
- * PublicAgencyProfileScreen — Phase 3A.1
+ * PublicAgencyProfileScreen — Phase 3A.1 / Phase 2 visual upgrade
  *
  * Publicly accessible, read-only agency profile page.
  * No login required. No dashboard chrome. No authenticated UI elements.
@@ -7,15 +7,9 @@
  * Route: /agency/:slug
  *
  * Shows:
- *  - Logo, agency name, description, address, website
- *  - Women / Men segmented model roster
- *  - 3-column alphabetical grid (cover image + name)
- *
- * States:
- *  - loading   — data fetch in progress
- *  - not-found — slug not found OR is_public = false OR type ≠ 'agency'
- *  - empty     — profile found but no models in the selected segment
- *  - error     — unexpected failure
+ *  - Hero: logo, agency name, description, address, website
+ *  - Women / Men editorial tabs
+ *  - Responsive model grid (2 / 3 / 4 columns) with cover images + name overlay
  *
  * Security: All data comes from SECURITY DEFINER RPCs that enforce
  *   is_public=true AND organizations.type='agency'. No internal data exposed.
@@ -35,6 +29,8 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { StorageImage } from '../components/StorageImage';
+import { isMobileWidth, isDesktopWidth } from '../theme/breakpoints';
+import { appUrl } from '../config/env';
 import {
   getPublicAgencyProfile,
   getPublicAgencyModels,
@@ -52,6 +48,30 @@ export interface PublicAgencyProfileScreenProps {
   onClose?: () => void;
 }
 
+// ─── SEO helpers (web-only, no-ops on native) ──────────────────────────────
+
+function upsertMetaTag(attr: 'name' | 'property', key: string, content: string): void {
+  if (typeof document === 'undefined') return;
+  let el = document.head.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
+  if (!el) {
+    el = document.createElement('meta');
+    el.setAttribute(attr, key);
+    document.head.appendChild(el);
+  }
+  el.setAttribute('content', content);
+}
+
+function upsertLinkTag(rel: string, href: string): void {
+  if (typeof document === 'undefined') return;
+  let el = document.head.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null;
+  if (!el) {
+    el = document.createElement('link');
+    el.setAttribute('rel', rel);
+    document.head.appendChild(el);
+  }
+  el.setAttribute('href', href);
+}
+
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 function filterAndSortPublicModels(
@@ -63,9 +83,13 @@ function filterAndSortPublicModels(
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────────
+// ─── Constants ─────────────────────────────────────────────────────────────
 
-const LOGO_SIZE = 80;
+const LOGO_SIZE = 140;
+const MAX_CONTENT_W = 1280;
+const GRID_GAP = spacing.xs;
+
+// ─── Screen ────────────────────────────────────────────────────────────────
 
 export function PublicAgencyProfileScreen({
   slug,
@@ -77,11 +101,12 @@ export function PublicAgencyProfileScreen({
   const [segment, setSegment] = useState<Segment>('women');
 
   const { width } = useWindowDimensions();
-  // 3-column grid — mirror internal screen layout
-  const CELL_GAP = spacing.xs;
-  const H_PAD = spacing.md * 2;
-  const cellWidth = Math.floor((width - H_PAD - CELL_GAP * 2) / 3);
-  const cellHeight = Math.floor(cellWidth * 1.35);
+
+  const numCols = isMobileWidth(width) ? 2 : isDesktopWidth(width) ? 4 : 3;
+  const H_PAD = isMobileWidth(width) ? spacing.md : spacing.lg;
+  const contentW = Math.min(width, MAX_CONTENT_W);
+  const cellWidth = Math.floor((contentW - H_PAD * 2 - GRID_GAP * (numCols - 1)) / numCols);
+  const cellHeight = Math.floor(cellWidth * 1.42);
 
   // ── Data loading ──
 
@@ -113,8 +138,41 @@ export function PublicAgencyProfileScreen({
     }
 
     void load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [slug]);
+
+  // ── SEO meta tags ──
+
+  useEffect(() => {
+    if (!profile || Platform.OS !== 'web') return;
+
+    const prevTitle = typeof document !== 'undefined' ? document.title : '';
+    const pageTitle = `${profile.name} — IndexCasting`;
+    const desc = profile.description?.trim() || `${profile.name} on IndexCasting`;
+    const pageUrl = `${appUrl}/agency/${slug}`;
+    const ogImage =
+      profile.logo_url && profile.logo_url.startsWith('https://') ? profile.logo_url : '';
+
+    if (typeof document !== 'undefined') {
+      document.title = pageTitle;
+    }
+    upsertMetaTag('property', 'og:title', pageTitle);
+    upsertMetaTag('property', 'og:site_name', 'IndexCasting');
+    upsertMetaTag('property', 'og:type', 'website');
+    upsertMetaTag('property', 'og:url', pageUrl);
+    upsertMetaTag('property', 'og:description', desc);
+    if (ogImage) upsertMetaTag('property', 'og:image', ogImage);
+    upsertMetaTag('name', 'description', desc);
+    upsertLinkTag('canonical', pageUrl);
+
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.title = prevTitle;
+      }
+    };
+  }, [profile, slug]);
 
   // ── Filtered model list ──
 
@@ -127,26 +185,20 @@ export function PublicAgencyProfileScreen({
 
   const renderModel = useCallback(
     ({ item }: ListRenderItemInfo<PublicAgencyModel>) => (
-      <View style={[s.cell, { width: cellWidth }]}>
+      <View style={[s.cell, { width: cellWidth, height: cellHeight }]}>
         {item.cover_url ? (
-          <StorageImage
-            uri={item.cover_url}
-            style={{ width: cellWidth, height: cellHeight, borderRadius: 4 }}
-            resizeMode="contain"
-          />
+          <StorageImage uri={item.cover_url} style={StyleSheet.absoluteFill} resizeMode="cover" />
         ) : (
-          <View
-            style={[
-              s.cellPlaceholder,
-              { width: cellWidth, height: cellHeight, borderRadius: 4 },
-            ]}
-          >
+          <View style={[StyleSheet.absoluteFill, s.cellPlaceholder]}>
             <Text style={s.cellInitial}>{item.name.charAt(0).toUpperCase()}</Text>
           </View>
         )}
-        <Text style={s.cellName} numberOfLines={1}>
-          {item.name}
-        </Text>
+        {/* Name overlay */}
+        <View style={s.cellOverlay}>
+          <Text style={s.cellName} numberOfLines={1}>
+            {item.name}
+          </Text>
+        </View>
       </View>
     ),
     [cellWidth, cellHeight],
@@ -177,70 +229,66 @@ export function PublicAgencyProfileScreen({
           </TouchableOpacity>
         )}
 
-        {/* ── Profile header ── */}
-        <View style={s.headerSection}>
+        {/* ── Hero section ── */}
+        <View style={s.heroSection}>
           {/* Logo */}
           <View style={s.logoWrap}>
             {profile.logo_url ? (
-              <StorageImage
-                uri={profile.logo_url}
-                style={s.logo}
-                resizeMode="cover"
-              />
+              <StorageImage uri={profile.logo_url} style={s.logo} resizeMode="cover" />
             ) : (
               <View style={[s.logo, s.logoPlaceholder]}>
-                <Text style={s.logoInitial}>
-                  {profile.name.charAt(0).toUpperCase()}
-                </Text>
+                <Text style={s.logoInitial}>{profile.name.charAt(0).toUpperCase()}</Text>
               </View>
             )}
           </View>
 
-          <Text style={s.orgName}>{profile.name}</Text>
+          <Text style={s.agencyName}>{profile.name.toUpperCase()}</Text>
 
-          {profile.description ? (
-            <Text style={s.description}>{profile.description}</Text>
-          ) : null}
+          <View style={s.heroDivider} />
 
-          {addr ? <Text style={s.meta}>{addr}</Text> : null}
+          {profile.description ? <Text style={s.description}>{profile.description}</Text> : null}
 
-          {profile.website_url ? (
-            Platform.OS === 'web' ? (
-              // @ts-ignore — anchor element web-only
-              <a
-                href={
-                  profile.website_url.startsWith('http')
-                    ? profile.website_url
-                    : `https://${profile.website_url}`
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ textDecoration: 'none' }}
-              >
-                <Text style={[s.meta, s.link]}>{profile.website_url}</Text>
-              </a>
-            ) : (
-              <Text style={s.meta}>{profile.website_url}</Text>
-            )
+          {/* Meta row */}
+          {addr || profile.website_url ? (
+            <View style={s.metaRow}>
+              {addr ? <Text style={s.metaText}>{addr}</Text> : null}
+              {addr && profile.website_url ? <Text style={s.metaSep}>·</Text> : null}
+              {profile.website_url ? (
+                Platform.OS === 'web' ? (
+                  // @ts-ignore — anchor element web-only
+                  <a
+                    href={
+                      profile.website_url.startsWith('http')
+                        ? profile.website_url
+                        : `https://${profile.website_url}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ textDecoration: 'none' }}
+                  >
+                    <Text style={[s.metaText, s.link]}>{profile.website_url}</Text>
+                  </a>
+                ) : (
+                  <Text style={s.metaText}>{profile.website_url}</Text>
+                )
+              ) : null}
+            </View>
           ) : null}
         </View>
 
-        {/* ── Segment bar ── */}
+        {/* ── Editorial segment tabs ── */}
         <View style={s.segmentBar}>
           {(['women', 'men'] as Segment[]).map((seg) => (
             <TouchableOpacity
               key={seg}
               onPress={() => setSegment(seg)}
-              style={s.segmentItem}
+              style={[s.segmentTab, segment === seg && s.segmentTabActive]}
               accessibilityRole="tab"
               accessibilityState={{ selected: segment === seg }}
             >
-              <Text
-                style={[s.segmentLabel, segment === seg && s.segmentLabelActive]}
-              >
+              <Text style={[s.segmentLabel, segment === seg && s.segmentLabelActive]}>
                 {seg === 'women' ? 'Women' : 'Men'}
               </Text>
-              {segment === seg && <View style={s.segmentUnderline} />}
             </TouchableOpacity>
           ))}
         </View>
@@ -262,7 +310,9 @@ export function PublicAgencyProfileScreen({
   if (state === 'loading') {
     return (
       <View style={s.centered}>
-        <ActivityIndicator color={colors.textPrimary} size="large" />
+        <Text style={s.brandmark}>INDEX CASTING</Text>
+        <View style={s.brandDivider} />
+        <ActivityIndicator color={colors.textSecondary} size="small" />
       </View>
     );
   }
@@ -273,18 +323,14 @@ export function PublicAgencyProfileScreen({
     return (
       <View style={s.centered}>
         {onClose && (
-          <TouchableOpacity
-            style={s.closeBtnAlt}
-            onPress={onClose}
-            accessibilityRole="button"
-          >
+          <TouchableOpacity style={s.closeBtnAlt} onPress={onClose} accessibilityRole="button">
             <Text style={s.closeBtnText}>← Back</Text>
           </TouchableOpacity>
         )}
+        <Text style={s.brandmark}>INDEX CASTING</Text>
+        <View style={s.brandDivider} />
         <Text style={s.notFoundTitle}>Profile not found</Text>
-        <Text style={s.notFoundBody}>
-          This agency profile is not available or does not exist.
-        </Text>
+        <Text style={s.notFoundBody}>This agency profile is not available or does not exist.</Text>
       </View>
     );
   }
@@ -294,25 +340,30 @@ export function PublicAgencyProfileScreen({
   return (
     <View style={s.shell}>
       <FlatList<PublicAgencyModel>
-        key={segment}
+        key={`${segment}-${numCols}`}
         data={filteredModels}
-        numColumns={3}
+        numColumns={numCols}
         keyExtractor={(item) => item.id}
         renderItem={renderModel}
         ListHeaderComponent={renderHeader}
-        columnWrapperStyle={filteredModels.length > 0 ? s.row : undefined}
-        contentContainerStyle={s.listContent}
+        columnWrapperStyle={
+          filteredModels.length > 0 ? { gap: GRID_GAP, marginBottom: GRID_GAP } : undefined
+        }
+        contentContainerStyle={[
+          s.listContent,
+          { paddingHorizontal: H_PAD, maxWidth: MAX_CONTENT_W, alignSelf: 'center', width: '100%' },
+        ]}
         style={s.list}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews
-        initialNumToRender={9}
-        maxToRenderPerBatch={9}
+        initialNumToRender={numCols * 3}
+        maxToRenderPerBatch={numCols * 3}
       />
     </View>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────
+// ─── Styles ────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
   shell: {
@@ -324,7 +375,6 @@ const s = StyleSheet.create({
     backgroundColor: colors.background,
   },
   listContent: {
-    paddingHorizontal: spacing.md,
     paddingBottom: 120,
   },
 
@@ -336,16 +386,30 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.md,
   },
+  brandmark: {
+    ...typography.label,
+    fontSize: 11,
+    letterSpacing: 4,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  brandDivider: {
+    width: 32,
+    height: 1,
+    backgroundColor: colors.border,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+  },
   notFoundTitle: {
     ...typography.heading,
-    fontSize: 18,
+    fontSize: 16,
     color: colors.textPrimary,
     textAlign: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   notFoundBody: {
     ...typography.body,
-    fontSize: 14,
+    fontSize: 13,
     color: colors.textSecondary,
     textAlign: 'center',
   },
@@ -364,27 +428,28 @@ const s = StyleSheet.create({
   },
   closeBtnText: {
     ...typography.body,
-    fontSize: 14,
+    fontSize: 13,
     color: colors.textSecondary,
   },
 
-  // ── Header ──
-  headerSection: {
+  // ── Hero ──
+  heroSection: {
     alignItems: 'center',
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderBottomWidth: 1,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.background,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     marginBottom: spacing.md,
   },
   logoWrap: {
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
   logo: {
     width: LOGO_SIZE,
     height: LOGO_SIZE,
-    borderRadius: LOGO_SIZE / 2,
+    borderRadius: 6,
     overflow: 'hidden',
   },
   logoPlaceholder: {
@@ -394,90 +459,113 @@ const s = StyleSheet.create({
   },
   logoInitial: {
     ...typography.heading,
-    fontSize: 28,
+    fontSize: 42,
     color: colors.textSecondary,
   },
-  orgName: {
+  agencyName: {
     ...typography.heading,
-    fontSize: 20,
+    fontSize: 26,
+    letterSpacing: 3.5,
     color: colors.textPrimary,
     textAlign: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  heroDivider: {
+    width: 40,
+    height: 1,
+    backgroundColor: colors.border,
+    marginBottom: spacing.md,
   },
   description: {
     ...typography.body,
     fontSize: 14,
     color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: spacing.xs,
-    paddingHorizontal: spacing.md,
+    lineHeight: 22,
+    maxWidth: 520,
+    marginBottom: spacing.sm,
   },
-  meta: {
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  metaText: {
     ...typography.body,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textSecondary,
-    textAlign: 'center',
+  },
+  metaSep: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.border,
   },
   link: {
-    color: colors.accent,
+    color: colors.textSecondary,
     textDecorationLine: 'underline',
   },
 
-  // ── Segment bar ──
+  // ── Segment tabs ──
   segmentBar: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
-  segmentItem: {
+  segmentTab: {
     flex: 1,
     alignItems: 'center',
     paddingVertical: spacing.sm,
-    position: 'relative',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  segmentTabActive: {
+    borderBottomColor: colors.textPrimary,
   },
   segmentLabel: {
     ...typography.label,
-    fontSize: 13,
+    fontSize: 12,
+    letterSpacing: 1.5,
     color: colors.textSecondary,
+    textTransform: 'uppercase',
   },
   segmentLabelActive: {
     color: colors.textPrimary,
   },
-  segmentUnderline: {
-    position: 'absolute',
-    bottom: 0,
-    left: '20%',
-    right: '20%',
-    height: 2,
-    backgroundColor: colors.textPrimary,
-    borderRadius: 1,
-  },
 
   // ── Grid ──
-  row: {
-    gap: spacing.xs,
-    marginBottom: spacing.xs,
-  },
   cell: {
-    alignItems: 'center',
+    overflow: 'hidden',
+    borderRadius: 3,
+    backgroundColor: colors.border,
+    position: 'relative',
   },
   cellPlaceholder: {
-    backgroundColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cellInitial: {
-    fontSize: 22,
+    fontSize: 28,
     color: colors.textSecondary,
+  },
+  cellOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    backgroundColor: 'rgba(0,0,0,0.42)',
   },
   cellName: {
     ...typography.body,
-    fontSize: 11,
-    color: colors.textPrimary,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: '#ffffff',
     textAlign: 'center',
-    marginTop: 4,
-    paddingHorizontal: 2,
   },
 
   // ── Empty segment ──

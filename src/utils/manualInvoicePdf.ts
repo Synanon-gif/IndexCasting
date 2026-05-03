@@ -503,7 +503,15 @@ function drawTableRow(
   const amount = formatMoneyCents(lineNet(line), currency);
 
   const descCol = cols.find((c) => c.key === 'description')!;
-  let descLines = doc.splitTextToSize(desc.length > 0 ? desc : ' ', descCol.w - 2 * ROW_PAD);
+  const descMaxW = descCol.w - 2 * ROW_PAD;
+  // Pre-split on explicit newlines first, then word-wrap each segment independently.
+  // jspdf's splitTextToSize does not reliably split embedded \n — it only word-wraps by width.
+  const descSegments = (desc.length > 0 ? desc : ' ').split('\n');
+  let descLines: string[] = [];
+  for (const seg of descSegments) {
+    const wrapped = doc.splitTextToSize(seg.length > 0 ? seg : ' ', descMaxW) as string[];
+    descLines.push(...wrapped);
+  }
   if (descLines.length === 0) descLines = [''];
   const lineStep = 4.4;
   const topPad = 4.5;

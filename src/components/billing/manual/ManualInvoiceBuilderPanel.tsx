@@ -188,6 +188,13 @@ function parseManualInvoiceDateToIso(raw: string): { ok: true; iso: string } | {
   return { ok: false };
 }
 
+function formatDateForDb(raw: string): string {
+  const s = raw.trim();
+  if (!s) return '';
+  const r = parseManualInvoiceDateToIso(s);
+  return r.ok ? r.iso : s;
+}
+
 type NormalizedOptionalDate =
   | { kind: 'empty' }
   | { kind: 'iso'; value: string }
@@ -332,9 +339,9 @@ function toHeaderInput(d: Draft): ManualInvoiceHeaderInput {
     recipient_agency_profile_id: d.recipient_agency_profile_id,
     recipient_counterparty_id: d.recipient_counterparty_id,
     invoice_number: d.invoice_number || null,
-    issue_date: d.issue_date || null,
-    supply_date: d.supply_date || null,
-    due_date: d.due_date || null,
+    issue_date: formatDateForDb(d.issue_date) || null,
+    supply_date: formatDateForDb(d.supply_date) || null,
+    due_date: formatDateForDb(d.due_date) || null,
     payment_terms_days: d.payment_terms_days,
     currency: d.currency,
     po_number: d.po_number || null,
