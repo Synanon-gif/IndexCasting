@@ -624,10 +624,10 @@ export function messageRowCountsAsWorkspaceUnread(row: {
   message_type?: string | null;
   metadata?: Record<string, unknown> | null;
 }): boolean {
-  if (row.message_type !== 'booking') return true;
   const st =
     row.metadata && typeof row.metadata['status'] === 'string' ? row.metadata['status'] : '';
-  return st !== 'deleted' && st !== 'rejected';
+  if (st === 'deleted' || st === 'rejected') return false;
+  return true;
 }
 
 /** True if there is at least one incoming message not yet marked read (UI list dot). */
@@ -636,25 +636,34 @@ export async function conversationHasUnreadForViewer(
   viewerUserId: string,
 ): Promise<boolean> {
   if (!conversationId?.trim() || !viewerUserId?.trim()) return false;
+  const pageSize = 100;
+  /** Cap total rows scanned — matches "bounded work" for very noisy threads. */
+  const maxRows = 2000;
   try {
-    const { data, error } = await supabase
-      .from('messages')
-      .select('id, message_type, metadata')
-      .eq('conversation_id', conversationId)
-      .neq('sender_id', viewerUserId)
-      .is('read_at', null)
-      .order('created_at', { ascending: false })
-      .limit(48);
-    if (error) {
-      console.error('conversationHasUnreadForViewer error:', error);
-      return false;
+    for (let start = 0; start < maxRows; start += pageSize) {
+      const end = start + pageSize - 1;
+      const { data, error } = await supabase
+        .from('messages')
+        .select('id, message_type, metadata')
+        .eq('conversation_id', conversationId)
+        .neq('sender_id', viewerUserId)
+        .is('read_at', null)
+        .order('created_at', { ascending: false })
+        .range(start, end);
+      if (error) {
+        console.error('conversationHasUnreadForViewer error:', error);
+        return false;
+      }
+      const rows = Array.isArray(data) ? data : [];
+      const hit = rows.some((row) =>
+        messageRowCountsAsWorkspaceUnread(
+          row as { message_type?: string | null; metadata?: Record<string, unknown> | null },
+        ),
+      );
+      if (hit) return true;
+      if (rows.length < pageSize) return false;
     }
-    const rows = Array.isArray(data) ? data : [];
-    return rows.some((row) =>
-      messageRowCountsAsWorkspaceUnread(
-        row as { message_type?: string | null; metadata?: Record<string, unknown> | null },
-      ),
-    );
+    return false;
   } catch (e) {
     console.error('conversationHasUnreadForViewer exception:', e);
     return false;

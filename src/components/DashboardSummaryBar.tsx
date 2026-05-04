@@ -64,12 +64,18 @@ export const DashboardSummaryBar: React.FC<Props> = ({
   }, [load]);
 
   useEffect(() => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    if (Platform.OS !== 'web' || typeof document === 'undefined' || typeof window === 'undefined')
+      return;
     const onVis = () => {
       if (document.visibilityState === 'visible') void load();
     };
+    const onWinFocus = () => void load();
     document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onWinFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onWinFocus);
+    };
   }, [load]);
 
   if (loading) {

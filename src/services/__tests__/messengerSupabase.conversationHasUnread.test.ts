@@ -1,6 +1,6 @@
 import { conversationHasUnreadForViewer } from '../messengerSupabase';
 
-const afterLimit = jest.fn();
+const afterRange = jest.fn();
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
@@ -10,7 +10,7 @@ jest.mock('../../../lib/supabase', () => ({
           neq: () => ({
             is: () => ({
               order: () => ({
-                limit: () => afterLimit(),
+                range: () => afterRange(),
               }),
             }),
           }),
@@ -22,17 +22,17 @@ jest.mock('../../../lib/supabase', () => ({
 
 describe('conversationHasUnreadForViewer', () => {
   beforeEach(() => {
-    afterLimit.mockReset();
+    afterRange.mockReset();
   });
 
   it('returns false when conversation or viewer id empty', async () => {
     expect(await conversationHasUnreadForViewer('', 'u1')).toBe(false);
     expect(await conversationHasUnreadForViewer('c1', '')).toBe(false);
-    expect(afterLimit).not.toHaveBeenCalled();
+    expect(afterRange).not.toHaveBeenCalled();
   });
 
   it('returns true when an unread countable row exists', async () => {
-    afterLimit.mockResolvedValue({
+    afterRange.mockResolvedValue({
       data: [{ id: 'm1', message_type: 'text', metadata: null }],
       error: null,
     });
@@ -40,12 +40,12 @@ describe('conversationHasUnreadForViewer', () => {
   });
 
   it('returns false when no unread rows', async () => {
-    afterLimit.mockResolvedValue({ data: [], error: null });
+    afterRange.mockResolvedValue({ data: [], error: null });
     await expect(conversationHasUnreadForViewer('conv-1', 'user-a')).resolves.toBe(false);
   });
 
   it('returns false when only terminal booking cards are unread', async () => {
-    afterLimit.mockResolvedValue({
+    afterRange.mockResolvedValue({
       data: [
         {
           id: 'm1',
@@ -58,8 +58,22 @@ describe('conversationHasUnreadForViewer', () => {
     await expect(conversationHasUnreadForViewer('conv-1', 'user-a')).resolves.toBe(false);
   });
 
+  it('scans past a full page of terminal rows to find a countable unread', async () => {
+    const terminalPage = Array.from({ length: 100 }, (_, i) => ({
+      id: `m${i}`,
+      message_type: 'booking' as const,
+      metadata: { status: 'deleted' as const },
+    }));
+    afterRange.mockResolvedValueOnce({ data: terminalPage, error: null }).mockResolvedValueOnce({
+      data: [{ id: 'm-good', message_type: 'text', metadata: {} }],
+      error: null,
+    });
+    await expect(conversationHasUnreadForViewer('conv-1', 'user-a')).resolves.toBe(true);
+    expect(afterRange).toHaveBeenCalledTimes(2);
+  });
+
   it('returns false on query error', async () => {
-    afterLimit.mockResolvedValue({ data: null, error: { message: 'x' } });
+    afterRange.mockResolvedValue({ data: null, error: { message: 'x' } });
     await expect(conversationHasUnreadForViewer('conv-1', 'user-a')).resolves.toBe(false);
   });
 });

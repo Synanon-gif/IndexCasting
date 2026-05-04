@@ -178,6 +178,13 @@ async function shipEventToBackend(
   opts: LogOptions,
 ): Promise<void> {
   try {
+    const {
+      data: { session: authSession },
+    } = await supabase.auth.getSession();
+    // record_system_event is granted to `authenticated` only — without a user JWT
+    // the RPC runs as anon and returns not_authenticated (400). Skip entirely.
+    if (!authSession?.user || !authSession.access_token) return;
+
     const safeContext = context ? (redactValue(context) as Record<string, unknown>) : null;
     const safeMessage = redactString(message);
     // The DB enforces `source IN ('frontend','edge','db','cron','system')`.

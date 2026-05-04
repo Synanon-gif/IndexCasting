@@ -19,6 +19,8 @@ import {
   type FinalizeInviteClaimResult,
 } from '../services/finalizePendingInviteOrClaim';
 import { setUserContext } from '../observability/sentry';
+import { isSessionNotFoundError } from '../utils/authSessionErrors';
+import { runBootstrapSingleFlight, type BootstrapFlightCell } from '../utils/authBootstrapFlight';
 
 async function teardownSupabaseRealtimeAndNotifications(): Promise<void> {
   try {
@@ -119,6 +121,11 @@ const AuthContext = createContext<AuthState | null>(null);
 const PROFILE_FIELDS =
   'id, email, display_name, role, is_active, is_guest, has_completed_signup, tos_accepted, privacy_accepted, agency_model_rights_accepted, activation_documents_sent, company_name, phone, website, country, verification_email, deletion_requested_at';
 
+type BootstrapOutcome =
+  | { profile: Profile }
+  | { deactivated: true; reason?: 'deactivated' | 'deletion' | 'org_deactivated' }
+  | null;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -133,6 +140,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [session?.user?.id]);
 
   const profileLoadInFlightRef = useRef(false);
+  /** Same-user bootstrap coalescing — avoids duplicate finalize/RPC work from getSession + onAuthStateChange. */
+  const bootstrapFlightRef = useRef<BootstrapFlightCell<BootstrapOutcome>>(null);
   const profileRef = useRef<Profile | null>(null);
   /** Set at end of bootstrapThenLoadProfile — read in signUp for isInviteSignup + owner-bootstrap guards. */
   const lastBootstrapFinalizeRef = useRef<FinalizeInviteClaimResult>(EMPTY_FINALIZE);
@@ -184,7 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else if (profileLoadInFlightRef.current) {
           console.log('[Auth] onAuthStateChange: bootstrap already in flight, skipping');
         } else {
-          void bootstrapThenLoadProfile(s.user.id);
+          void bootstrapThenLoadProfile(s.user.id).finally(() => setLoading(false));
         }
       } else {
         updateProfile(null);
@@ -239,11 +248,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     | { deactivated: true; reason?: 'deactivated' | 'deletion' | 'org_deactivated' }
     | null
   > {
-    const { data, error: profileQueryError } = await supabase
+    let { data, error: profileQueryError } = await supabase
       .from('profiles')
       .select(PROFILE_FIELDS)
       .eq('id', userId)
       .maybeSingle();
+
+    // Trigger/handle_new_user latency: one short retry before treating missing row as final.
+    if (!data && !profileQueryError) {
+      await new Promise((r) => setTimeout(r, 400));
+      const second = await supabase
+        .from('profiles')
+        .select(PROFILE_FIELDS)
+        .eq('id', userId)
+        .maybeSingle();
+      data = second.data;
+      profileQueryError = second.error;
+    }
+
     if (profileQueryError) {
       console.error('loadProfile: profile query failed', {
         code: profileQueryError.code,
@@ -501,6 +523,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       agency_id: orgContext.agency_id,
     };
     setOrgDeactivated(false);
+    {
+      const {
+        data: { session: cur },
+      } = await supabase.auth.getSession();
+      if (cur?.user?.id !== userId) {
+        console.log('[Auth] loadProfile: session changed before commit — skip', userId);
+        return null;
+      }
+    }
     console.log(
       '[Auth] loadProfile: success, role:',
       profileData.role,
@@ -512,152 +543,173 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   /** Runs after a real session exists — fixes owner bootstrap when email confirmation prevented it at signUp. */
-  async function bootstrapThenLoadProfile(userId: string) {
-    profileLoadInFlightRef.current = true;
-    console.log('[Auth] bootstrapThenLoadProfile: starting for', userId);
-    try {
-      // Guest detection: handle_new_user() does NOT write is_guest from raw_user_meta_data.
-      // When a guest signs in via Magic Link (OTP), is_guest is only in user_metadata.
+  async function bootstrapThenLoadProfile(userId: string): Promise<BootstrapOutcome> {
+    return runBootstrapSingleFlight(bootstrapFlightRef, userId, async () => {
+      profileLoadInFlightRef.current = true;
+      console.log('[Auth] bootstrapThenLoadProfile: starting for', userId);
       try {
-        const {
-          data: { session: currentSession },
-        } = await supabase.auth.getSession();
-        if (currentSession?.user?.user_metadata?.is_guest === true) {
-          const { createGuestProfile } = await import('../services/guestAuthSupabase');
-          await createGuestProfile(userId, currentSession.user.email ?? '');
+        const { error: userErr } = await supabase.auth.getUser();
+        if (userErr && isSessionNotFoundError(userErr)) {
+          console.warn(
+            '[Auth] bootstrapThenLoadProfile: session_not_found — clearing local session',
+          );
+          try {
+            await supabase.auth.signOut({ scope: 'local' });
+          } catch {
+            /* ignore */
+          }
+          setSession(null);
+          updateProfile(null);
+          return null;
         }
-      } catch (e) {
-        console.error('bootstrapThenLoadProfile guest upsert error:', e);
-      }
 
-      let isGuestUser = false;
-      try {
-        const { data: guestCheck } = await supabase
-          .from('profiles')
-          .select('is_guest')
-          .eq('id', userId)
-          .maybeSingle();
-        isGuestUser = guestCheck?.is_guest === true;
-      } catch {
-        // Ignore — fall through to full bootstrap
-      }
-
-      // ── PRE-LOAD INVITE FINALIZATION (MUST run BEFORE owner bootstrap) ────
-      // Invited Bookers/Employees start with is_active=false (handle_new_user).
-      // accept_organization_invitation sets is_active=true and adds them to the
-      // EXISTING org. If we run ensurePlainSignupB2bOwnerBootstrap first, it sees
-      // 0 memberships and creates a ZOMBIE org where the invited user becomes
-      // Owner — then accept_organization_invitation fails with
-      // "already_member_of_another_org". Fix: finalize invite FIRST; only run
-      // owner bootstrap when NO invite was successfully consumed.
-      lastBootstrapFinalizeRef.current = EMPTY_FINALIZE;
-      let preFinalized = false;
-      let inviteAcceptedInBootstrap = false;
-      if (!isGuestUser) {
+        // Guest detection: handle_new_user() does NOT write is_guest from raw_user_meta_data.
+        // When a guest signs in via Magic Link (OTP), is_guest is only in user_metadata.
         try {
-          const { readInviteToken } = await import('../storage/inviteToken');
-          const pendingInvite = await readInviteToken();
-          if (pendingInvite) {
-            console.log(
-              '[Auth] bootstrapThenLoadProfile: pending invite token found — finalizing BEFORE owner bootstrap',
-            );
+          const {
+            data: { session: currentSession },
+          } = await supabase.auth.getSession();
+          if (currentSession?.user?.user_metadata?.is_guest === true) {
+            const { createGuestProfile } = await import('../services/guestAuthSupabase');
+            await createGuestProfile(userId, currentSession.user.email ?? '');
+          }
+        } catch (e) {
+          console.error('bootstrapThenLoadProfile guest upsert error:', e);
+        }
+
+        let isGuestUser = false;
+        try {
+          const { data: guestCheck } = await supabase
+            .from('profiles')
+            .select('is_guest')
+            .eq('id', userId)
+            .maybeSingle();
+          isGuestUser = guestCheck?.is_guest === true;
+        } catch {
+          // Ignore — fall through to full bootstrap
+        }
+
+        // ── PRE-LOAD INVITE FINALIZATION (MUST run BEFORE owner bootstrap) ────
+        // Invited Bookers/Employees start with is_active=false (handle_new_user).
+        // accept_organization_invitation sets is_active=true and adds them to the
+        // EXISTING org. If we run ensurePlainSignupB2bOwnerBootstrap first, it sees
+        // 0 memberships and creates a ZOMBIE org where the invited user becomes
+        // Owner — then accept_organization_invitation fails with
+        // "already_member_of_another_org". Fix: finalize invite FIRST; only run
+        // owner bootstrap when NO invite was successfully consumed.
+        lastBootstrapFinalizeRef.current = EMPTY_FINALIZE;
+        let preFinalized = false;
+        let inviteAcceptedInBootstrap = false;
+        if (!isGuestUser) {
+          try {
+            const { readInviteToken } = await import('../storage/inviteToken');
+            const pendingInvite = await readInviteToken();
+            if (pendingInvite) {
+              console.log(
+                '[Auth] bootstrapThenLoadProfile: pending invite token found — finalizing BEFORE owner bootstrap',
+              );
+              lastBootstrapFinalizeRef.current = await finalizePendingInviteOrClaim({
+                onSuccessReloadProfile: async () => {
+                  // no-op here; loadProfile runs below after finalization
+                },
+              });
+              preFinalized = true;
+              inviteAcceptedInBootstrap = lastBootstrapFinalizeRef.current.invite.ok;
+              if (inviteAcceptedInBootstrap) {
+                console.log(
+                  '[Auth] bootstrapThenLoadProfile: invite accepted — skipping owner bootstrap (user joined existing org)',
+                );
+              }
+            }
+          } catch (e) {
+            console.error('bootstrapThenLoadProfile pre-finalize invite error:', e);
+          }
+        }
+
+        if (!isGuestUser && !inviteAcceptedInBootstrap) {
+          try {
+            const { ensurePlainSignupB2bOwnerBootstrap } =
+              await import('../services/b2bOwnerBootstrapSupabase');
+            const { error } = await ensurePlainSignupB2bOwnerBootstrap();
+            if (error) {
+              console.error('bootstrapThenLoadProfile RPC error (attempt 1):', error);
+              await new Promise((r) => setTimeout(r, 1500));
+              const { error: retryErr } = await ensurePlainSignupB2bOwnerBootstrap();
+              if (retryErr) {
+                console.error(
+                  'bootstrapThenLoadProfile RPC error (attempt 2, giving up):',
+                  retryErr,
+                );
+                logger.error('auth', 'bootstrapThenLoadProfile RPC failed after retry', {
+                  message: retryErr.message,
+                });
+              }
+            }
+          } catch (e) {
+            console.error('bootstrapThenLoadProfile exception:', e);
+            logger.error('auth', 'bootstrapThenLoadProfile exception', {
+              message: e instanceof Error ? e.message : 'unknown',
+            });
+          }
+        }
+
+        const result = await loadProfile(userId);
+        if (
+          result &&
+          'profile' in result &&
+          result.profile &&
+          !result.profile.is_admin &&
+          result.profile.role !== 'admin'
+        ) {
+          const role = result.profile.role;
+          if (role === 'client' || role === 'agent') {
+            const hasOrg = !!(result.profile as { organization_id?: string | null })
+              .organization_id;
+            setOrgBootstrapFailed(!hasOrg);
+          }
+        }
+
+        // Run finalization for non-invite tokens (model claim) or when no pre-finalize happened
+        if (result && 'profile' in result && result.profile) {
+          const p = result.profile;
+          if (!p.is_admin && p.role !== 'admin' && !p.is_guest && !preFinalized) {
             lastBootstrapFinalizeRef.current = await finalizePendingInviteOrClaim({
               onSuccessReloadProfile: async () => {
-                // no-op here; loadProfile runs below after finalization
+                await loadProfile(userId);
               },
             });
-            preFinalized = true;
-            inviteAcceptedInBootstrap = lastBootstrapFinalizeRef.current.invite.ok;
-            if (inviteAcceptedInBootstrap) {
-              console.log(
-                '[Auth] bootstrapThenLoadProfile: invite accepted — skipping owner bootstrap (user joined existing org)',
-              );
-            }
           }
-        } catch (e) {
-          console.error('bootstrapThenLoadProfile pre-finalize invite error:', e);
-        }
-      }
+          const fin = lastBootstrapFinalizeRef.current;
 
-      if (!isGuestUser && !inviteAcceptedInBootstrap) {
-        try {
-          const { ensurePlainSignupB2bOwnerBootstrap } =
-            await import('../services/b2bOwnerBootstrapSupabase');
-          const { error } = await ensurePlainSignupB2bOwnerBootstrap();
-          if (error) {
-            console.error('bootstrapThenLoadProfile RPC error (attempt 1):', error);
-            await new Promise((r) => setTimeout(r, 1500));
-            const { error: retryErr } = await ensurePlainSignupB2bOwnerBootstrap();
-            if (retryErr) {
-              console.error('bootstrapThenLoadProfile RPC error (attempt 2, giving up):', retryErr);
-              logger.error('auth', 'bootstrapThenLoadProfile RPC failed after retry', {
-                message: retryErr.message,
-              });
+          if (!p.is_admin && p.role !== 'admin' && !p.is_guest) {
+            if (p.role === 'model' && !fin.claim.ok) {
+              try {
+                const { linkModelByEmail } = await import('../services/modelsSupabase');
+                await linkModelByEmail();
+                await loadProfile(userId);
+              } catch (e) {
+                console.error('bootstrapThenLoadProfile linkModelByEmail fallback error:', e);
+              }
             }
-          }
-        } catch (e) {
-          console.error('bootstrapThenLoadProfile exception:', e);
-          logger.error('auth', 'bootstrapThenLoadProfile exception', {
-            message: e instanceof Error ? e.message : 'unknown',
-          });
-        }
-      }
 
-      const result = await loadProfile(userId);
-      if (
-        result &&
-        'profile' in result &&
-        result.profile &&
-        !result.profile.is_admin &&
-        result.profile.role !== 'admin'
-      ) {
-        const role = result.profile.role;
-        if (role === 'client' || role === 'agent') {
-          const hasOrg = !!(result.profile as { organization_id?: string | null }).organization_id;
-          setOrgBootstrapFailed(!hasOrg);
-        }
-      }
-
-      // Run finalization for non-invite tokens (model claim) or when no pre-finalize happened
-      if (result && 'profile' in result && result.profile) {
-        const p = result.profile;
-        if (!p.is_admin && p.role !== 'admin' && !p.is_guest && !preFinalized) {
-          lastBootstrapFinalizeRef.current = await finalizePendingInviteOrClaim({
-            onSuccessReloadProfile: async () => {
-              await loadProfile(userId);
-            },
-          });
-        }
-        const fin = lastBootstrapFinalizeRef.current;
-
-        if (!p.is_admin && p.role !== 'admin' && !p.is_guest) {
-          if (p.role === 'model' && !fin.claim.ok) {
-            try {
-              const { linkModelByEmail } = await import('../services/modelsSupabase');
-              await linkModelByEmail();
-              await loadProfile(userId);
-            } catch (e) {
-              console.error('bootstrapThenLoadProfile linkModelByEmail fallback error:', e);
-            }
-          }
-
-          if (fin.invite.ok || fin.claim.ok) {
-            const pr = profileRef.current;
-            if (pr && !pr.is_admin && pr.role !== 'admin') {
-              const r = pr.role;
-              if (r === 'client' || r === 'agent') {
-                setOrgBootstrapFailed(!pr.organization_id);
+            if (fin.invite.ok || fin.claim.ok) {
+              const pr = profileRef.current;
+              if (pr && !pr.is_admin && pr.role !== 'admin') {
+                const r = pr.role;
+                if (r === 'client' || r === 'agent') {
+                  setOrgBootstrapFailed(!pr.organization_id);
+                }
               }
             }
           }
         }
-      }
 
-      return result;
-    } finally {
-      profileLoadInFlightRef.current = false;
-      console.log('[Auth] bootstrapThenLoadProfile: completed for', userId);
-    }
+        return result;
+      } finally {
+        profileLoadInFlightRef.current = false;
+        console.log('[Auth] bootstrapThenLoadProfile: completed for', userId);
+      }
+    });
   }
 
   const refreshProfile = useCallback(async () => {
@@ -666,7 +718,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { session: s },
     } = await supabase.auth.getSession();
-    if (s?.user) await loadProfile(s.user.id);
+    if (!s?.user) return;
+    const { error: userErr } = await supabase.auth.getUser();
+    if (userErr && isSessionNotFoundError(userErr)) {
+      console.warn('[Auth] refreshProfile: session_not_found — clearing local session');
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch {
+        /* ignore */
+      }
+      setSession(null);
+      updateProfile(null);
+      return;
+    }
+    await loadProfile(s.user.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadProfile is defined in the same closure and stable across renders
   }, []);
 

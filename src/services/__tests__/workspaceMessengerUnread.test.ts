@@ -1,27 +1,39 @@
 import { messageRowCountsAsWorkspaceUnread } from '../messengerSupabase';
 
 /**
- * Parity: `get_dashboard_summary` (migration `20261307_get_dashboard_summary_workspace_unread_parity.sql`)
- * excludes the same terminal booking-card rows from unread as the Messages list (`conversationHasUnreadForViewer`).
+ * Parity: `get_dashboard_summary` (migration unread filters) + Messages list
+ * (`conversationHasUnreadForViewer`) — terminal metadata.status rows do not count.
  */
 describe('messageRowCountsAsWorkspaceUnread', () => {
-  it('treats non-booking rows as countable', () => {
+  it('treats normal text rows as countable', () => {
     expect(messageRowCountsAsWorkspaceUnread({ message_type: 'text', metadata: {} })).toBe(true);
   });
 
-  it('excludes booking rows with metadata.status deleted', () => {
+  it('excludes any row with metadata.status deleted', () => {
     expect(
       messageRowCountsAsWorkspaceUnread({
         message_type: 'booking',
         metadata: { status: 'deleted' },
       }),
     ).toBe(false);
+    expect(
+      messageRowCountsAsWorkspaceUnread({
+        message_type: 'text',
+        metadata: { status: 'deleted' },
+      }),
+    ).toBe(false);
   });
 
-  it('excludes booking rows with metadata.status rejected', () => {
+  it('excludes any row with metadata.status rejected', () => {
     expect(
       messageRowCountsAsWorkspaceUnread({
         message_type: 'booking',
+        metadata: { status: 'rejected' },
+      }),
+    ).toBe(false);
+    expect(
+      messageRowCountsAsWorkspaceUnread({
+        message_type: 'package',
         metadata: { status: 'rejected' },
       }),
     ).toBe(false);
