@@ -2,11 +2,6 @@ import { expect } from '@jest/globals';
 import { readFileSync } from 'fs';
 import * as path from 'path';
 import { uiCopy } from '../uiCopy';
-import {
-  INDEXCASTING_PUBLIC_PRIVACY_URL,
-  INDEXCASTING_PUBLIC_TRUST_GDPR_URL,
-  INDEXCASTING_PUBLIC_TRUST_SUBPROCESSORS_URL,
-} from '../aiAssistantConsent';
 
 const modalSource = readFileSync(
   path.join(process.cwd(), 'src/components/help/AiAssistantConsentModal.tsx'),
