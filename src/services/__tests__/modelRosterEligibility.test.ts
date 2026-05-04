@@ -18,4 +18,10 @@ describe('modelEligibleForAgencyRoster', () => {
   it('excludes unlinked models with no MAT for this agency', () => {
     expect(modelEligibleForAgencyRoster({ id: 'ghost', user_id: null }, mat)).toBe(false);
   });
+
+  it('excludes ended relationship even if MAT set is unexpectedly stale', () => {
+    expect(
+      modelEligibleForAgencyRoster({ id: 'm1', agency_relationship_status: 'ended' }, mat),
+    ).toBe(false);
+  });
 });

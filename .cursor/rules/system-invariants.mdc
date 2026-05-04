@@ -849,6 +849,12 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 - Wenn ein Save-Pfad (z.B. `upsertModelLocation`) fehlschlägt, MUSS ein Warn-Log geschrieben werden
 - Verletzung = **Persistence Incident**, nicht kosmetischer UI-Bug
 
+### Agency roster soft-remove (`agency_remove_model`) — NICHT nullable `agency_id` (2026-05)
+
+- **End of representation ist immer Soft-End:** MAT-Zeilen für `(model_id, p_agency_id)` löschen; bei letzter globaler MAT-Zeile `agency_relationship_status = 'ended'`, `agency_relationship_ended_at`, Sichtbarkeitsflags aus; Option/Jobs/Chats/Revenue-Zeilen unangetastet lassen.
+- **`models.agency_id` darf NIEMALS** im Remove-Flow auf `NULL` gesetzt werden — Spalte ist historischer Ownership-Kontext und live typischerweise **NOT NULL**; `SET agency_id = NULL` erzeugt **23502** / PostgREST 400.
+- Kanonische Implementierung nur über `supabase/migrations/` (z. B. `20261305_fix_agency_remove_model_soft_end.sql` und Nachfolger), nicht nur Root-SQL.
+
 ## FRONTEND-GARANTIEN
 
 - Dashboard lädt auch wenn Teildaten fehlen (kein hard crash bei null org/profile)
