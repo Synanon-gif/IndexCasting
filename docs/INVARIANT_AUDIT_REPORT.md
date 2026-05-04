@@ -44,11 +44,14 @@
 
 | Layer | Enforcing | Tests |
 |-------|-----------|-------|
-| RPC | `agency_remove_model` (migrations `20260831`, `20260902`, …) | — |
+| RPC | **Canonical:** `supabase/migrations/20261305_fix_agency_remove_model_soft_end.sql` (soft-end MAT + visibility; **never** `models.agency_id = NULL` — live `NOT NULL` / 23502). Older dated files are historical only. | `agencyRemoveModelSoftEndMigration.test.ts` (scans all migrations) |
+| Live drift | Optional operator script | `scripts/verify-live-hot-rpc-drift.sh` (`agency_remove_model`, `claim_model_by_token`, `delete_option_request_full`, `generate_model_claim_token` markers + `schema_migrations` hint) |
 | Client | `removeModelFromAgency` — requires `organizationId`, logs `[agency_remove_model]` | `modelsSupabase.removeModelFromAgency.test.ts` |
 | Guard | `agency_update_model_full` rejects `ended` / removal misuse (`20260903`) | SQL comments |
 
 **Invariant:** RPC `true` → roster reload must exclude model (MAT cleared server-side).
+
+**Related migration regression scans (other hot RPCs):** `hotRpcMigrationsRegression.test.ts`.
 
 ---
 

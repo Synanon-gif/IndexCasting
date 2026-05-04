@@ -397,6 +397,19 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     });
     return unsubscribe;
   }, []);
+
+  const [dashboardSummaryReloadKey, setDashboardSummaryReloadKey] = useState(0);
+  const bumpDashboardSummary = useCallback(() => {
+    setDashboardSummaryReloadKey((k) => k + 1);
+  }, []);
+  const prevAgencyTabRef = useRef<AgencyTab>(tab);
+  useEffect(() => {
+    if (tab === 'dashboard' && prevAgencyTabRef.current !== 'dashboard') {
+      bumpDashboardSummary();
+    }
+    prevAgencyTabRef.current = tab;
+  }, [tab, bumpDashboardSummary]);
+
   /** True when AgencyMessagesTab is in fullscreen-chat mode on mobile — hides the bottom bar. */
   const [agencyChatFullscreen, setAgencyChatFullscreen] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -917,6 +930,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               <DashboardSummaryBar
                 orgId={agencyOrganizationId}
                 userId={session.user.id}
+                reloadKey={dashboardSummaryReloadKey}
                 onPressRequests={() => setTab('messages')}
                 onPressMessages={() => setTab('messages')}
                 onPressCalendar={() => setTab('calendar')}
@@ -1015,6 +1029,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 void loadAgencyCalendar();
               }}
               onChatFullscreenChange={(active) => setAgencyChatFullscreen(active && agencyIsMobile)}
+              onDashboardSummaryBump={bumpDashboardSummary}
             />
           </View>
         )}
@@ -6796,6 +6811,8 @@ type AgencyMessagesTabProps = {
   onOptionProjectionChanged?: () => void;
   /** Called with true when a chat occupies the full mobile screen — outer shell hides the bottom bar. */
   onChatFullscreenChange?: (active: boolean) => void;
+  /** Refetch dashboard summary chips (unread parity). */
+  onDashboardSummaryBump?: () => void;
 };
 
 const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
@@ -6816,6 +6833,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   onOptionRequestDeleted,
   onOptionProjectionChanged,
   onChatFullscreenChange,
+  onDashboardSummaryBump,
 }) => {
   const { width: agencyMsgWinW, height: agencyMsgWinH } = useWindowDimensions();
   const { deviceType } = useDeviceType();
@@ -6834,6 +6852,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   >('clientRequests');
   const [messagesSearch, setMessagesSearch] = useState('');
   const [modelDirectConvs, setModelDirectConvs] = useState<Conversation[]>([]);
+  const modelDirectConvsRef = useRef(modelDirectConvs);
+  modelDirectConvsRef.current = modelDirectConvs;
   const [searchChatBusy, setSearchChatBusy] = useState<string | null>(null);
   const [b2bConversations, setB2bConversations] = useState<Conversation[]>([]);
   const [agencyOrgIdB2b, setAgencyOrgIdB2b] = useState<string | null>(null);
@@ -6843,6 +6863,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [activeConnectionChatId, setActiveConnectionChatId] = useState<string | null>(null);
   const [activeConnectionChatTitle, setActiveConnectionChatTitle] = useState('');
   const [b2bUnreadById, setB2bUnreadById] = useState<Record<string, boolean>>({});
+  const [modelDirectUnreadById, setModelDirectUnreadById] = useState<Record<string, boolean>>({});
   const activeB2bChatRef = useRef<string | null>(null);
   activeB2bChatRef.current = activeConnectionChatId;
   const b2bConversationsRef = useRef(b2bConversations);
@@ -6921,6 +6942,15 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     [b2bConversations],
   );
 
+  const modelDirectIdsKey = useMemo(
+    () =>
+      modelDirectConvs
+        .map((c) => c.id)
+        .sort()
+        .join(','),
+    [modelDirectConvs],
+  );
+
   useEffect(() => {
     const list = b2bConversationsRef.current;
     if (!currentUserId || list.length === 0) {
@@ -6947,8 +6977,49 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   }, [b2bConversationIdsKey, currentUserId]);
 
   useEffect(() => {
+    const list = modelDirectConvsRef.current;
+    if (!currentUserId || list.length === 0) {
+      setModelDirectUnreadById({});
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      list.map(async (c) => {
+        const u = await conversationHasUnreadForViewer(c.id, currentUserId);
+        return [c.id, u] as const;
+      }),
+    ).then((pairs) => {
+      if (cancelled) return;
+      const next: Record<string, boolean> = {};
+      pairs.forEach(([id, u]) => {
+        next[id] = u;
+      });
+      setModelDirectUnreadById(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [modelDirectIdsKey, currentUserId]);
+
+  useEffect(() => {
+    const list = modelDirectConvsRef.current;
+    if (!currentUserId || list.length === 0) return;
+    const unsubs = list.map((c) =>
+      subscribeToConversation(c.id, (msg) => {
+        if (msg.sender_id !== currentUserId && activeB2bChatRef.current !== c.id) {
+          setModelDirectUnreadById((prev) => ({ ...prev, [c.id]: true }));
+        }
+      }),
+    );
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [modelDirectIdsKey, currentUserId]);
+
+  useEffect(() => {
     if (activeConnectionChatId) {
       setB2bUnreadById((prev) => ({ ...prev, [activeConnectionChatId]: false }));
+      setModelDirectUnreadById((prev) => ({ ...prev, [activeConnectionChatId]: false }));
     }
   }, [activeConnectionChatId]);
 
@@ -7287,6 +7358,19 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const searchActive = messagesSearch.trim().length > 0;
   const searchQ = messagesSearch.trim().toLowerCase();
 
+  const filteredModelChatRows = useMemo(() => {
+    if (!searchActive) return modelDirectConvs;
+    return modelDirectConvs.filter((c) => {
+      const p = parseAgencyModelContextId(c.context_id);
+      const model = p ? agencyModels.find((m) => m.id === p.modelId) : undefined;
+      const title = (model?.name ?? '').toLowerCase();
+      return title.includes(searchQ);
+    });
+  }, [modelDirectConvs, agencyModels, searchActive, searchQ]);
+
+  const hasAnyOrgWorkspaceChat =
+    filteredB2bConversations.length > 0 || filteredModelChatRows.length > 0;
+
   const searchedB2b = useMemo(
     () => b2bConversations.filter((c) => (b2bTitles[c.id] ?? '').toLowerCase().includes(searchQ)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -7493,7 +7577,9 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   }, [b2bChatFullscreenActive, optionFullscreenActive, onChatFullscreenChange]);
 
   if (b2bChatFullscreenActive) {
-    const activeConv = b2bConversations.find((c) => c.id === activeConnectionChatId);
+    const activeConv =
+      b2bConversations.find((c) => c.id === activeConnectionChatId) ??
+      modelDirectConvs.find((c) => c.id === activeConnectionChatId);
     return (
       <>
         <View style={{ flex: 1, minHeight: 0, alignSelf: 'stretch' }}>
@@ -7515,6 +7601,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             onBookingCardPress={onBookingCardPress}
             viewerRole="agency"
             onBookingStatusUpdated={() => onBookingCardPress?.()}
+            onMarkedAllRead={onDashboardSummaryBump}
             containerStyle={{
               marginTop: 0,
               padding: 0,
@@ -7529,7 +7616,10 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               setViewingClientProfileOrgId(orgId);
               setViewingClientProfileOrgName(activeConnectionChatTitle);
             }}
-            onBack={() => setActiveConnectionChatId(null)}
+            onBack={() => {
+              setActiveConnectionChatId(null);
+              onDashboardSummaryBump?.();
+            }}
             backLabel={uiCopy.messages.backToChats}
           />
         </View>
@@ -8066,7 +8156,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                         currentUserId={currentUserId}
                       />
                     </View>
-                    {filteredB2bConversations.length === 0 ? (
+                    {!hasAnyOrgWorkspaceChat ? (
                       <Text style={s.metaText}>{uiCopy.b2bChat.noClientChatsYetAgency}</Text>
                     ) : agencyB2bWebSplit ? (
                       <View
@@ -8132,6 +8222,76 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                                 ) : null}
                               </View>
                             ))}
+                            {filteredModelChatRows.length > 0 ? (
+                              <>
+                                <Text
+                                  style={[
+                                    s.metaText,
+                                    {
+                                      fontWeight: '600',
+                                      marginTop: spacing.sm,
+                                      marginBottom: spacing.xs,
+                                    },
+                                  ]}
+                                >
+                                  {_uiCopy.dashboard.modelDirectChatsSection}
+                                </Text>
+                                {filteredModelChatRows.map((c) => {
+                                  const p = parseAgencyModelContextId(c.context_id);
+                                  const model = p
+                                    ? agencyModels.find((m) => m.id === p.modelId)
+                                    : undefined;
+                                  const title = model?.name ?? uiCopy.b2bChat.conversationFallback;
+                                  return (
+                                    <View
+                                      key={c.id}
+                                      style={[
+                                        s.modelRow,
+                                        {
+                                          flexDirection: 'row',
+                                          alignItems: 'center',
+                                          flexWrap: 'wrap',
+                                          gap: spacing.sm,
+                                        },
+                                      ]}
+                                    >
+                                      <View style={{ flex: 1, minWidth: 160 }}>
+                                        <Text style={s.modelName}>{title}</Text>
+                                        <Text style={s.metaText}>
+                                          {new Date(c.updated_at).toLocaleString()}
+                                        </Text>
+                                      </View>
+                                      <TouchableOpacity
+                                        style={[s.filterPill, s.filterPillActive]}
+                                        onPress={() => {
+                                          setActiveConnectionChatId(c.id);
+                                          setActiveConnectionChatTitle(title);
+                                        }}
+                                      >
+                                        <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>
+                                          {uiCopy.b2bChat.openConversation}
+                                        </Text>
+                                      </TouchableOpacity>
+                                      {currentUserId &&
+                                      (modelDirectUnreadById[c.id] ?? false) &&
+                                      activeConnectionChatId !== c.id ? (
+                                        <View
+                                          style={{
+                                            width: 8,
+                                            height: 8,
+                                            borderRadius: 4,
+                                            backgroundColor: '#2563EB',
+                                          }}
+                                          accessibilityLabel={
+                                            uiCopy.b2bChat.unreadMessagesIndicatorA11y
+                                          }
+                                        />
+                                      ) : null}
+                                    </View>
+                                  );
+                                })}
+                              </>
+                            ) : null}
                           </ScrollView>
                         </View>
                         <View style={{ flex: CHAT_MESSENGER_FLEX, minWidth: 0, minHeight: 0 }}>
@@ -8153,11 +8313,12 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                               onBookingCardPress={onBookingCardPress}
                               viewerRole="agency"
                               onBookingStatusUpdated={() => onBookingCardPress?.()}
+                              onMarkedAllRead={onDashboardSummaryBump}
                               containerStyle={{ marginTop: 0, flex: 1 }}
                               onOrgPress={() => {
-                                const conv = b2bConversations.find(
-                                  (c) => c.id === activeConnectionChatId,
-                                );
+                                const conv =
+                                  b2bConversations.find((c) => c.id === activeConnectionChatId) ??
+                                  modelDirectConvs.find((c) => c.id === activeConnectionChatId);
                                 const orgId = conv?.client_organization_id ?? null;
                                 if (!orgId) return;
                                 setViewingClientProfileOrgId(orgId);
@@ -8189,6 +8350,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                           onBookingCardPress={onBookingCardPress}
                           viewerRole="agency"
                           onBookingStatusUpdated={() => onBookingCardPress?.()}
+                          onMarkedAllRead={onDashboardSummaryBump}
                           containerStyle={{
                             marginTop: 0,
                             padding: 0,
@@ -8198,15 +8360,18 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                             minHeight: 0,
                           }}
                           onOrgPress={() => {
-                            const conv = b2bConversations.find(
-                              (c) => c.id === activeConnectionChatId,
-                            );
+                            const conv =
+                              b2bConversations.find((c) => c.id === activeConnectionChatId) ??
+                              modelDirectConvs.find((c) => c.id === activeConnectionChatId);
                             const orgId = conv?.client_organization_id ?? null;
                             if (!orgId) return;
                             setViewingClientProfileOrgId(orgId);
                             setViewingClientProfileOrgName(activeConnectionChatTitle);
                           }}
-                          onBack={() => setActiveConnectionChatId(null)}
+                          onBack={() => {
+                            setActiveConnectionChatId(null);
+                            onDashboardSummaryBump?.();
+                          }}
                           backLabel={uiCopy.messages.backToChats}
                         />
                       </View>
@@ -8267,6 +8432,76 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                             ) : null}
                           </View>
                         ))}
+                        {filteredModelChatRows.length > 0 ? (
+                          <>
+                            <Text
+                              style={[
+                                s.metaText,
+                                {
+                                  fontWeight: '600',
+                                  marginTop: spacing.sm,
+                                  marginBottom: spacing.xs,
+                                },
+                              ]}
+                            >
+                              {_uiCopy.dashboard.modelDirectChatsSection}
+                            </Text>
+                            {filteredModelChatRows.map((c) => {
+                              const p = parseAgencyModelContextId(c.context_id);
+                              const model = p
+                                ? agencyModels.find((m) => m.id === p.modelId)
+                                : undefined;
+                              const title = model?.name ?? uiCopy.b2bChat.conversationFallback;
+                              return (
+                                <View
+                                  key={c.id}
+                                  style={[
+                                    s.modelRow,
+                                    {
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      flexWrap: 'wrap',
+                                      gap: spacing.sm,
+                                    },
+                                  ]}
+                                >
+                                  <View style={{ flex: 1, minWidth: 160 }}>
+                                    <Text style={s.modelName}>{title}</Text>
+                                    <Text style={s.metaText}>
+                                      {new Date(c.updated_at).toLocaleString()}
+                                    </Text>
+                                  </View>
+                                  <TouchableOpacity
+                                    style={[s.filterPill, s.filterPillActive]}
+                                    onPress={() => {
+                                      setActiveConnectionChatId(c.id);
+                                      setActiveConnectionChatTitle(title);
+                                    }}
+                                  >
+                                    <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>
+                                      {uiCopy.b2bChat.openConversation}
+                                    </Text>
+                                  </TouchableOpacity>
+                                  {currentUserId &&
+                                  (modelDirectUnreadById[c.id] ?? false) &&
+                                  activeConnectionChatId !== c.id ? (
+                                    <View
+                                      style={{
+                                        width: 8,
+                                        height: 8,
+                                        borderRadius: 4,
+                                        backgroundColor: '#2563EB',
+                                      }}
+                                      accessibilityLabel={
+                                        uiCopy.b2bChat.unreadMessagesIndicatorA11y
+                                      }
+                                    />
+                                  ) : null}
+                                </View>
+                              );
+                            })}
+                          </>
+                        ) : null}
                       </ScrollView>
                     )}
                   </>

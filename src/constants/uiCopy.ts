@@ -3219,9 +3219,10 @@ export const uiCopy = {
   // ── Dashboard ──────────────────────────────────────────────────────────────
   dashboard: {
     summaryOpenRequests: 'Open Requests',
-    summaryUnread: 'Unread Messages',
+    summaryUnread: 'Unread chats',
     summaryToday: 'Today',
     summaryLoading: 'Loading dashboard...',
+    modelDirectChatsSection: 'Model chats',
     lastActionPrefix: 'Last action:',
     lastActionBy: 'by',
     lastActionNone: 'No recent activity.',

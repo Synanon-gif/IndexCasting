@@ -1,6 +1,6 @@
 import { conversationHasUnreadForViewer } from '../messengerSupabase';
 
-const maybeSingle = jest.fn();
+const afterLimit = jest.fn();
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
@@ -9,8 +9,8 @@ jest.mock('../../../lib/supabase', () => ({
         eq: () => ({
           neq: () => ({
             is: () => ({
-              limit: () => ({
-                maybeSingle: () => maybeSingle(),
+              order: () => ({
+                limit: () => afterLimit(),
               }),
             }),
           }),
@@ -22,27 +22,44 @@ jest.mock('../../../lib/supabase', () => ({
 
 describe('conversationHasUnreadForViewer', () => {
   beforeEach(() => {
-    maybeSingle.mockReset();
+    afterLimit.mockReset();
   });
 
   it('returns false when conversation or viewer id empty', async () => {
     expect(await conversationHasUnreadForViewer('', 'u1')).toBe(false);
     expect(await conversationHasUnreadForViewer('c1', '')).toBe(false);
-    expect(maybeSingle).not.toHaveBeenCalled();
+    expect(afterLimit).not.toHaveBeenCalled();
   });
 
-  it('returns true when an unread incoming row exists', async () => {
-    maybeSingle.mockResolvedValue({ data: { id: 'm1' }, error: null });
+  it('returns true when an unread countable row exists', async () => {
+    afterLimit.mockResolvedValue({
+      data: [{ id: 'm1', message_type: 'text', metadata: null }],
+      error: null,
+    });
     await expect(conversationHasUnreadForViewer('conv-1', 'user-a')).resolves.toBe(true);
   });
 
   it('returns false when no unread rows', async () => {
-    maybeSingle.mockResolvedValue({ data: null, error: null });
+    afterLimit.mockResolvedValue({ data: [], error: null });
+    await expect(conversationHasUnreadForViewer('conv-1', 'user-a')).resolves.toBe(false);
+  });
+
+  it('returns false when only terminal booking cards are unread', async () => {
+    afterLimit.mockResolvedValue({
+      data: [
+        {
+          id: 'm1',
+          message_type: 'booking',
+          metadata: { status: 'deleted' },
+        },
+      ],
+      error: null,
+    });
     await expect(conversationHasUnreadForViewer('conv-1', 'user-a')).resolves.toBe(false);
   });
 
   it('returns false on query error', async () => {
-    maybeSingle.mockResolvedValue({ data: null, error: { message: 'x' } });
+    afterLimit.mockResolvedValue({ data: null, error: { message: 'x' } });
     await expect(conversationHasUnreadForViewer('conv-1', 'user-a')).resolves.toBe(false);
   });
 });

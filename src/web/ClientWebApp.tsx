@@ -252,6 +252,7 @@ type AssignmentFilters = {
 const ClientDashboardTab: React.FC<{
   orgId: string | null;
   userId: string | null;
+  reloadKey?: number;
   onNavigateMessages: () => void;
   onNavigateCalendar: () => void;
   onNavigateRequests: () => void;
@@ -261,6 +262,7 @@ const ClientDashboardTab: React.FC<{
 }> = ({
   orgId,
   userId,
+  reloadKey = 0,
   onNavigateMessages,
   onNavigateCalendar,
   onNavigateRequests,
@@ -290,6 +292,7 @@ const ClientDashboardTab: React.FC<{
       <DashboardSummaryBar
         orgId={orgId}
         userId={userId}
+        reloadKey={reloadKey}
         onPressRequests={onNavigateRequests}
         onPressMessages={onNavigateMessages}
         onPressCalendar={onNavigateCalendar}
@@ -518,6 +521,19 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   useEffect(() => {
     if (tab !== 'messages') setClientChatFullscreen(false);
   }, [tab]);
+
+  const [dashboardSummaryReloadKey, setDashboardSummaryReloadKey] = useState(0);
+  const bumpDashboardSummary = useCallback(() => {
+    setDashboardSummaryReloadKey((k) => k + 1);
+  }, []);
+  const prevClientTabRef = useRef<TopTab>(tab);
+  useEffect(() => {
+    if (tab === 'dashboard' && prevClientTabRef.current !== 'dashboard') {
+      bumpDashboardSummary();
+    }
+    prevClientTabRef.current = tab;
+  }, [tab, bumpDashboardSummary]);
+
   const [mobileWorkspaceMenuOpen, setMobileWorkspaceMenuOpen] = useState(false);
   const [showActiveOptions, setShowActiveOptions] = useState(false);
   const [models, setModels] = useState<ModelSummary[]>([]);
@@ -2736,6 +2752,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             <ClientDashboardTab
               orgId={clientOrgId}
               userId={realClientId}
+              reloadKey={dashboardSummaryReloadKey}
               onNavigateMessages={() => setTab('messages')}
               onNavigateCalendar={() => setTab('calendar')}
               onNavigateRequests={() => setTab('messages')}
@@ -2950,6 +2967,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             }}
             onCloseOptionNegotiation={handleCloseOptionNegotiation}
             onChatFullscreenChange={(active) => setClientChatFullscreen(active && clientIsMobile)}
+            onDashboardSummaryBump={bumpDashboardSummary}
           />
         )}
 
@@ -5495,6 +5513,8 @@ type MessagesViewProps = {
   onCloseOptionNegotiation?: () => void;
   /** Called with true when a chat occupies the full mobile screen — outer shell hides the bottom tab bar. */
   onChatFullscreenChange?: (active: boolean) => void;
+  /** Refetch dashboard summary unread chip. */
+  onDashboardSummaryBump?: () => void;
 };
 
 const ClientB2BChatsPanel: React.FC<{
@@ -5507,6 +5527,7 @@ const ClientB2BChatsPanel: React.FC<{
   searchQuery?: string;
   /** Called with true when a chat is actively open on mobile (non-split), false otherwise. */
   onChatActiveChange?: (active: boolean) => void;
+  onDashboardSummaryBump?: () => void;
 }> = ({
   clientUserId,
   pendingOpen,
@@ -5516,6 +5537,7 @@ const ClientB2BChatsPanel: React.FC<{
   onOpenRelatedRequest,
   searchQuery = '',
   onChatActiveChange,
+  onDashboardSummaryBump,
 }) => {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const b2bWebSplit = Platform.OS === 'web' && shouldUseB2BWebSplit(windowWidth);
@@ -5750,6 +5772,7 @@ const ClientB2BChatsPanel: React.FC<{
       onBookingCardPress={onBookingCardPress}
       onPackagePress={onPackagePress}
       onOpenRelatedRequest={onOpenRelatedRequest}
+      onMarkedAllRead={onDashboardSummaryBump}
       onOrgPress={
         targetAgencyOrgId
           ? () => {
@@ -5765,7 +5788,14 @@ const ClientB2BChatsPanel: React.FC<{
           : undefined
       }
       // Mobile (non-split): show back button to return to thread list
-      onBack={b2bWebSplit ? undefined : () => setSelectedId(null)}
+      onBack={
+        b2bWebSplit
+          ? undefined
+          : () => {
+              setSelectedId(null);
+              onDashboardSummaryBump?.();
+            }
+      }
       backLabel={uiCopy.messages.backToChats ?? 'Chats'}
     />
   ) : null;
@@ -5828,6 +5858,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   onOptionThreadOpenedFromList,
   onCloseOptionNegotiation,
   onChatFullscreenChange,
+  onDashboardSummaryBump,
 }) => {
   const { deviceType } = useDeviceType();
   const insets = useSafeAreaInsets();
@@ -6421,6 +6452,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           onPackagePress={onPackagePress}
           searchQuery={clientMsgSearch}
           onChatActiveChange={setB2bChatIsOpen}
+          onDashboardSummaryBump={onDashboardSummaryBump}
         />
       ) : (
         <View style={flexFillColumn}>

@@ -616,6 +616,20 @@ export async function markAllAsRead(conversationId: string, userId: string): Pro
   if (error) console.error('markAllAsRead error:', error);
 }
 
+/**
+ * Aligns list/dashboard unread with Messages UI: booking-card rows that are
+ * terminal (removed / declined) do not count as unread.
+ */
+export function messageRowCountsAsWorkspaceUnread(row: {
+  message_type?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): boolean {
+  if (row.message_type !== 'booking') return true;
+  const st =
+    row.metadata && typeof row.metadata['status'] === 'string' ? row.metadata['status'] : '';
+  return st !== 'deleted' && st !== 'rejected';
+}
+
 /** True if there is at least one incoming message not yet marked read (UI list dot). */
 export async function conversationHasUnreadForViewer(
   conversationId: string,
@@ -625,17 +639,22 @@ export async function conversationHasUnreadForViewer(
   try {
     const { data, error } = await supabase
       .from('messages')
-      .select('id')
+      .select('id, message_type, metadata')
       .eq('conversation_id', conversationId)
       .neq('sender_id', viewerUserId)
       .is('read_at', null)
-      .limit(1)
-      .maybeSingle();
+      .order('created_at', { ascending: false })
+      .limit(48);
     if (error) {
       console.error('conversationHasUnreadForViewer error:', error);
       return false;
     }
-    return data != null;
+    const rows = Array.isArray(data) ? data : [];
+    return rows.some((row) =>
+      messageRowCountsAsWorkspaceUnread(
+        row as { message_type?: string | null; metadata?: Record<string, unknown> | null },
+      ),
+    );
   } catch (e) {
     console.error('conversationHasUnreadForViewer exception:', e);
     return false;

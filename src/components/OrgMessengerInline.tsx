@@ -135,6 +135,8 @@ export type OrgMessengerInlineProps = {
    * model name is available from loaded messages; agency sees client org title; model sees agency title.
    */
   b2bViewerRole?: 'client' | 'agency' | 'model';
+  /** After server-side mark-all-read on thread open; use to refresh dashboard unread. */
+  onMarkedAllRead?: () => void;
 };
 
 function payloadType(m: MessageWithSender): MessagePayloadType {
@@ -174,6 +176,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   onBack,
   backLabel,
   b2bViewerRole,
+  onMarkedAllRead,
 }) => {
   const [msgs, setMsgs] = useState<MessageWithSender[]>([]);
   const [input, setInput] = useState('');
@@ -222,7 +225,11 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 
   useEffect(() => {
     reload();
-    if (viewerUserId) void markAllAsRead(conversationId, viewerUserId);
+    if (viewerUserId) {
+      void markAllAsRead(conversationId, viewerUserId).then(() => {
+        onMarkedAllRead?.();
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, viewerUserId]);
 

@@ -2,7 +2,7 @@
  * DashboardSummaryBar
  *
  * Displays three key metrics at the top of the agency/client dashboard:
- *   Open Requests | Unread Messages | Today's Events
+ *   Open Requests | Unread chats | Today's Events
  *
  * Each chip is clickable and navigates to the relevant tab.
  * Shows a loading skeleton while data is fetching.
@@ -14,6 +14,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  AppState,
+  type AppStateStatus,
+  Platform,
 } from 'react-native';
 import { colors, spacing } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
@@ -22,6 +25,8 @@ import { getDashboardSummary, type DashboardSummary } from '../services/dashboar
 interface Props {
   orgId: string;
   userId: string;
+  /** Bumping this refetches summary (tab focus, mark-all-read, etc.). */
+  reloadKey?: number;
   onPressRequests?: () => void;
   onPressMessages?: () => void;
   onPressCalendar?: () => void;
@@ -30,6 +35,7 @@ interface Props {
 export const DashboardSummaryBar: React.FC<Props> = ({
   orgId,
   userId,
+  reloadKey = 0,
   onPressRequests,
   onPressMessages,
   onPressCalendar,
@@ -48,6 +54,22 @@ export const DashboardSummaryBar: React.FC<Props> = ({
 
   useEffect(() => {
     void load();
+  }, [load, reloadKey]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s: AppStateStatus) => {
+      if (s === 'active') void load();
+    });
+    return () => sub.remove();
+  }, [load]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
   }, [load]);
 
   if (loading) {
@@ -94,9 +116,7 @@ export const DashboardSummaryBar: React.FC<Props> = ({
           disabled={!chip.onPress}
           activeOpacity={chip.onPress ? 0.7 : 1}
         >
-          <Text style={[styles.count, chip.highlight && styles.countHighlight]}>
-            {chip.count}
-          </Text>
+          <Text style={[styles.count, chip.highlight && styles.countHighlight]}>{chip.count}</Text>
           <Text style={styles.label}>{chip.label}</Text>
         </TouchableOpacity>
       ))}
