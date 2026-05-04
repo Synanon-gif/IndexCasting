@@ -905,6 +905,7 @@ export type RemoveModelFromAgencyParams = {
  * Agency ends representation (soft delete): MAT cleared for this agency, model leaves roster &
  * client discovery when no territories remain; history kept in DB.
  * Always uses RPC `agency_remove_model` — never `agency_update_model_full`.
+ * Regression: live `models.agency_id` is NOT NULL; the RPC must never null it (23502 / 400).
  */
 export async function removeModelFromAgency(params: RemoveModelFromAgencyParams): Promise<boolean> {
   const modelId = params.modelId?.trim();

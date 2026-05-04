@@ -70,6 +70,24 @@ describe('removeModelFromAgency', () => {
     ).resolves.toBe(false);
   });
 
+  it('returns false on not-null constraint / 23502-shaped RPC errors', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: {
+        message:
+          'null value in column "agency_id" of relation "models" violates not-null constraint',
+        code: '23502',
+      },
+    });
+    await expect(
+      removeModelFromAgency({ modelId: 'model-nn', organizationId: 'org-1' }),
+    ).resolves.toBe(false);
+    expect(rpc).toHaveBeenCalledWith('agency_remove_model', {
+      p_model_id: 'model-nn',
+      p_agency_id: 'agency-1',
+    });
+  });
+
   it('returns true when data is true', async () => {
     rpc.mockResolvedValue({ data: true, error: null });
     await expect(
