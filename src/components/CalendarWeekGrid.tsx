@@ -8,6 +8,8 @@ import {
   StyleSheet,
   useWindowDimensions,
   LayoutChangeEvent,
+  Dimensions,
+  Platform,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { isMobileWidth } from '../theme/breakpoints';
@@ -88,7 +90,12 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
   denseWorkWeek = false,
   showDayKindFooter = false,
 }) => {
-  const { width: layoutWidth } = useWindowDimensions();
+  const { width: hookWidth } = useWindowDimensions();
+  /** Web hydration / first frame can report 0 — fall back to Dimensions for Client+Agency web & native. */
+  const layoutWidth =
+    typeof hookWidth === 'number' && hookWidth > 1
+      ? hookWidth
+      : Math.max(Dimensions.get('window').width, 360);
   const isMobile = isMobileWidth(layoutWidth);
   const [bodyViewportW, setBodyViewportW] = useState(0);
 
@@ -255,13 +262,17 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
             ))}
           </View>
 
-          <View style={styles.bodyScrollHost} onLayout={onBodyMeasured}>
+          <View style={styles.bodyScrollHost} collapsable={false} onLayout={onBodyMeasured}>
             <ScrollView
               horizontal
               nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
               showsHorizontalScrollIndicator={scrollContentWidth > usable + 1}
               bounces={false}
+              directionalLockEnabled
+              scrollEnabled
+              scrollEventThrottle={16}
+              {...(Platform.OS === 'android' ? { overScrollMode: 'never' as const } : {})}
             >
               <View style={{ width: scrollContentWidth }}>
                 <View style={[styles.dayHeaderRow, { height: DAY_HEADER_ROW_H }]}>

@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   useWindowDimensions,
+  Dimensions,
+  Platform,
   type LayoutChangeEvent,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
@@ -51,7 +53,11 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
   minLaneWidthPx,
   maxVisibleParallelLanes,
 }) => {
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: hookWidth } = useWindowDimensions();
+  const windowWidth =
+    typeof hookWidth === 'number' && hookWidth > 1
+      ? hookWidth
+      : Math.max(Dimensions.get('window').width, 360);
   const [viewportW, setViewportW] = useState(0);
   const [expandedHidden, setExpandedHidden] = useState(false);
   const pxPerMin = HOUR_HEIGHT / 60;
@@ -244,12 +250,16 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
             ))}
           </View>
           {useLanePixels ? (
-            <View style={styles.gridViewport} onLayout={onGridViewportLayout}>
+            <View style={styles.gridViewport} collapsable={false} onLayout={onGridViewportLayout}>
               <ScrollView
                 horizontal
                 nestedScrollEnabled
                 keyboardShouldPersistTaps="handled"
                 showsHorizontalScrollIndicator={effectiveLaneColumns > 2}
+                directionalLockEnabled
+                scrollEnabled
+                scrollEventThrottle={16}
+                {...(Platform.OS === 'android' ? { overScrollMode: 'never' as const } : {})}
               >
                 <View style={[styles.gridArea, { height: totalHeight, width: innerCanvasW }]}>
                   {renderGridContents('pixels')}
@@ -287,6 +297,7 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
                 style={styles.hiddenListScroll}
                 nestedScrollEnabled
                 keyboardShouldPersistTaps="handled"
+                {...(Platform.OS === 'android' ? { overScrollMode: 'never' as const } : {})}
               >
                 {hiddenEvents.map((ev) => (
                   <TouchableOpacity
