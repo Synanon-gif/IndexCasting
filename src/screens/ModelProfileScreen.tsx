@@ -33,7 +33,6 @@ import {
 } from '../services/modelLocationsSupabase';
 import { getPhotosForModelResult, type ModelPhoto } from '../services/modelPhotosSupabase';
 import { StorageImage } from '../components/StorageImage';
-import { BrandLogo } from '../components/BrandLogo';
 import { supabase } from '../../lib/supabase';
 import { UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';
 import {
@@ -1240,7 +1239,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       ]}
     >
       <View style={st.topShell}>
-        {!mobileChatOverlayActive && <BrandLogo size={28} />}
+        {!mobileChatOverlayActive && <Text style={st.brand}>INDEX CASTING</Text>}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
           <TouchableOpacity
             onPress={() => {

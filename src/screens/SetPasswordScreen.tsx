@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { BrandLogo } from '../components/BrandLogo';
 import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
 import { uiCopy } from '../constants/uiCopy';
@@ -63,7 +62,7 @@ export const SetPasswordScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <BrandLogo size={168} containerStyle={{ marginBottom: spacing.sm }} />
+        <Text style={styles.brand}>INDEX CASTING</Text>
 
         <Text style={styles.title}>{uiCopy.auth.setPasswordTitle}</Text>
         <Text style={styles.hint}>{uiCopy.auth.setPasswordHint}</Text>

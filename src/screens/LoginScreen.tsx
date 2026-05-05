@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { BrandLogo } from '../components/BrandLogo';
 import { colors, spacing, typography } from '../theme/theme';
 import type { UserRole } from '../navigation/RootNavigator';
 import { uiCopy } from '../constants/uiCopy';
@@ -48,7 +47,7 @@ export const LoginScreen: React.FC<Props> = ({ onSelectRole }) => {
       </Modal>
 
       <View style={styles.topBlock}>
-        <BrandLogo size={168} containerStyle={{ marginBottom: spacing.sm }} />
+        <Text style={styles.brand}>{uiCopy.login.brandTitle}</Text>
         <Text style={styles.subtitle}>{uiCopy.login.brandSubtitle}</Text>
       </View>
 

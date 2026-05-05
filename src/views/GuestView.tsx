@@ -39,7 +39,6 @@ import {
 import { TermsScreen } from '../screens/TermsScreen';
 import { PrivacyScreen } from '../screens/PrivacyScreen';
 import { PdfExportModal } from '../components/PdfExportModal';
-import { BrandLogo } from '../components/BrandLogo';
 import type { PdfModelInput } from '../utils/pdfExport';
 
 const copy = uiCopy.guestFlow;
@@ -362,7 +361,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   if (pageError) {
     return (
       <View style={styles.centered}>
-        <BrandLogo size={160} containerStyle={{ marginBottom: spacing.sm }} />
+        <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.errorText}>{pageError}</Text>
       </View>
     );
@@ -389,7 +388,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           <PrivacyScreen onClose={() => setGuestPrivacyVisible(false)} />
         </Modal>
 
-        <BrandLogo size={160} containerStyle={{ marginBottom: spacing.sm }} />
+        <Text style={styles.brand}>INDEX CASTING</Text>
         <View style={styles.guestAccessBanner}>
           <Text style={styles.guestAccessBadge}>{copy.guestAccessBadge}</Text>
           <Text style={styles.guestAccessSubtitle}>{copy.guestAccessSubtitle}</Text>
@@ -460,7 +459,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   if (phase === 'check_email') {
     return (
       <View style={styles.centered}>
-        <BrandLogo size={160} containerStyle={{ marginBottom: spacing.sm }} />
+        <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.title}>{copy.checkEmail}</Text>
         <Text style={styles.subtitle}>{copy.checkEmailSubtitle}</Text>
         <Text style={styles.subtitleSmall}>
@@ -494,7 +493,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         keyboardDismissMode="on-drag"
       >
         <View style={styles.header}>
-          <BrandLogo size={160} containerStyle={{ marginBottom: spacing.sm }} />
+          <Text style={styles.brand}>INDEX CASTING</Text>
           <TouchableOpacity onPress={() => setPhase('browse')}>
             <Text style={styles.backLink}>{copy.backToModels}</Text>
           </TouchableOpacity>
@@ -765,7 +764,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         <View
           style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
         >
-          <BrandLogo size={76} />
+          <Text style={styles.brand}>INDEX CASTING</Text>
           {Platform.OS === 'web' && pdfModels.length > 0 ? (
             <TouchableOpacity
               onPress={() => setPdfExportOpen(true)}

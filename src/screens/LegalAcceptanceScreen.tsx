@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   Modal,
 } from 'react-native';
-import { BrandLogo } from '../components/BrandLogo';
 import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
 import { isAgency as checkIsAgency } from '../types/roles';
@@ -64,7 +63,7 @@ export const LegalAcceptanceScreen: React.FC = () => {
       </Modal>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <BrandLogo size={168} containerStyle={{ marginBottom: spacing.sm }} />
+        <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.title}>{uiCopy.legal.title}</Text>
         <Text style={styles.subtitle}>{uiCopy.legal.subtitle}</Text>
 

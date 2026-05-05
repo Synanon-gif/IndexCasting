@@ -8,7 +8,6 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { BrandLogo } from '../components/BrandLogo';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { TermsScreen } from './TermsScreen';
@@ -76,7 +75,7 @@ export function ModelClaimScreen({
       </Modal>
 
       <View style={styles.card}>
-        <BrandLogo size={168} containerStyle={{ marginBottom: spacing.sm }} />
+        <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.title}>{uiCopy.modelClaim.pageTitle}</Text>
 
         {loading && (

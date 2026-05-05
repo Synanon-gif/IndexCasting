@@ -8,7 +8,6 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { BrandLogo } from '../components/BrandLogo';
 import { colors, spacing, typography } from '../theme/theme';
 import type { InvitationPreview } from '../services/organizationsInvitationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
@@ -74,7 +73,7 @@ export function InviteAcceptanceScreen({
         <PrivacyScreen onClose={() => setPrivacyVisible(false)} />
       </Modal>
       <View style={styles.card}>
-        <BrandLogo size={168} containerStyle={{ marginBottom: spacing.sm }} />
+        <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.title}>{uiCopy.invite.pageTitle}</Text>
 
         {loading && (

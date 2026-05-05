@@ -28,7 +28,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography } from '../theme/theme';
 import { getChatOverlayMaxWidth } from '../theme/chatLayout';
-import { BrandLogo } from '../components/BrandLogo';
 import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -248,7 +247,7 @@ export const GuestChatView: React.FC = () => {
   if (!conversation) {
     return (
       <View style={styles.centered}>
-        <BrandLogo size={144} containerStyle={{ marginBottom: spacing.sm }} />
+        <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.subtitle}>{copy.noConversationHint}</Text>
       </View>
     );
