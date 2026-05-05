@@ -68,11 +68,14 @@ import {
   normalizeTrustPath,
   isStatusPath,
   replaceWebPathToHome,
+  navigatePublicPath,
   getPublicAgencySlugFromPath,
   getPublicClientSlugFromPath,
+  getPublicModelDetailFromPath,
 } from './src/utils/publicLegalRoutes';
 import { PublicAgencyProfileScreen } from './src/screens/PublicAgencyProfileScreen';
 import { PublicClientProfileScreen } from './src/screens/PublicClientProfileScreen';
+import { PublicModelDetailScreen } from './src/screens/PublicModelDetailScreen';
 import { InviteHealthCheckScreen } from './src/screens/InviteHealthCheckScreen';
 import { TrustCenterView } from './src/views/trust/TrustCenterView';
 import { TrustSecurityView } from './src/views/trust/TrustSecurityView';
@@ -892,6 +895,24 @@ function AppContent() {
         <StatusBar style="dark" />
       </>
     );
+  }
+
+  // Public model detail route: /agency/:agencySlug/model/:modelId — no auth required.
+  // Must be checked before /agency/:slug (more specific path wins).
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const modelDetail = getPublicModelDetailFromPath(window.location.pathname);
+    if (modelDetail) {
+      return (
+        <>
+          <PublicModelDetailScreen
+            agencySlug={modelDetail.agencySlug}
+            modelId={modelDetail.modelId}
+            onBack={() => navigatePublicPath(`/agency/${modelDetail.agencySlug}`)}
+          />
+          <StatusBar style="dark" />
+        </>
+      );
+    }
   }
 
   // Public agency profile route: /agency/:slug — no auth required.

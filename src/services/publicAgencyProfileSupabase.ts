@@ -93,6 +93,51 @@ export async function getPublicAgencyProfile(slug: string): Promise<PublicAgency
 }
 
 /**
+ * One portfolio photo row, returned by the anon-accessible model_photos query.
+ * Anon RLS policy (20260817): is_visible_to_clients = true AND photo_type = 'portfolio'.
+ */
+export interface PublicModelPhoto {
+  id: string;
+  url: string;
+  sort_order: number | null;
+}
+
+/**
+ * Fetches public portfolio photos for a single model.
+ *
+ * Queries model_photos directly — the anon RLS policy allows SELECT where
+ * is_visible_to_clients = true AND photo_type = 'portfolio' (no auth required).
+ * Results are ordered by sort_order ascending (NULLs last).
+ *
+ * Safe for unauthenticated callers (anon Supabase key).
+ */
+export async function getPublicModelPhotos(modelId: string): Promise<PublicModelPhoto[]> {
+  if (!modelId) return [];
+  try {
+    const { data, error } = await supabase
+      .from('model_photos')
+      .select('id, url, sort_order')
+      .eq('model_id', modelId)
+      .eq('photo_type', 'portfolio')
+      .eq('is_visible_to_clients', true)
+      .order('sort_order', { ascending: true });
+    if (error) {
+      console.error('[getPublicModelPhotos] query error:', error);
+      return [];
+    }
+    const rows = Array.isArray(data) ? data : [];
+    return rows.map((row: Record<string, unknown>) => ({
+      id: (row.id as string) ?? '',
+      url: (row.url as string) ?? '',
+      sort_order: (row.sort_order as number | null) ?? null,
+    }));
+  } catch (e) {
+    console.error('[getPublicModelPhotos] exception:', e);
+    return [];
+  }
+}
+
+/**
  * Fetches the public model roster for an agency.
  *
  * Returns only: id, name, sex, cover_url (first portfolio image).

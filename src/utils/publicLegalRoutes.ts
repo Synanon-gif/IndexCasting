@@ -120,3 +120,23 @@ export function getPublicClientSlugFromPath(pathname: string): string | null {
   const m = p.match(/^\/client\/([a-zA-Z0-9_-]+)$/);
   return m ? m[1] : null;
 }
+
+/**
+ * Extracts agency slug + model UUID from a public model detail path.
+ *
+ * Matches: /agency/<slug>/model/<uuid>
+ * Returns null for any other path, including /agency/<slug> alone.
+ *
+ * Must be checked before getPublicAgencySlugFromPath in App.tsx routing
+ * (more specific path wins; the agency regex uses $ so there is no overlap,
+ * but checking the longer path first is the clear convention).
+ *
+ * Used by App.tsx to detect and render the public model detail view without auth.
+ */
+export function getPublicModelDetailFromPath(
+  pathname: string,
+): { agencySlug: string; modelId: string } | null {
+  const p = pathname.replace(/\/+$/, '');
+  const m = p.match(/^\/agency\/([a-zA-Z0-9_-]+)\/model\/([a-zA-Z0-9_-]+)$/);
+  return m ? { agencySlug: m[1], modelId: m[2] } : null;
+}

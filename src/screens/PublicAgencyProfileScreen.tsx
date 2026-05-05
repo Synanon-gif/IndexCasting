@@ -38,6 +38,7 @@ import {
   type PublicAgencyProfile,
   type PublicAgencyModel,
 } from '../services/publicAgencyProfileSupabase';
+import { navigatePublicPath } from '../utils/publicLegalRoutes';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -90,7 +91,7 @@ function filterAndSortPublicModels(
 
 const LOGO_SIZE = 64;
 const MAX_CONTENT_W = 1280;
-const GRID_GAP = 2;
+const GRID_GAP = 1;
 const NAME_STRIP_H = 28;
 
 // ─── Model card ────────────────────────────────────────────────────────────
@@ -101,40 +102,47 @@ function ModelCard({
   item,
   cellWidth,
   cellHeight,
+  agencySlug,
 }: {
   item: PublicAgencyModel;
   cellWidth: number;
   cellHeight: number;
+  agencySlug: string;
 }) {
   const [hovered, setHovered] = useState(false);
-  const categoryLabel = item.sex === 'female' ? 'Women' : item.sex === 'male' ? 'Men' : null;
 
-  return (
-    <View style={[s.cell, { width: cellWidth }]}>
-      {/* Image area — hover events attach here */}
-      <View
-        style={{ width: cellWidth, height: cellHeight }}
-        // @ts-ignore — React Native Web hover events
-        onMouseEnter={Platform.OS === 'web' ? () => setHovered(true) : undefined}
-        onMouseLeave={Platform.OS === 'web' ? () => setHovered(false) : undefined}
-      >
+  const cardContent = (
+    <>
+      {/* Image area */}
+      <View style={{ width: cellWidth, height: cellHeight }}>
         {item.cover_url ? (
-          <StorageImage uri={item.cover_url} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <StorageImage
+            uri={item.cover_url}
+            style={[
+              StyleSheet.absoluteFill,
+              // @ts-ignore — web-only: anchor image crop at top to keep face in frame
+              Platform.OS === 'web' ? { objectPosition: 'top center' } : undefined,
+            ]}
+            resizeMode="cover"
+          />
         ) : (
           <View style={[StyleSheet.absoluteFill, s.cellPlaceholder]}>
             <Text style={s.cellInitial}>{item.name.charAt(0).toUpperCase()}</Text>
           </View>
         )}
 
-        {/* Hover overlay — web only, shows name + category centered over image */}
-        {hovered && Platform.OS === 'web' && (
-          <View style={s.hoverOverlay}>
+        {hovered && (
+          <View
+            style={[
+              s.hoverOverlay,
+              { pointerEvents: 'none' },
+              // @ts-ignore — web-only gradient; no flat backgroundColor
+              { backgroundImage: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 60%)' },
+            ]}
+          >
             <Text style={s.hoverName} numberOfLines={2}>
               {item.name.toUpperCase()}
             </Text>
-            {categoryLabel ? (
-              <Text style={s.hoverCategory}>{categoryLabel.toUpperCase()}</Text>
-            ) : null}
           </View>
         )}
       </View>
@@ -145,8 +153,33 @@ function ModelCard({
           {item.name.toUpperCase()}
         </Text>
       </View>
-    </View>
+    </>
   );
+
+  if (Platform.OS === 'web') {
+    return React.createElement(
+      'a',
+      {
+        href: `/agency/${agencySlug}/model/${item.id}`,
+        style: {
+          ...StyleSheet.flatten([s.cell, { width: cellWidth }]),
+          display: 'block',
+          textDecoration: 'none',
+          color: 'inherit',
+          cursor: 'pointer',
+        },
+        onClick: (e: MouseEvent) => {
+          e.preventDefault();
+          navigatePublicPath(`/agency/${agencySlug}/model/${item.id}`);
+        },
+        onMouseEnter: () => setHovered(true),
+        onMouseLeave: () => setHovered(false),
+      },
+      cardContent,
+    );
+  }
+
+  return <View style={[s.cell, { width: cellWidth }]}>{cardContent}</View>;
 }
 
 // ─── Screen ────────────────────────────────────────────────────────────────
@@ -167,7 +200,7 @@ export function PublicAgencyProfileScreen({
   const H_PAD = isMobileWidth(width) ? spacing.md : spacing.lg;
   const contentW = Math.min(width, MAX_CONTENT_W);
   const cellWidth = Math.floor((contentW - H_PAD * 2 - GRID_GAP * (numCols - 1)) / numCols);
-  const cellHeight = Math.floor(cellWidth * 1.35);
+  const cellHeight = Math.floor(cellWidth * 1.5);
 
   // ── Data loading ──
 
@@ -251,9 +284,9 @@ export function PublicAgencyProfileScreen({
 
   const renderModel = useCallback(
     ({ item }: ListRenderItemInfo<PublicAgencyModel>) => (
-      <ModelCard item={item} cellWidth={cellWidth} cellHeight={cellHeight} />
+      <ModelCard item={item} cellWidth={cellWidth} cellHeight={cellHeight} agencySlug={slug} />
     ),
-    [cellWidth, cellHeight],
+    [cellWidth, cellHeight, slug],
   );
 
   const renderHeader = useCallback(() => {
@@ -397,6 +430,48 @@ export function PublicAgencyProfileScreen({
   }
 
   // ── State: ready ──
+
+  // Web: render with native DOM elements so model card <a> clicks are never
+  // captured by a React Native ScrollView capture-phase mousedown handler.
+  if (Platform.OS === 'web') {
+    return (
+      <View style={s.shell}>
+        {React.createElement(
+          'div',
+          { style: { flexGrow: 1, overflowY: 'auto' } },
+          React.createElement(
+            'div',
+            {
+              style: {
+                paddingBottom: 120,
+                paddingLeft: H_PAD,
+                paddingRight: H_PAD,
+                maxWidth: MAX_CONTENT_W,
+                marginLeft: 'auto',
+                marginRight: 'auto',
+              },
+            },
+            renderHeader(),
+            filteredModels.length > 0
+              ? React.createElement(
+                  'div',
+                  { style: { display: 'flex', flexWrap: 'wrap', gap: GRID_GAP } },
+                  filteredModels.map((item) =>
+                    React.createElement(ModelCard, {
+                      key: item.id,
+                      item,
+                      cellWidth,
+                      cellHeight,
+                      agencySlug: slug,
+                    }),
+                  ),
+                )
+              : null,
+          ),
+        )}
+      </View>
+    );
+  }
 
   return (
     <View style={s.shell}>
@@ -633,33 +708,22 @@ const s = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Hover overlay — web only, shown on mouse-enter
+  // Hover overlay — web only, bottom-anchored gradient
   hoverOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.52)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
     padding: spacing.sm,
   },
   hoverName: {
     ...typography.label,
-    fontSize: 11,
-    letterSpacing: 1,
-    color: '#ffffff',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  hoverCategory: {
-    ...typography.body,
     fontSize: 10,
-    letterSpacing: 1.5,
-    color: 'rgba(255,255,255,0.65)',
-    textAlign: 'center',
-    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    color: '#ffffff',
+    textAlign: 'left',
   },
 
   // ── Empty segment ──
