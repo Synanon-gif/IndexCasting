@@ -40,6 +40,8 @@ module.exports = {
       projectId: (process.env.EAS_PROJECT_ID ?? easProjectIdFromAppJson).trim(),
     },
   },
+  // Graphic logo: native `icon` / `splash` / Android adaptive + web `favicon` + post-export apple-touch-icon.
+  // In-app headers/toolbars: typography "INDEX CASTING" only — do not embed BrandLogo/Image marks in chrome.
   web: {
     ...appJson.expo.web,
     bundler: 'metro',
