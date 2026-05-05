@@ -122,7 +122,7 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
         monthLabel={uiCopy.dashboard.monthViewLabel}
         weekLabel={uiCopy.dashboard.weekViewLabel}
         dayLabel={uiCopy.calendar.dayViewLabel}
-        compact={false}
+        compact={viewMode !== 'month'}
         sectionTitle={uiCopy.calendar.viewModeHeading}
         sectionHint={viewModeHint}
       />
@@ -165,7 +165,6 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
           onPrevWeek={() => shiftFocus(addDaysYmd(focusDate, -7))}
           onNextWeek={() => shiftFocus(addDaysYmd(focusDate, 7))}
           rangeLabel={rangeLabel}
-          maxChipsPerDay={6}
           denseWorkWeek
           showDayKindFooter
         />

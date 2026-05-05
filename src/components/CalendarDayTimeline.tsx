@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   useWindowDimensions,
-  LayoutChangeEvent,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
@@ -15,6 +15,7 @@ import { assignOverlapLanes, formatMinutesAsHm } from '../utils/calendarTimeline
 import { blockTimeRangeLabel, cappedBlockLayout } from '../utils/calendarOverviewLayout';
 
 const HOUR_HEIGHT = 44;
+const TIME_AXIS_WIDTH = 52;
 const MIN_HOUR = 6;
 const MAX_HOUR = 22;
 
@@ -50,10 +51,9 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
   minLaneWidthPx,
   maxVisibleParallelLanes,
 }) => {
-  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth } = useWindowDimensions();
   const [viewportW, setViewportW] = useState(0);
   const [expandedHidden, setExpandedHidden] = useState(false);
-  const timelineMaxHeight = Math.max(300, Math.round(windowHeight * 0.55));
   const pxPerMin = HOUR_HEIGHT / 60;
 
   const { lanesAll, displayStartMin, totalHeight, startHour, endHour } = useMemo(() => {
@@ -112,7 +112,7 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
   );
 
   const useLanePixels = minLaneWidthPx != null && minLaneWidthPx > 0;
-  const fallbackViewportW = Math.max(160, windowWidth - 44 - spacing.sm * 4);
+  const fallbackViewportW = Math.max(160, windowWidth - TIME_AXIS_WIDTH - spacing.sm * 4);
   const measuredW = viewportW > 0 ? viewportW : fallbackViewportW;
   const innerCanvasW = useLanePixels
     ? Math.max(measuredW, effectiveLaneColumns * minLaneWidthPx!)
@@ -234,14 +234,9 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
           <Text style={styles.navChevron}>›</Text>
         </TouchableOpacity>
       </View>
-      <ScrollView
-        style={{ maxHeight: timelineMaxHeight }}
-        showsVerticalScrollIndicator
-        nestedScrollEnabled
-        keyboardShouldPersistTaps="handled"
-      >
+      <View style={styles.timelineBody}>
         <View style={styles.bodyRow}>
-          <View style={{ width: 44 }}>
+          <View style={{ width: TIME_AXIS_WIDTH }}>
             {hours.map((h) => (
               <View key={h} style={{ height: HOUR_HEIGHT, justifyContent: 'flex-start' }}>
                 <Text style={styles.hourLabel}>{String(h).padStart(2, '0')}:00</Text>
@@ -319,7 +314,7 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
             ) : null}
           </View>
         ) : null}
-      </ScrollView>
+      </View>
     </View>
   );
 };
@@ -348,7 +343,11 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
   },
-  bodyRow: { flexDirection: 'row', alignItems: 'stretch' },
+  timelineBody: {
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  bodyRow: { flexDirection: 'row', alignItems: 'stretch', width: '100%' },
   hourLabel: {
     fontSize: 10,
     color: colors.textSecondary,

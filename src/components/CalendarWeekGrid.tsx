@@ -1,34 +1,41 @@
-import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  LayoutChangeEvent,
+} from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { isMobileWidth } from '../theme/breakpoints';
 import { uiCopy } from '../constants/uiCopy';
 import type { CalendarScheduleBlock } from '../utils/calendarUnifiedTimeline';
-import { formatMinutesAsHm } from '../utils/calendarTimelineLayout';
-import type { DayTimeBand } from '../utils/calendarOverviewLayout';
+import { assignOverlapLanes, formatMinutesAsHm } from '../utils/calendarTimelineLayout';
 import {
-  startMinToDayTimeBand,
+  blockTimeRangeLabel,
+  cappedBlockLayout,
   weekColumnKindSegments,
   weekKindSegmentLabel,
 } from '../utils/calendarOverviewLayout';
 
-function timeBandUiLabel(band: DayTimeBand): string {
-  const c = uiCopy.calendar;
-  switch (band) {
-    case 'early':
-      return c.timeBandEarly;
-    case 'morning':
-      return c.timeBandMorning;
-    case 'afternoon':
-      return c.timeBandAfternoon;
-    case 'evening':
-      return c.timeBandEvening;
-  }
-}
-
 const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const COL_GAP = 4;
+
+const TIME_AXIS_WIDTH = 52;
+const DAY_HEADER_ROW_H = 44;
+const HOUR_HEIGHT = 44;
+
+/** Default visible hour window expands with events (same idea as CalendarDayTimeline). */
+const MIN_HOUR = 6;
+const MAX_HOUR = 22;
+
 const GRID_PADDING = spacing.sm;
+
+const LONG_EVENT_CAP_MIN = 120;
+const CAPPED_BLOCK_MAX_PX = 108;
+const BLOCK_MIN_HEIGHT_PX = 20;
 
 function WeekKindFooterVisual({ list }: { list: CalendarScheduleBlock[] }) {
   const segments = weekColumnKindSegments(list);
@@ -55,7 +62,6 @@ function WeekKindFooterVisual({ list }: { list: CalendarScheduleBlock[] }) {
 
 export type CalendarWeekGridProps = {
   weekDates: string[];
-  /** Events with date in this week */
   events: CalendarScheduleBlock[];
   selectedDate: string | null;
   onSelectDay: (date: string) => void;
@@ -63,10 +69,10 @@ export type CalendarWeekGridProps = {
   onPrevWeek: () => void;
   onNextWeek: () => void;
   rangeLabel: string;
+  /** @deprecated Week view is time-grid based; unused, kept for call-site compatibility. */
   maxChipsPerDay?: number;
-  /** B2B: single-line event chips on mobile, slightly higher mobile chip cap. */
+  /** B2B: slightly narrower minimum column width on phones. */
   denseWorkWeek?: boolean;
-  /** B2B: compact kind counts under the chip list (full day). */
   showDayKindFooter?: boolean;
 };
 
@@ -79,12 +85,38 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
   onPrevWeek,
   onNextWeek,
   rangeLabel,
-  maxChipsPerDay = 4,
   denseWorkWeek = false,
   showDayKindFooter = false,
 }) => {
   const { width: layoutWidth } = useWindowDimensions();
   const isMobile = isMobileWidth(layoutWidth);
+  const [bodyViewportW, setBodyViewportW] = useState(0);
+
+  const pxPerMin = HOUR_HEIGHT / 60;
+
+  const range = useMemo(() => {
+    let evMin = MIN_HOUR * 60;
+    let evMax = MAX_HOUR * 60;
+    for (const e of events) {
+      evMin = Math.min(evMin, Math.max(0, e.startMin - 30));
+      evMax = Math.max(evMax, e.endMin + 30);
+    }
+    const startHour = Math.max(0, Math.floor(evMin / 60));
+    const endHour = Math.min(24, Math.ceil(evMax / 60));
+    const displayStartMin = startHour * 60;
+    const displayEndMin = endHour * 60;
+    const totalMin = Math.max(60, displayEndMin - displayStartMin);
+    const totalHeight = totalMin * pxPerMin;
+    const hours: number[] = [];
+    for (let h = startHour; h < endHour; h++) hours.push(h);
+    return {
+      displayStartMin,
+      totalHeight,
+      startHour,
+      endHour,
+      hours,
+    };
+  }, [events, pxPerMin]);
 
   const byDate = useMemo(() => {
     const m: Record<string, CalendarScheduleBlock[]> = {};
@@ -98,65 +130,91 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
     return m;
   }, [events, weekDates]);
 
-  // Chip presence: bigger on desktop so week chips read at the same distance as month/day, slightly
-  // smaller on mobile to keep multi-event days legible without exceeding the 44px tap target.
-  const chipFontSize = denseWorkWeek ? (isMobile ? 10 : 11) : isMobile ? 10 : 11;
-  const mobileMaxChips = isMobile ? (denseWorkWeek ? 3 : 2) : maxChipsPerDay;
+  const minDayColumnPx = denseWorkWeek ? (isMobile ? 72 : 96) : isMobile ? 88 : 112;
 
-  const renderChipsForDay = (list: CalendarScheduleBlock[], cap: number) => {
-    const slice = list.slice(0, cap);
-    const nodes: React.ReactNode[] = [];
-    let prevBand: ReturnType<typeof startMinToDayTimeBand> | null = null;
+  const onBodyMeasured = (e: LayoutChangeEvent) => {
+    setBodyViewportW(e.nativeEvent.layout.width);
+  };
 
-    for (let i = 0; i < slice.length; i++) {
-      const ev = slice[i];
-      if (denseWorkWeek) {
-        const band = startMinToDayTimeBand(ev.startMin);
-        if (prevBand !== band) {
-          prevBand = band;
-          nodes.push(
-            <View key={`band-${band}-${i}`} style={styles.bandDivider}>
-              <Text style={styles.bandLabel}>{timeBandUiLabel(band)}</Text>
-            </View>,
+  const fallbackViewport = Math.max(120, layoutWidth - TIME_AXIS_WIDTH - GRID_PADDING * 2 - 24);
+  const usable = bodyViewportW > 0 ? bodyViewportW : fallbackViewport;
+  const dayColumnWidth = Math.max(minDayColumnPx, Math.floor(usable / 7));
+  const scrollContentWidth = dayColumnWidth * 7;
+
+  const todayYmd = new Date().toISOString().slice(0, 10);
+
+  const renderDayColumn = (date: string, idx: number) => {
+    const list = byDate[date] ?? [];
+    const lanes = assignOverlapLanes(list);
+    const isSelected = selectedDate === date;
+    const isToday = date === todayYmd;
+
+    return (
+      <View
+        key={date}
+        style={[
+          styles.dayColumn,
+          { width: dayColumnWidth, height: range.totalHeight },
+          idx > 0 && styles.dayColumnBorder,
+          isToday && styles.dayColumnToday,
+          isSelected && styles.dayColumnSelected,
+        ]}
+      >
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => onSelectDay(date)}
+          accessibilityRole="button"
+          accessibilityLabel={`${WEEKDAY_SHORT[idx]} ${date}. Open day`}
+        />
+
+        {lanes.map((ev) => {
+          const top = (ev.startMin - range.displayStartMin) * pxPerMin;
+          const { heightPx, isCapped } = cappedBlockLayout(
+            ev.startMin,
+            ev.endMin,
+            pxPerMin,
+            BLOCK_MIN_HEIGHT_PX,
+            CAPPED_BLOCK_MAX_PX,
+            LONG_EVENT_CAP_MIN,
           );
-        }
-      }
+          const laneCountForPct = ev.laneCount;
+          const wPct = 100 / laneCountForPct;
+          const leftPct = wPct * ev.lane;
+          const timeLabel = blockTimeRangeLabel(ev.startMin, ev.endMin, isCapped);
 
-      const chipHitStyle = [
-        styles.chip,
-        denseWorkWeek && styles.chipDense,
-        denseWorkWeek && isMobile && styles.chipMobileDenseTap,
-        { backgroundColor: ev.color },
-      ];
-
-      nodes.push(
-        <TouchableOpacity
-          key={ev.id + ev.startMin}
-          onPress={(e) => {
-            e.stopPropagation?.();
-            onEventPress(ev);
-          }}
-          style={chipHitStyle}
-          accessibilityLabel={`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
-        >
-          {denseWorkWeek ? (
-            <Text style={[styles.chipText, { fontSize: chipFontSize }]} numberOfLines={1}>
-              {`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
-            </Text>
-          ) : (
-            <>
-              <Text style={[styles.chipText, { fontSize: chipFontSize }]} numberOfLines={1}>
-                {formatMinutesAsHm(ev.startMin)}
+          return (
+            <TouchableOpacity
+              key={`${ev.id}-${ev.startMin}-${ev.lane}-${date}`}
+              onPress={(e) => {
+                e.stopPropagation?.();
+                onEventPress(ev);
+              }}
+              style={[
+                styles.block,
+                {
+                  top,
+                  height: heightPx,
+                  left: `${leftPct}%`,
+                  width: `${wPct}%`,
+                  backgroundColor: ev.color,
+                  zIndex: 2,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`${formatMinutesAsHm(ev.startMin)} ${ev.title}`}
+            >
+              <Text style={styles.blockTime} numberOfLines={1}>
+                {timeLabel}
               </Text>
-              <Text style={[styles.chipTextTitle, { fontSize: chipFontSize }]} numberOfLines={1}>
+              <Text style={styles.blockTitle} numberOfLines={heightPx < 52 ? 1 : 2}>
                 {ev.title}
               </Text>
-            </>
-          )}
-        </TouchableOpacity>,
-      );
-    }
-    return nodes;
+              {isCapped ? <View style={styles.blockCapCue} pointerEvents="none" /> : null}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
   };
 
   return (
@@ -184,56 +242,77 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
           <Text style={styles.navChevron}>›</Text>
         </TouchableOpacity>
       </View>
-      <View style={[styles.columns, { gap: COL_GAP }]}>
-        {weekDates.map((date, idx) => {
-          const dayNum = Number(date.slice(8, 10));
-          const list = byDate[date] ?? [];
-          const cap = isMobile ? mobileMaxChips : maxChipsPerDay;
-          const isSelected = selectedDate === date;
-          const isToday = date === new Date().toISOString().slice(0, 10);
-          const hasEvents = list.length > 0;
-          return (
-            <TouchableOpacity
-              key={date}
-              style={[
-                styles.col,
-                styles.colFlex,
-                isMobile && denseWorkWeek && styles.colMobileDenseH,
-                isMobile && !denseWorkWeek && styles.colMobileStdH,
-                hasEvents && styles.colHasEvents,
-                isToday && !isSelected && styles.colToday,
-                isSelected && styles.colSelected,
-              ]}
-              onPress={() => onSelectDay(date)}
-              activeOpacity={0.85}
+
+      <View style={styles.gridShell}>
+        {/* Fixed time gutter + horizontally scrollable day strip */}
+        <View style={styles.gridRow}>
+          <View style={{ width: TIME_AXIS_WIDTH }}>
+            <View style={{ height: DAY_HEADER_ROW_H }} />
+            {range.hours.map((h) => (
+              <View key={`t-${h}`} style={{ height: HOUR_HEIGHT, justifyContent: 'flex-start' }}>
+                <Text style={styles.hourLabel}>{String(h).padStart(2, '0')}:00</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.bodyScrollHost} onLayout={onBodyMeasured}>
+            <ScrollView
+              horizontal
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={scrollContentWidth > usable + 1}
+              bounces={false}
             >
-              <View style={styles.colHeader}>
-                <Text style={styles.wd}>{WEEKDAY_SHORT[idx]}</Text>
-                <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>{dayNum}</Text>
+              <View style={{ width: scrollContentWidth }}>
+                <View style={[styles.dayHeaderRow, { height: DAY_HEADER_ROW_H }]}>
+                  {weekDates.map((date, idx) => {
+                    const dayNum = Number(date.slice(8, 10));
+                    const isSelected = selectedDate === date;
+                    const isToday = date === todayYmd;
+                    return (
+                      <TouchableOpacity
+                        key={date}
+                        style={[
+                          styles.dayHeaderCell,
+                          { width: dayColumnWidth },
+                          idx > 0 && styles.dayHeaderCellBorder,
+                          isToday && styles.dayHeadToday,
+                        ]}
+                        onPress={() => onSelectDay(date)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${WEEKDAY_SHORT[idx]}, ${dayNum}`}
+                      >
+                        <Text style={styles.dayHeadWd}>{WEEKDAY_SHORT[idx]}</Text>
+                        <Text style={[styles.dayHeadNum, isSelected && styles.dayHeadNumSel]}>
+                          {dayNum}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <View
+                  style={[
+                    styles.columnsRow,
+                    { height: range.totalHeight, width: scrollContentWidth },
+                  ]}
+                >
+                  {range.hours.map((h, i) => (
+                    <View
+                      key={`hline-all-${h}`}
+                      pointerEvents="none"
+                      style={[styles.gridHourLine, { top: i * HOUR_HEIGHT }]}
+                    />
+                  ))}
+                  {weekDates.map((date, idx) => renderDayColumn(date, idx))}
+                </View>
               </View>
-              <View style={styles.colBody}>
-                {hasEvents ? (
-                  <View style={styles.chips}>
-                    {renderChipsForDay(list, cap)}
-                    {list.length > cap ? (
-                      <View style={denseWorkWeek && isMobile ? styles.moreHit : undefined}>
-                        <Text style={styles.more}>+{list.length - cap}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                ) : (
-                  // Empty days get a low-contrast hint so the week grid never reads as "broken /
-                  // empty cards"; a11y unchanged (touch target still opens the day view).
-                  <View style={styles.emptyHint} pointerEvents="none">
-                    <Text style={styles.emptyHintText}>—</Text>
-                  </View>
-                )}
-              </View>
-              {showDayKindFooter && hasEvents ? <WeekKindFooterVisual list={list} /> : null}
-            </TouchableOpacity>
-          );
-        })}
+            </ScrollView>
+          </View>
+        </View>
       </View>
+
+      {showDayKindFooter && events.length > 0 ? <WeekKindFooterVisual list={events} /> : null}
     </View>
   );
 };
@@ -253,7 +332,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   navHit: { padding: spacing.xs },
   navChevron: { fontSize: 22, color: colors.textPrimary, fontWeight: '600' },
@@ -264,107 +343,94 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
   },
-  columns: { flexDirection: 'row', width: '100%', alignSelf: 'stretch' },
-  col: {
-    // Taller columns reduce the visual gap between event chips and the cell border so the week
-    // surface no longer reads as "sparse cards"; matches the perceived density of Month and Day.
-    minHeight: 172,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 8,
-    backgroundColor: 'transparent',
-    flexDirection: 'column',
+  gridShell: {
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  colFlex: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
-  colMobileDenseH: { minHeight: 152 },
-  colMobileStdH: { minHeight: 132 },
-  colHasEvents: {
-    // Subtle warm tint when the day carries events, mirroring the premium MonthCalendarView surface.
-    backgroundColor: colors.surfaceWarm,
+  gridRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    width: '100%',
   },
-  colSelected: {
-    borderColor: colors.textPrimary,
-    borderWidth: 2,
-    padding: 7,
-    backgroundColor: colors.surface,
+  bodyScrollHost: {
+    flex: 1,
+    minWidth: 0,
   },
-  colToday: {
-    borderColor: colors.accentGreen,
+  hourLabel: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: -2,
   },
-  colHeader: {
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  colBody: {
-    flexGrow: 1,
-    flexShrink: 1,
-    minHeight: 0,
-  },
-  wd: { fontSize: 10, color: colors.textSecondary, textAlign: 'center', letterSpacing: 0.4 },
-  dayNum: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  dayNumSelected: { fontWeight: '700' },
-  chips: { gap: 5 },
-  bandDivider: {
-    marginTop: 3,
-    marginBottom: 3,
-    paddingBottom: 2,
+  dayHeaderRow: {
+    flexDirection: 'row',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  bandLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  chip: {
-    // Stronger chip presence: bigger padding + radius so the colour blocks read as event tiles
-    // rather than tiny pills, matching Day-view block density on the same calendar surface.
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 5,
-  },
-  chipDense: {
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    borderRadius: 5,
-  },
-  chipMobileDenseTap: {
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  chipText: { fontSize: 11, color: '#fff', fontWeight: '700', lineHeight: 13 },
-  chipTextTitle: { fontSize: 11, color: '#fff', fontWeight: '500', opacity: 0.95, lineHeight: 13 },
-  more: { fontSize: 10, color: colors.textSecondary, textAlign: 'center', fontWeight: '600' },
-  moreHit: {
-    minHeight: 40,
-    justifyContent: 'center',
-  },
-  emptyHint: {
-    flexGrow: 1,
+  dayHeaderCell: {
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 4,
   },
-  emptyHintText: {
-    fontSize: 14,
-    color: colors.borderLight,
-    fontWeight: '500',
+  dayHeaderCellBorder: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: colors.border,
+  },
+  dayHeadToday: {
+    backgroundColor: colors.surfaceWarm,
+  },
+  dayHeadWd: { fontSize: 10, color: colors.textSecondary, fontWeight: '600' },
+  dayHeadNum: { fontSize: 15, fontWeight: '600', color: colors.textPrimary },
+  dayHeadNumSel: { textDecorationLine: 'underline' },
+  columnsRow: {
+    flexDirection: 'row',
+    position: 'relative',
+  },
+  gridHourLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    zIndex: 0,
+  },
+  dayColumn: {
+    position: 'relative',
+    backgroundColor: 'transparent',
+  },
+  dayColumnBorder: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: colors.border,
+  },
+  dayColumnToday: {
+    backgroundColor: colors.surfaceWarm,
+  },
+  dayColumnSelected: {
+    backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  block: {
+    position: 'absolute',
+    borderRadius: 4,
+    paddingHorizontal: 3,
+    paddingVertical: 2,
+    overflow: 'hidden',
+  },
+  blockTime: { fontSize: 8, color: '#fff', fontWeight: '700' },
+  blockTitle: { fontSize: 9, color: '#fff', fontWeight: '600', lineHeight: 11 },
+  blockCapCue: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 14,
+    backgroundColor: 'rgba(0,0,0,0.2)',
   },
   kindFooterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 6,
-    marginTop: 6,
-    paddingTop: 5,
+    marginTop: spacing.sm,
+    paddingTop: spacing.xs,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
