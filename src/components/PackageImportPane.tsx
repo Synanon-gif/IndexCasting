@@ -33,7 +33,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { colors, spacing, typography } from '../theme/theme';
+import { colors, spacing, typography, uiChrome } from '../theme/theme';
 import { getProviderForUrl } from '../services/providerRegistry';
 import { createSupabasePackageImageFetchImpl } from '../services/packageImageProxyClient';
 import {
@@ -1004,63 +1004,63 @@ function humaniseError(code: string): string {
 const styles = StyleSheet.create({
   container: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: uiChrome.border,
     borderRadius: 8,
     padding: spacing.md,
     marginBottom: spacing.lg,
-    backgroundColor: colors.surface,
+    backgroundColor: uiChrome.surface,
   },
   title: {
     ...typography.heading,
     fontSize: 14,
-    color: colors.textPrimary,
+    color: uiChrome.textPrimary,
     marginBottom: spacing.xs,
   },
   description: {
     ...typography.body,
     fontSize: 12,
-    color: colors.textSecondary,
+    color: uiChrome.textSecondary,
     marginBottom: spacing.xs,
   },
   hint: {
     ...typography.body,
     fontSize: 11,
-    color: colors.textSecondary,
+    color: uiChrome.textSecondary,
     marginBottom: spacing.sm,
     fontStyle: 'italic',
   },
   subtitle: {
     ...typography.heading,
     fontSize: 13,
-    color: colors.textPrimary,
+    color: uiChrome.textPrimary,
     marginBottom: spacing.sm,
   },
   fieldLabel: {
     ...typography.body,
     fontSize: 12,
-    color: colors.textPrimary,
+    color: uiChrome.textPrimary,
     marginBottom: spacing.xs,
     fontWeight: '600',
   },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: uiChrome.border,
     borderRadius: 6,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    color: colors.textPrimary,
+    color: uiChrome.textPrimary,
     backgroundColor: colors.background,
     marginBottom: spacing.sm,
   },
   primaryBtn: {
-    backgroundColor: colors.accentGreen,
+    backgroundColor: uiChrome.primaryAction,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: 6,
     alignItems: 'center',
   },
   primaryBtnLabel: {
-    color: '#fff',
+    color: uiChrome.primaryActionText,
     fontWeight: '600',
     fontSize: 13,
   },
@@ -1069,20 +1069,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: uiChrome.secondaryActionBorder,
     alignItems: 'center',
+    backgroundColor: uiChrome.secondaryActionBg,
   },
   secondaryBtnLabel: {
-    color: colors.textPrimary,
+    color: uiChrome.secondaryActionText,
     fontSize: 13,
   },
   btnDisabled: {
-    opacity: 0.4,
+    opacity: uiChrome.disabledOpacity,
   },
   errorText: {
     ...typography.body,
     fontSize: 12,
-    color: colors.buttonSkipRed,
+    color: uiChrome.destructiveAction,
     marginTop: spacing.sm,
   },
   warnText: {

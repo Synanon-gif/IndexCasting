@@ -24,6 +24,46 @@ export const colors = {
   black: '#000000',
 };
 
+/**
+ * Semantic UI chrome — shared aliases for buttons, links, banners, neutral pills,
+ * input chrome, and modal surfaces. Prefer these over ad-hoc hex in new styling.
+ *
+ * PROTECTED PRODUCT SEMANTICS — do NOT replace these systems with uiChrome:
+ * - **Calendar** — `CALENDAR_COLORS`, `CALENDAR_PROJECTION_COLORS`, and resolver
+ *   pipelines in `calendarProjectionLabel.ts` / `calendarColors.ts` (lifecycle-
+ *   bound orange/blue/green/purple etc.).
+ * - **Client assignment** — colors come from assignment / flag catalog data,
+ *   not from theme aliases.
+ * - **Option / request lifecycle & negotiation** — status pills, axis button
+ *   colors (`OPTION_REQUEST_CHAT_STATUS_COLORS`, fee/availability semantics).
+ *
+ * uiChrome is intentionally limited to generic application chrome.
+ */
+export const uiChrome = {
+  primaryAction: colors.buttonOptionGreen,
+  primaryActionText: colors.surface,
+  secondaryActionBg: colors.surface,
+  secondaryActionText: colors.textPrimary,
+  secondaryActionBorder: colors.border,
+  destructiveAction: colors.buttonSkipRed,
+  destructiveActionText: colors.surface,
+  warningBg: colors.surfaceWarm,
+  warningText: colors.warningDark,
+  successBg: colors.surfaceAlt,
+  successText: colors.success,
+  infoBg: colors.surface,
+  infoText: colors.textPrimary,
+  disabledOpacity: 0.5,
+  /** Inline link blue — aligns with common web link styling; not calendar/info semantics */
+  link: '#2563EB',
+  focusRing: colors.accentBrown,
+  surface: colors.surface,
+  surfaceAlt: colors.surfaceAlt,
+  border: colors.border,
+  textPrimary: colors.textPrimary,
+  textSecondary: colors.textSecondary,
+} as const;
+
 export const spacing = {
   xs: 4,
   sm: 8,

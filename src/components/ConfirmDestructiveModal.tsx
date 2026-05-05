@@ -1,14 +1,6 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  Modal,
-  TouchableOpacity,
-  StyleSheet,
-  Platform,
-  Pressable,
-} from 'react-native';
-import { colors, spacing, typography } from '../theme/theme';
+import { View, Text, Modal, TouchableOpacity, StyleSheet, Platform, Pressable } from 'react-native';
+import { spacing, typography, uiChrome } from '../theme/theme';
 
 export type ConfirmDestructiveModalProps = {
   visible: boolean;
@@ -59,7 +51,11 @@ export const ConfirmDestructiveModal: React.FC<ConfirmDestructiveModalProps> = (
         {detailLine2 ? <Text style={styles.detail}>{detailLine2}</Text> : null}
         <Text style={styles.message}>{message}</Text>
         <View style={styles.actions}>
-          <TouchableOpacity style={styles.btnSecondary} onPress={onCancel} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity
+            style={styles.btnSecondary}
+            onPress={onCancel}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Text style={styles.btnSecondaryText}>{cancelLabel}</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -71,7 +67,9 @@ export const ConfirmDestructiveModal: React.FC<ConfirmDestructiveModalProps> = (
             disabled={confirmDisabled}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={tone === 'confirm' ? styles.btnPrimaryText : styles.btnDangerText}>{confirmLabel}</Text>
+            <Text style={tone === 'confirm' ? styles.btnPrimaryText : styles.btnDangerText}>
+              {confirmLabel}
+            </Text>
           </TouchableOpacity>
         </View>
       </Pressable>
@@ -87,14 +85,14 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: uiChrome.surface,
     borderRadius: 12,
     padding: spacing.md,
     maxWidth: 400,
     alignSelf: 'center',
     width: '100%',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: uiChrome.border,
   },
   icon: {
     fontSize: 28,
@@ -104,7 +102,7 @@ const styles = StyleSheet.create({
   title: {
     ...typography.heading,
     fontSize: 18,
-    color: colors.textPrimary,
+    color: uiChrome.textPrimary,
     textAlign: 'center',
     marginBottom: spacing.sm,
     textTransform: 'none',
@@ -113,14 +111,14 @@ const styles = StyleSheet.create({
   detail: {
     ...typography.body,
     fontSize: 13,
-    color: colors.textPrimary,
+    color: uiChrome.textPrimary,
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
   message: {
     ...typography.body,
     fontSize: 14,
-    color: colors.textSecondary,
+    color: uiChrome.textSecondary,
     textAlign: 'center',
     marginBottom: spacing.lg,
   },
@@ -137,36 +135,36 @@ const styles = StyleSheet.create({
   btnSecondaryText: {
     ...typography.label,
     fontSize: 13,
-    color: colors.accent,
+    color: uiChrome.secondaryActionText,
     textTransform: 'none',
     letterSpacing: 0,
   },
   btnDanger: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    backgroundColor: colors.buttonSkipRed,
+    backgroundColor: uiChrome.destructiveAction,
     borderRadius: 8,
   },
   btnPrimary: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    backgroundColor: colors.buttonOptionGreen,
+    backgroundColor: uiChrome.primaryAction,
     borderRadius: 8,
   },
   btnDisabled: {
-    opacity: 0.5,
+    opacity: uiChrome.disabledOpacity,
   },
   btnPrimaryText: {
     ...typography.label,
     fontSize: 13,
-    color: '#fff',
+    color: uiChrome.primaryActionText,
     textTransform: 'none',
     letterSpacing: 0,
   },
   btnDangerText: {
     ...typography.label,
     fontSize: 13,
-    color: '#fff',
+    color: uiChrome.destructiveActionText,
     textTransform: 'none',
     letterSpacing: 0,
   },

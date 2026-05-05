@@ -17,7 +17,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, spacing, typography } from '../theme/theme';
+import { spacing, typography, uiChrome } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 
 type Props = {
@@ -111,9 +111,9 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: uiChrome.warningBg,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: uiChrome.border,
   },
   textCol: {
     flex: 1,
@@ -123,13 +123,13 @@ const styles = StyleSheet.create({
   title: {
     ...typography.label,
     fontSize: 13,
-    color: colors.textPrimary,
+    color: uiChrome.textPrimary,
     fontWeight: '600',
   },
   message: {
     ...typography.body,
     fontSize: 12,
-    color: colors.textSecondary,
+    color: uiChrome.textSecondary,
     lineHeight: 17,
   },
   actionsRow: {
@@ -145,21 +145,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   actionPrimary: {
-    borderColor: colors.textPrimary,
-    backgroundColor: colors.textPrimary,
+    borderColor: uiChrome.primaryAction,
+    backgroundColor: uiChrome.primaryAction,
   },
   actionPrimaryText: {
     ...typography.label,
     fontSize: 12,
-    color: colors.surface,
+    color: uiChrome.primaryActionText,
   },
   actionDanger: {
-    borderColor: colors.error,
+    borderColor: uiChrome.destructiveAction,
   },
   actionDangerText: {
     ...typography.label,
     fontSize: 12,
-    color: colors.error,
+    color: uiChrome.destructiveAction,
   },
   dismissBtn: {
     paddingVertical: spacing.xs,
@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
   dismissText: {
     ...typography.label,
     fontSize: 12,
-    color: colors.textSecondary,
+    color: uiChrome.link,
     textDecorationLine: 'underline',
   },
 });
