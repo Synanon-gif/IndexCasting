@@ -73,6 +73,7 @@ import {
 } from './src/utils/publicLegalRoutes';
 import { PublicAgencyProfileScreen } from './src/screens/PublicAgencyProfileScreen';
 import { PublicClientProfileScreen } from './src/screens/PublicClientProfileScreen';
+import { InviteHealthCheckScreen } from './src/screens/InviteHealthCheckScreen';
 import { TrustCenterView } from './src/views/trust/TrustCenterView';
 import { TrustSecurityView } from './src/views/trust/TrustSecurityView';
 import { TrustDpaView } from './src/views/trust/TrustDpaView';
@@ -1153,6 +1154,18 @@ function AppContent() {
   // and profile.role === 'admin' (DB trigger-protected fallback). Frontend routing grants
   // no DB privileges — the AdminDashboard's own RPCs enforce UUID+email pin independently.
   if (isAdmin(profile)) {
+    if (
+      Platform.OS === 'web' &&
+      typeof window !== 'undefined' &&
+      window.location.pathname === '/admin/invite-health'
+    ) {
+      return (
+        <>
+          <InviteHealthCheckScreen onBack={replaceWebPathToHome} />
+          <StatusBar style="dark" />
+        </>
+      );
+    }
     return (
       <>
         <View style={styles.shell}>
