@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, ActivityIndicator } from 'react-native';
+import { BrandLogo } from '../components/BrandLogo';
 import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
 import { isAgency } from '../types/roles';
@@ -41,7 +42,7 @@ export const PendingActivationScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.brand}>{uiCopy.pendingActivation.brand}</Text>
+        <BrandLogo size={152} containerStyle={{ marginBottom: spacing.sm }} />
         <Text style={styles.icon}>🔒</Text>
         <Text style={styles.title}>{uiCopy.pendingActivation.title}</Text>
 

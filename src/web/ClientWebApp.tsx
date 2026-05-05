@@ -13,6 +13,7 @@ import { useBillingTabBadge } from '../hooks/useBillingTabBadge';
 import type { BillingAttentionRole } from '../utils/billingAttention';
 import { BillingAttentionWidget } from '../components/billing/BillingAttentionWidget';
 import { AiAssistantButton } from '../components/help/AiAssistantButton';
+import { BrandLogo } from '../components/BrandLogo';
 import { isMobileWidth } from '../theme/breakpoints';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
 import {
@@ -2695,11 +2696,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               </TouchableOpacity>
             </View>
             <View style={styles.topBarCenter}>
-              {!clientChatFullscreen && (
-                <Text style={styles.brand} numberOfLines={1}>
-                  INDEX CASTING
-                </Text>
-              )}
+              {!clientChatFullscreen && <BrandLogo size={30} />}
             </View>
             <View style={[styles.topBarSide, styles.topBarSideRight]}>
               {!clientChatFullscreen ? <AiAssistantButton viewerRole="client" /> : null}

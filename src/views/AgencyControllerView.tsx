@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StorageImage } from '../components/StorageImage';
+import { BrandLogo } from '../components/BrandLogo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { handleTabPress, BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
 import {
@@ -862,7 +863,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       ]}
     >
       <View style={s.topShell}>
-        {!mobileChatOverlayActive && <Text style={s.brand}>INDEX CASTING</Text>}
+        {!mobileChatOverlayActive && <BrandLogo size={28} />}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
           {!mobileChatOverlayActive && <AiAssistantButton viewerRole="agency" />}
           <TouchableOpacity

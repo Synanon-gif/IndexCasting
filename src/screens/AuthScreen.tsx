@@ -15,6 +15,7 @@ import { uiCopy } from '../constants/uiCopy';
 import { TermsScreen } from './TermsScreen';
 import { PrivacyScreen } from './PrivacyScreen';
 import { navigatePublicLegal, openAuthAreaPublicPage } from '../utils/publicLegalRoutes';
+import { BrandLogo } from '../components/BrandLogo';
 import { supabase } from '../../lib/supabase';
 
 type AuthScreenProps = {
@@ -155,7 +156,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       </Modal>
 
       <View style={styles.content}>
-        <Text style={styles.brand}>INDEX CASTING</Text>
+        <BrandLogo size={168} containerStyle={{ marginBottom: spacing.sm }} />
         <Text style={styles.subtitle}>
           {inviteAuth || modelClaimAuth
             ? uiCopy.auth.inviteOrClaimContextSubtitle

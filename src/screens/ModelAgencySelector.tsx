@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
+import { BrandLogo } from '../components/BrandLogo';
 import { colors, spacing, typography } from '../theme/theme';
 import { useModelAgency } from '../context/ModelAgencyContext';
 import { useAuth } from '../context/AuthContext';
@@ -31,7 +32,7 @@ export const ModelAgencySelector: React.FC = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.brand}>{uiCopy.login.brandTitle}</Text>
+        <BrandLogo size={168} containerStyle={{ marginBottom: spacing.sm }} />
         <Text style={styles.title}>{uiCopy.model.selectAgencyTitle}</Text>
         <Text style={styles.subtitle}>
           {agencies.length > 0 ? uiCopy.model.selectAgencySubtitle : uiCopy.model.noAgencyProfiles}

@@ -26,6 +26,7 @@ import { BookingChatView } from './BookingChatView';
 import { ApplicantApplicationsSection } from '../components/ApplicantApplicationsSection';
 import { uiCopy } from '../constants/uiCopy';
 import { BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
+import { BrandLogo } from '../components/BrandLogo';
 
 type ModelApplicationsViewProps = {
   applicantUserId: string;
@@ -204,7 +205,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
   return (
     <View style={styles.container}>
       <View style={styles.topShell}>
-        <Text style={styles.brand}>INDEX CASTING</Text>
+        <BrandLogo size={72} />
         <TouchableOpacity
           onPress={onBackToRoleSelection}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}

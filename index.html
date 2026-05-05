@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Index Casting</title>
+    <link rel="icon" type="image/png" href="/assets/favicon.png" />
     <style>
         body {
             font-family: system-ui, -apple-system, sans-serif;
@@ -13,12 +14,33 @@
             justify-content: center;
             min-height: 100vh;
             margin: 0;
-            background-color: #0a0a0a;
-            color: #fff;
+            background-color: #ffffff;
+            color: #001a2e;
             text-align: center;
         }
-        h1 { font-size: 2.5rem; letter-spacing: -0.5px; margin-bottom: 0.5rem; }
-        p { color: #888; font-size: 1rem; max-width: 28rem; line-height: 1.5; }
+        .mark {
+            width: min(240px, 70vw);
+            height: auto;
+            display: block;
+            margin-bottom: 1rem;
+        }
+        h1 {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        p {
+            color: #3d4f5c;
+            font-size: 1rem;
+            max-width: 28rem;
+            line-height: 1.5;
+        }
         footer {
             position: fixed;
             bottom: 0;
@@ -27,15 +49,23 @@
             padding: 1rem;
             font-size: 0.75rem;
             color: #666;
-            background: rgba(0,0,0,0.5);
+            background: rgba(255,255,255,0.92);
+            border-top: 1px solid #e8e8e8;
         }
-        footer a { color: #999; text-decoration: underline; margin: 0 0.35rem; }
-        footer a:hover { color: #ccc; }
+        footer a {
+            color: #1a3c2a;
+            text-decoration: underline;
+            margin: 0 0.35rem;
+        }
+        footer a:hover {
+            color: #001a2e;
+        }
     </style>
 </head>
 <body>
     <div>
-        <h1>INDEX CASTING</h1>
+        <img class="mark" src="./assets/index-casting-brand.png" width="1024" height="1024" alt="Index Casting" />
+        <h1>Index Casting</h1>
         <p>B2B platform for fashion casting. Use the main app entry for sign in.</p>
     </div>
     <footer>

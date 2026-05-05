@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { StorageImage } from '../components/StorageImage';
+import { BrandLogo } from '../components/BrandLogo';
 import {
   getSharedSelectionModels,
   type SharedSelectionModel,
@@ -199,7 +200,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
           }}
         >
           <View style={{ flex: 1 }}>
-            <Text style={styles.brand}>INDEX CASTING</Text>
+            <BrandLogo width={120} containerStyle={{ marginBottom: 2 }} />
             <Text style={styles.title}>{uiCopy.sharedSelection.title}</Text>
             <Text style={styles.subtitle}>{shareName}</Text>
           </View>
@@ -481,7 +482,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
             onPress={() => setAuthGateVisible(false)}
           />
           <View style={styles.authGateCard}>
-            <Text style={styles.authGateBrand}>INDEX CASTING</Text>
+            <BrandLogo size={132} containerStyle={{ marginBottom: spacing.sm }} />
             <Text style={styles.authGateTitle}>{uiCopy.sharedSelection.signUpToAccess}</Text>
             <Text style={styles.authGateBody}>{uiCopy.sharedSelection.authGateBody}</Text>
             <TouchableOpacity style={styles.authGatePrimaryBtn} onPress={handleSignUp}>

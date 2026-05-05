@@ -30,6 +30,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { StorageImage } from '../components/StorageImage';
+import { BrandLogo } from '../components/BrandLogo';
 import { isMobileWidth } from '../theme/breakpoints';
 import { appUrl } from '../config/env';
 import {
@@ -371,7 +372,7 @@ export function PublicAgencyProfileScreen({
   if (state === 'loading') {
     return (
       <View style={s.centered}>
-        <Text style={s.brandmark}>INDEX CASTING</Text>
+        <BrandLogo size={132} containerStyle={{ marginBottom: spacing.sm }} />
         <View style={s.brandDivider} />
         <ActivityIndicator color={colors.textSecondary} size="small" />
       </View>
@@ -388,7 +389,7 @@ export function PublicAgencyProfileScreen({
             <Text style={s.closeBtnText}>← Back</Text>
           </TouchableOpacity>
         )}
-        <Text style={s.brandmark}>INDEX CASTING</Text>
+        <BrandLogo size={132} containerStyle={{ marginBottom: spacing.sm }} />
         <View style={s.brandDivider} />
         <Text style={s.notFoundTitle}>Profile not found</Text>
         <Text style={s.notFoundBody}>This agency profile is not available or does not exist.</Text>

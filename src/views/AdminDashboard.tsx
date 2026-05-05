@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import { BrandLogo } from '../components/BrandLogo';
 import { uiCopy } from '../constants/uiCopy';
 import { showConfirmAlert } from '../utils/crossPlatformAlert';
 import {
@@ -727,7 +728,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.brand}>INDEX CASTING — Admin</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1, gap: 8 }}>
+          <BrandLogo size={30} />
+          <Text style={styles.brand}>— Admin</Text>
+        </View>
         <TouchableOpacity onPress={onLogout}>
           <Text style={styles.logoutLabel}>Logout</Text>
         </TouchableOpacity>

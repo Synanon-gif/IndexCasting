@@ -31,6 +31,7 @@ import {
   APPLY_FORM_EMPTY_PHOTO_SLOT_HEIGHT,
   APPLY_FORM_FILLED_PHOTO_ASPECT_RATIO,
 } from './applyFormPhotoLayout';
+import { BrandLogo } from '../components/BrandLogo';
 import { isStaleSlotGeneration } from '../utils/applyFormAssignGeneration';
 
 type ImageSlot = 'closeUp' | 'fullBody' | 'profile';
@@ -320,7 +321,7 @@ export const ApplyFormView: React.FC<{
           >
             <Text style={styles.backArrow}>←</Text>
           </TouchableOpacity>
-          <Text style={styles.brand}>INDEX CASTING</Text>
+          <BrandLogo size={92} />
         </View>
         <View style={styles.centered}>
           <Text style={styles.successTitle}>Application submitted</Text>
