@@ -32,6 +32,7 @@ import {
   type PublicModelPhoto,
   type PublicModelProfile,
 } from '../services/publicAgencyProfileSupabase';
+import { resolveStorageUrlsBatch } from '../storage/storageUrl';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,14 @@ export function PublicModelDetailScreen({
       try {
         const result = await getPublicModelPhotos(modelId);
         if (cancelled) return;
+
+        // Pre-warm signed-URL cache for all photos in one batch POST.
+        const photoUrls = result.map((p) => p.url).filter(Boolean);
+        if (photoUrls.length > 0) {
+          await resolveStorageUrlsBatch(photoUrls);
+        }
+        if (cancelled) return;
+
         setPhotos(result);
         setPhotoState(result.length === 0 ? 'empty' : 'ready');
       } catch {

@@ -12,7 +12,12 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Image, View, type ImageStyle, type StyleProp, type ViewStyle } from 'react-native';
-import { isKnownBrokenUrl, needsResolution, resolveStorageUrl } from '../storage/storageUrl';
+import {
+  getCachedUrl,
+  isKnownBrokenUrl,
+  needsResolution,
+  resolveStorageUrl,
+} from '../storage/storageUrl';
 
 /** Stable broken-image placeholder: neutral grey with a subtle icon hint. */
 const BROKEN_PLACEHOLDER_COLOR = '#e0e0e0';
@@ -65,7 +70,9 @@ export function StorageImage({
     if (!uri) return null;
     if (isKnownBrokenUrl(uri)) return null;
     if (!needsResolution(uri)) return uri;
-    return null;
+    // Fast path: if a batch pre-warmed the cache (e.g. resolveStorageUrlsBatch on
+    // the public roster page), the signed URL is already here — no async work needed.
+    return getCachedUrl(uri);
   });
 
   // Track whether resolution explicitly failed (distinct from "still loading").

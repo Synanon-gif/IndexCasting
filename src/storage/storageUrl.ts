@@ -422,6 +422,121 @@ export async function resolveStorageUrl(
 }
 
 /**
+ * Synchronous cache lookup — returns the cached signed URL if it is still
+ * valid, otherwise null. Used by StorageImage's lazy useState initializer so
+ * components that mount after a resolveStorageUrlsBatch call get their URL
+ * immediately with no async work or placeholder flash.
+ */
+export function getCachedUrl(url: string): string | null {
+  if (!url) return null;
+  const normalized = publicUrlToStorageUri(url.trim());
+  const extracted = extractBucketAndPath(normalized);
+  if (!extracted) return null;
+  const cacheKey = `${extracted.bucket} ${extracted.path}`;
+  const cached = urlCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now() / 1_000 + CACHE_GRACE_SECONDS) {
+    return cached.signedUrl;
+  }
+  return null;
+}
+
+/**
+ * Batch-resolves an array of storage URIs using createSignedUrls (one POST per
+ * bucket rather than N individual POSTs). Populates urlCache as a side-effect;
+ * subsequent resolveStorageUrl / StorageImage calls for the same paths get
+ * instant cache hits with no network round-trip.
+ *
+ * Call this before rendering a grid/gallery to pre-warm the cache and avoid the
+ * N-parallel-createSignedUrl storm that causes 504 Gateway Timeouts.
+ *
+ * Already-cached, already-broken, and non-storage URLs are silently skipped.
+ * Duplicate paths within one bucket are deduplicated automatically.
+ */
+export async function resolveStorageUrlsBatch(
+  urls: string[],
+  ttlSeconds: number = DEFAULT_SIGNED_TTL_SECONDS,
+): Promise<void> {
+  // Group uncached paths by bucket. One createSignedUrls call per bucket.
+  const byBucket = new Map<string, Array<{ path: string; cacheKey: string }>>();
+  const now = Date.now() / 1_000;
+  const seenKeys = new Set<string>();
+
+  for (const url of urls) {
+    if (!url) continue;
+    const trimmed = url.trim();
+    const normalized = publicUrlToStorageUri(trimmed);
+    const extracted = extractBucketAndPath(normalized);
+    if (!extracted) continue; // non-storage URL — no signing needed
+
+    const cacheKey = `${extracted.bucket} ${extracted.path}`;
+    if (seenKeys.has(cacheKey)) continue; // deduplicate
+    seenKeys.add(cacheKey);
+
+    if (isKnownBrokenUrl(normalized)) continue;
+
+    const cached = urlCache.get(cacheKey);
+    if (cached && cached.expiresAt > now + CACHE_GRACE_SECONDS) continue; // still valid
+
+    const group = byBucket.get(extracted.bucket) ?? [];
+    group.push({ path: extracted.path, cacheKey });
+    byBucket.set(extracted.bucket, group);
+  }
+
+  if (byBucket.size === 0) return;
+
+  // Fire one createSignedUrls call per bucket in parallel (one semaphore slot each).
+  await Promise.all(
+    Array.from(byBucket.entries()).map(([bucket, items]) =>
+      (async () => {
+        await acquireSignSlot();
+        try {
+          const paths = items.map((i) => i.path);
+          const res = await withTimeout(
+            supabase.storage.from(bucket).createSignedUrls(paths, ttlSeconds),
+            SIGN_PER_ATTEMPT_TIMEOUT_MS,
+          );
+
+          if (res.error || !res.data) {
+            console.warn('[storageUrl] batch sign failed', {
+              bucket,
+              count: paths.length,
+              error: res.error,
+            });
+            return;
+          }
+
+          const batchNow = Date.now() / 1_000;
+          for (let i = 0; i < res.data.length; i++) {
+            const row = res.data[i];
+            const item = items[i];
+            if (!row || !item) continue;
+
+            if (row.signedUrl && !row.error) {
+              urlCache.set(item.cacheKey, {
+                signedUrl: row.signedUrl,
+                expiresAt: batchNow + ttlSeconds,
+              });
+            } else if (row.error) {
+              const errMsg = String(row.error).toLowerCase();
+              if (errMsg.includes('not found')) {
+                brokenUrlCache.set(item.cacheKey, batchNow + NEGATIVE_CACHE_TTL_SECONDS);
+              }
+            }
+          }
+
+          trimMap(urlCache, MAX_URL_CACHE_SIZE);
+          trimMap(brokenUrlCache, MAX_BROKEN_CACHE_SIZE);
+        } catch (e) {
+          console.warn('[storageUrl] batch sign exception', { bucket, error: e });
+        } finally {
+          releaseSignSlot();
+        }
+      })(),
+    ),
+  );
+}
+
+/**
  * Resolves multiple storage URLs with a bounded worker pool.
  * Result length matches input length; failed signs are `null` at that index (callers may show placeholders).
  */

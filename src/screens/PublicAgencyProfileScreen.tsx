@@ -42,6 +42,7 @@ import {
   type PublicModelProfile,
 } from '../services/publicAgencyProfileSupabase';
 import { navigatePublicPath } from '../utils/publicLegalRoutes';
+import { resolveStorageUrlsBatch } from '../storage/storageUrl';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -310,6 +311,14 @@ export function PublicAgencyProfileScreen({
         setProfile(prof);
 
         const mods = await getPublicAgencyModels(prof.agency_id);
+        if (cancelled) return;
+
+        // Pre-warm the signed-URL cache for all cover images in one batch POST
+        // instead of N individual createSignedUrl calls (which cause 504 storms).
+        const coverUrls = mods.map((m) => m.cover_url).filter(Boolean) as string[];
+        if (coverUrls.length > 0) {
+          await resolveStorageUrlsBatch(coverUrls);
+        }
         if (cancelled) return;
 
         setModels(mods);
