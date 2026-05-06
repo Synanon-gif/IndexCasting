@@ -8,6 +8,7 @@
   "exclude": [
     "node_modules",
     "dist",
+    "marketing-site",
     "supabase/functions",
     "e2e",
     "playwright.config.ts"

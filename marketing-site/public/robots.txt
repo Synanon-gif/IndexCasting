@@ -1,0 +1,7 @@
+# Index Casting marketing / landing domain only (deploy at https://web.index-casting.com).
+# Does not replace or override apex app SEO assets.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://web.index-casting.com/sitemap.xml
