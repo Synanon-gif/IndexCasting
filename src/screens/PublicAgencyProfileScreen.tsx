@@ -121,6 +121,24 @@ function resolveHoverLines(st: PublicModelProfile): Array<{ label: string; value
 // ─── Search icon ───────────────────────────────────────────────────────────
 
 function SearchIconView() {
+  if (Platform.OS === 'web') {
+    return React.createElement(
+      'svg',
+      {
+        xmlns: 'http://www.w3.org/2000/svg',
+        width: 18,
+        height: 18,
+        viewBox: '0 0 18 18',
+        fill: 'none',
+        stroke: colors.textSecondary,
+        strokeWidth: 1.5,
+        strokeLinecap: 'round',
+      },
+      React.createElement('circle', { cx: 7.5, cy: 7.5, r: 5.5 }),
+      React.createElement('line', { x1: 11.5, y1: 11.5, x2: 16, y2: 16 }),
+    );
+  }
+  // Native fallback — circle border + diagonal handle
   return (
     <View style={{ width: 18, height: 18 }}>
       <View
@@ -208,6 +226,7 @@ function ModelCard({
             <Text style={s.hoverPanelName} numberOfLines={1}>
               {item.name.toUpperCase()}
             </Text>
+            <View style={s.hoverDivider} />
             <View style={s.hoverStats}>
               {hoverLines.map(({ label, value }) => (
                 <View key={label} style={s.hoverStatRow}>
@@ -752,7 +771,7 @@ const s = StyleSheet.create({
     color: colors.textSecondary,
   },
   searchBtn: {
-    padding: 6,
+    padding: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -936,31 +955,38 @@ const s = StyleSheet.create({
     bottom: 0,
     backgroundColor: '#0e0e0e',
     justifyContent: 'center',
-    padding: spacing.sm,
+    padding: 14,
   },
   hoverPanelName: {
     ...typography.label,
-    fontSize: 9,
-    letterSpacing: 1.5,
+    fontSize: 12,
+    letterSpacing: 2,
     color: '#ffffff',
     textAlign: 'left',
-    marginBottom: 10,
+    marginBottom: 14,
+  },
+  hoverDivider: {
+    width: 20,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginBottom: 12,
   },
   hoverStats: {
-    gap: 2,
+    gap: 5,
   },
   hoverStatRow: {
     flexDirection: 'row',
+    alignItems: 'baseline',
   },
   hoverStatLabel: {
     color: 'rgba(255,255,255,0.5)',
-    fontSize: 8,
-    letterSpacing: 0.5,
-    width: 38,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    width: 48,
   },
   hoverStatValue: {
     color: '#ffffff',
-    fontSize: 8,
+    fontSize: 10,
     letterSpacing: 0.3,
     flex: 1,
   },
