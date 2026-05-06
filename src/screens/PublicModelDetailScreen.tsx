@@ -28,7 +28,9 @@ import {
   getPublicAgencyProfile,
   getPublicAgencyModels,
   getPublicModelPhotos,
+  getPublicModelProfile,
   type PublicModelPhoto,
+  type PublicModelProfile,
 } from '../services/publicAgencyProfileSupabase';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -43,6 +45,16 @@ export interface PublicModelDetailScreenProps {
 
 const GRID_GAP = 1;
 
+// Renders one label/value stat row in the detail page stats block.
+function StatDetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={sd.statRow}>
+      <Text style={sd.statLabel}>{label}</Text>
+      <Text style={sd.statValue}>{value}</Text>
+    </View>
+  );
+}
+
 // ─── Screen ────────────────────────────────────────────────────────────────
 
 export function PublicModelDetailScreen({
@@ -54,6 +66,7 @@ export function PublicModelDetailScreen({
   const [photos, setPhotos] = useState<PublicModelPhoto[]>([]);
   const [modelName, setModelName] = useState<string | null>(null);
   const [agencyName, setAgencyName] = useState<string | null>(null);
+  const [profile, setProfile] = useState<PublicModelProfile | null>(null);
 
   const { width } = useWindowDimensions();
   const cols = width >= 900 ? 3 : 2;
@@ -69,6 +82,7 @@ export function PublicModelDetailScreen({
     setPhotos([]);
     setModelName(null);
     setAgencyName(null);
+    setProfile(null);
 
     async function loadPhotos() {
       try {
@@ -83,15 +97,19 @@ export function PublicModelDetailScreen({
 
     async function loadAgencyAndName() {
       try {
-        const profile = await getPublicAgencyProfile(agencySlug);
-        if (!profile || cancelled) return;
-        if (!cancelled) setAgencyName(profile.name);
-        const models = await getPublicAgencyModels(profile.agency_id);
+        const agencyProfile = await getPublicAgencyProfile(agencySlug);
+        if (!agencyProfile || cancelled) return;
+        if (!cancelled) setAgencyName(agencyProfile.name);
+        const [models, modelProfile] = await Promise.all([
+          getPublicAgencyModels(agencyProfile.agency_id),
+          getPublicModelProfile(agencySlug, modelId),
+        ]);
         if (cancelled) return;
         const found = models.find((m) => m.id === modelId);
         setModelName(found?.name ?? null);
+        setProfile(modelProfile);
       } catch {
-        // model name is display-only — silent fail leaves name as null
+        // display-only — silent fail leaves name/profile as null
       }
     }
 
@@ -108,28 +126,56 @@ export function PublicModelDetailScreen({
   const heroPhoto = photos[0] ?? null;
   const gridPhotos = photos.length > 1 ? photos.slice(1) : [];
 
-  const renderHeader = useCallback(
-    () => (
+  const renderHeader = useCallback(() => {
+    const bust = profile?.sex === 'male' ? profile?.chest : (profile?.bust ?? profile?.chest);
+    const bustLabel = profile?.sex === 'male' ? 'CHEST' : 'BUST';
+    return (
       <>
         {heroPhoto && (
-          <StorageImage
-            uri={heroPhoto.url}
-            style={[
-              { width, height: heroHeight },
-              // @ts-ignore — web-only: anchor crop at face
-              Platform.OS === 'web' ? { objectPosition: 'top center' } : undefined,
-            ]}
-            resizeMode="cover"
-          />
+          <View style={[s.heroContainer, { height: heroHeight }]}>
+            <StorageImage
+              uri={heroPhoto.url}
+              style={StyleSheet.absoluteFill}
+              resizeMode="contain"
+            />
+          </View>
         )}
         <View style={s.nameBlock}>
           {modelName !== null ? <Text style={s.modelName}>{modelName.toUpperCase()}</Text> : null}
+          {profile && (
+            <View style={s.statsBlock}>
+              {profile.height ? (
+                <StatDetailRow label="HEIGHT" value={`${profile.height} cm`} />
+              ) : null}
+              {bust ? <StatDetailRow label={bustLabel} value={`${bust} cm`} /> : null}
+              {profile.waist ? <StatDetailRow label="WAIST" value={`${profile.waist} cm`} /> : null}
+              {profile.hips ? <StatDetailRow label="HIPS" value={`${profile.hips} cm`} /> : null}
+              {profile.legs_inseam ? (
+                <StatDetailRow label="INSEAM" value={`${profile.legs_inseam} cm`} />
+              ) : null}
+              {profile.shoe_size ? (
+                <StatDetailRow label="SHOES" value={String(profile.shoe_size)} />
+              ) : null}
+              {profile.hair_color ? (
+                <StatDetailRow label="HAIR" value={profile.hair_color} />
+              ) : null}
+              {profile.eye_color ? <StatDetailRow label="EYES" value={profile.eye_color} /> : null}
+              {profile.city || profile.country ? (
+                <StatDetailRow
+                  label="BASED"
+                  value={[profile.city, profile.country].filter(Boolean).join(', ')}
+                />
+              ) : null}
+              {profile.mother_agency_name ? (
+                <StatDetailRow label="MOTHER" value={profile.mother_agency_name} />
+              ) : null}
+            </View>
+          )}
         </View>
         {gridPhotos.length > 0 && <View style={s.divider} />}
       </>
-    ),
-    [heroPhoto, modelName, gridPhotos.length, width, heroHeight],
-  );
+    );
+  }, [heroPhoto, modelName, profile, gridPhotos.length, heroHeight]);
 
   const renderPhoto = useCallback(
     ({ item }: ListRenderItemInfo<PublicModelPhoto>) => (
@@ -229,16 +275,25 @@ const s = StyleSheet.create({
     color: colors.textSecondary,
     textTransform: undefined,
   },
+  heroContainer: {
+    width: '100%',
+    backgroundColor: '#111',
+    overflow: 'hidden',
+  },
   nameBlock: {
     paddingHorizontal: 24,
     paddingTop: 20,
-    paddingBottom: 16,
+    paddingBottom: 20,
   },
   modelName: {
     ...typography.heading,
     fontSize: 22,
     letterSpacing: 3,
     color: colors.textPrimary,
+    marginBottom: 16,
+  },
+  statsBlock: {
+    gap: 6,
   },
   divider: {
     height: GRID_GAP,
@@ -253,5 +308,27 @@ const s = StyleSheet.create({
   stateText: {
     ...typography.label,
     color: colors.textSecondary,
+  },
+});
+
+// Styles for StatDetailRow (separate sheet keeps s clean)
+const sd = StyleSheet.create({
+  statRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  statLabel: {
+    ...typography.label,
+    fontSize: 9,
+    letterSpacing: 1.2,
+    color: colors.textSecondary,
+    width: 64,
+    textTransform: 'uppercase',
+  },
+  statValue: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textPrimary,
+    flex: 1,
   },
 });

@@ -16,13 +16,14 @@
  *   is_public=true AND organizations.type='agency'. No internal data exposed.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Platform,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -35,8 +36,10 @@ import { appUrl } from '../config/env';
 import {
   getPublicAgencyProfile,
   getPublicAgencyModels,
+  getPublicModelProfile,
   type PublicAgencyProfile,
   type PublicAgencyModel,
+  type PublicModelProfile,
 } from '../services/publicAgencyProfileSupabase';
 import { navigatePublicPath } from '../utils/publicLegalRoutes';
 
@@ -89,10 +92,62 @@ function filterAndSortPublicModels(
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
-const LOGO_SIZE = 64;
+const LOGO_SIZE = 72;
 const MAX_CONTENT_W = 1280;
-const GRID_GAP = 1;
+const GRID_GAP = 4; // editorial gap between cards
 const NAME_STRIP_H = 28;
+const SIDE_LABEL_MIN_W = 1100; // viewport width below which vertical label is hidden
+
+// ─── Hover stats cache ─────────────────────────────────────────────────────
+// Per page-load, keyed by modelId. Avoids re-fetching on repeated hovers.
+const publicModelStatsCache = new Map<string, PublicModelProfile | null>();
+
+// Resolves which stat lines to show in the hover overlay (null values omitted).
+function resolveHoverLines(st: PublicModelProfile): Array<{ label: string; value: string }> {
+  const lines: Array<{ label: string; value: string }> = [];
+  if (st.height) lines.push({ label: 'HEIGHT', value: String(st.height) });
+  const bustChest = st.sex === 'male' ? st.chest : (st.bust ?? st.chest);
+  const bustLabel = st.sex === 'male' ? 'CHEST' : 'BUST';
+  if (bustChest) lines.push({ label: bustLabel, value: String(bustChest) });
+  if (st.waist) lines.push({ label: 'WAIST', value: String(st.waist) });
+  if (st.hips) lines.push({ label: 'HIPS', value: String(st.hips) });
+  if (st.shoe_size) lines.push({ label: 'SHOES', value: String(st.shoe_size) });
+  if (st.hair_color) lines.push({ label: 'HAIR', value: st.hair_color });
+  if (st.eye_color) lines.push({ label: 'EYES', value: st.eye_color });
+  return lines;
+}
+
+// ─── Search icon ───────────────────────────────────────────────────────────
+
+function SearchIconView() {
+  return (
+    <View style={{ width: 18, height: 18 }}>
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: 12,
+          height: 12,
+          borderRadius: 6,
+          borderWidth: 1.5,
+          borderColor: colors.textSecondary,
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          top: 9,
+          left: 9,
+          width: 1.5,
+          height: 7,
+          backgroundColor: colors.textSecondary,
+          transform: [{ rotate: '45deg' }],
+        }}
+      />
+    </View>
+  );
+}
 
 // ─── Model card ────────────────────────────────────────────────────────────
 // Module-scope component so each card manages its own hover state without
@@ -110,6 +165,21 @@ function ModelCard({
   agencySlug: string;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [stats, setStats] = useState<PublicModelProfile | null>(null);
+
+  function handleMouseEnter() {
+    setHovered(true);
+    if (publicModelStatsCache.has(item.id)) {
+      setStats(publicModelStatsCache.get(item.id) ?? null);
+      return;
+    }
+    getPublicModelProfile(agencySlug, item.id).then((result) => {
+      publicModelStatsCache.set(item.id, result);
+      setStats(result);
+    });
+  }
+
+  const hoverLines = stats ? resolveHoverLines(stats) : [];
 
   const cardContent = (
     <>
@@ -131,20 +201,36 @@ function ModelCard({
           </View>
         )}
 
-        {hovered && (
+        {hovered && hoverLines.length > 0 ? (
+          // Stats available — solid dark panel replaces image visually (Elite/IMG style)
+          <View style={[s.hoverPanel, { pointerEvents: 'none' }]}>
+            <Text style={s.hoverPanelName} numberOfLines={1}>
+              {item.name.toUpperCase()}
+            </Text>
+            <View style={s.hoverStats}>
+              {hoverLines.map(({ label, value }) => (
+                <View key={label} style={s.hoverStatRow}>
+                  <Text style={s.hoverStatLabel}>{label}</Text>
+                  <Text style={s.hoverStatValue}>{value}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : hovered ? (
+          // No stats yet — gradient overlay, name only
           <View
             style={[
               s.hoverOverlay,
               { pointerEvents: 'none' },
               // @ts-ignore — web-only gradient; no flat backgroundColor
-              { backgroundImage: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 60%)' },
+              { backgroundImage: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 60%)' },
             ]}
           >
-            <Text style={s.hoverName} numberOfLines={2}>
+            <Text style={s.hoverName} numberOfLines={1}>
               {item.name.toUpperCase()}
             </Text>
           </View>
-        )}
+        ) : null}
       </View>
 
       {/* Name strip — always visible below image on all platforms */}
@@ -172,7 +258,7 @@ function ModelCard({
           e.preventDefault();
           navigatePublicPath(`/agency/${agencySlug}/model/${item.id}`);
         },
-        onMouseEnter: () => setHovered(true),
+        onMouseEnter: handleMouseEnter,
         onMouseLeave: () => setHovered(false),
       },
       cardContent,
@@ -192,6 +278,9 @@ export function PublicAgencyProfileScreen({
   const [profile, setProfile] = useState<PublicAgencyProfile | null>(null);
   const [models, setModels] = useState<PublicAgencyModel[]>([]);
   const [segment, setSegment] = useState<Segment>('women');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<TextInput>(null);
 
   const { width } = useWindowDimensions();
 
@@ -280,6 +369,13 @@ export function PublicAgencyProfileScreen({
     [models, segment],
   );
 
+  // Client-side name search — applied on top of segment filter, no backend call
+  const searchedModels = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return filteredModels;
+    return filteredModels.filter((m) => m.name.toLowerCase().includes(q));
+  }, [filteredModels, searchQuery]);
+
   // ── Render helpers ──
 
   const renderModel = useCallback(
@@ -292,12 +388,7 @@ export function PublicAgencyProfileScreen({
   const renderHeader = useCallback(() => {
     if (!profile) return null;
 
-    const addrParts = [
-      profile.address_line_1,
-      profile.city,
-      profile.postal_code,
-      profile.country,
-    ].filter(Boolean);
+    const addrParts = [profile.city, profile.country].filter(Boolean);
     const addr = addrParts.join(', ');
 
     const tabs: Array<{ seg: Segment; label: string; count: number }> = [
@@ -306,72 +397,101 @@ export function PublicAgencyProfileScreen({
       { seg: 'all', label: 'All', count: models.length },
     ];
 
+    const activeTabLabel = segment === 'women' ? 'Women' : segment === 'men' ? 'Men' : 'All';
+
     return (
       <View>
-        {/* ── Back / close ── */}
-        {onClose && (
+        {/* ── Top bar: subtle back link + search icon ── */}
+        <View style={s.topBar}>
+          {onClose ? (
+            <TouchableOpacity
+              onPress={onClose}
+              style={s.backLink}
+              accessibilityLabel="Back"
+              accessibilityRole="button"
+            >
+              <Text style={s.backLinkText}>← Back</Text>
+            </TouchableOpacity>
+          ) : (
+            <View />
+          )}
           <TouchableOpacity
-            style={s.closeBtn}
-            onPress={onClose}
-            accessibilityLabel="Back"
+            onPress={() => {
+              if (searchOpen) {
+                setSearchOpen(false);
+                setSearchQuery('');
+              } else {
+                setSearchOpen(true);
+              }
+            }}
+            style={s.searchBtn}
             accessibilityRole="button"
+            accessibilityLabel={searchOpen ? 'Close search' : 'Search models'}
           >
-            <Text style={s.closeBtnText}>← Back</Text>
+            <SearchIconView />
           </TouchableOpacity>
-        )}
+        </View>
 
-        {/* ── Masthead ── */}
-        <View style={s.masthead}>
-          <View style={s.mastheadRow}>
-            {/* Logo */}
-            <View style={s.logoWrap}>
-              {profile.logo_url ? (
-                <StorageImage uri={profile.logo_url} style={s.logo} resizeMode="cover" />
-              ) : (
-                <View style={[s.logo, s.logoPlaceholder]}>
-                  <Text style={s.logoInitial}>{profile.name.charAt(0).toUpperCase()}</Text>
-                </View>
-              )}
+        {/* ── Centered agency identity ── */}
+        <View style={s.agencyIdentity}>
+          {profile.logo_url ? (
+            <StorageImage uri={profile.logo_url} style={s.logo} resizeMode="cover" />
+          ) : (
+            <View style={[s.logo, s.logoPlaceholder]}>
+              <Text style={s.logoInitial}>{profile.name.charAt(0).toUpperCase()}</Text>
             </View>
+          )}
 
-            {/* Name + meta */}
-            <View style={s.mastheadInfo}>
-              <Text style={s.agencyName} numberOfLines={2}>
-                {profile.name.toUpperCase()}
-              </Text>
-              {addr || profile.website_url ? (
-                <View style={s.metaRow}>
-                  {addr ? <Text style={s.metaText}>{addr}</Text> : null}
-                  {addr && profile.website_url ? <Text style={s.metaSep}> · </Text> : null}
-                  {profile.website_url ? (
-                    Platform.OS === 'web' ? (
-                      // @ts-ignore — anchor element web-only
-                      <a
-                        href={
-                          profile.website_url.startsWith('http')
-                            ? profile.website_url
-                            : `https://${profile.website_url}`
-                        }
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ textDecoration: 'none' }}
-                      >
-                        <Text style={[s.metaText, s.link]}>{profile.website_url}</Text>
-                      </a>
-                    ) : (
-                      <Text style={s.metaText}>{profile.website_url}</Text>
-                    )
-                  ) : null}
-                </View>
+          <Text style={s.agencyName}>{profile.name.toUpperCase()}</Text>
+
+          {addr || profile.website_url ? (
+            <View style={s.metaRow}>
+              {addr ? <Text style={s.metaText}>{addr}</Text> : null}
+              {addr && profile.website_url ? <Text style={s.metaSep}> · </Text> : null}
+              {profile.website_url ? (
+                Platform.OS === 'web' ? (
+                  // @ts-ignore — anchor element web-only
+                  <a
+                    href={
+                      profile.website_url.startsWith('http')
+                        ? profile.website_url
+                        : `https://${profile.website_url}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ textDecoration: 'none' }}
+                  >
+                    <Text style={[s.metaText, s.link]}>{profile.website_url}</Text>
+                  </a>
+                ) : (
+                  <Text style={s.metaText}>{profile.website_url}</Text>
+                )
               ) : null}
             </View>
-          </View>
+          ) : null}
 
-          {/* Description — below the logo/name row */}
           {profile.description ? <Text style={s.description}>{profile.description}</Text> : null}
         </View>
 
+        {/* ── Search input (shown when search is open) ── */}
+        {searchOpen && (
+          <View style={s.searchBar}>
+            <TextInput
+              ref={searchInputRef}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search models…"
+              placeholderTextColor={colors.textSecondary}
+              style={s.searchInput}
+              autoFocus
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+          </View>
+        )}
+
         {/* ── Tab navigation: Women / Men / All ── */}
+        {/* TODO: Phase 4 — add agency markets/locations selector here (e.g. Paris, NYC, Milan) */}
         <View style={s.tabRow}>
           {tabs.map(({ seg, label, count }) => (
             <TouchableOpacity
@@ -387,17 +507,31 @@ export function PublicAgencyProfileScreen({
           ))}
         </View>
 
-        {/* Empty segment state */}
-        {filteredModels.length === 0 && (
+        {/* Empty state (accounts for active search filter) */}
+        {searchedModels.length === 0 && (
           <View style={s.emptyState}>
             <Text style={s.emptyText}>
-              {segment === 'all' ? 'No models listed yet.' : `No ${segment} models listed yet.`}
+              {searchQuery.trim()
+                ? `No results for "${searchQuery.trim()}".`
+                : segment === 'all'
+                  ? 'No models listed yet.'
+                  : `No ${activeTabLabel.toLowerCase()} models listed yet.`}
             </Text>
           </View>
         )}
       </View>
     );
-  }, [profile, segment, filteredModels.length, onClose, womenCount, menCount, models.length]);
+  }, [
+    profile,
+    segment,
+    searchOpen,
+    searchQuery,
+    searchedModels.length,
+    onClose,
+    womenCount,
+    menCount,
+    models.length,
+  ]);
 
   // ── State: loading ──
 
@@ -417,8 +551,12 @@ export function PublicAgencyProfileScreen({
     return (
       <View style={s.centered}>
         {onClose && (
-          <TouchableOpacity style={s.closeBtnAlt} onPress={onClose} accessibilityRole="button">
-            <Text style={s.closeBtnText}>← Back</Text>
+          <TouchableOpacity
+            style={[s.backLink, { position: 'absolute', top: spacing.lg, left: spacing.md }]}
+            onPress={onClose}
+            accessibilityRole="button"
+          >
+            <Text style={s.backLinkText}>← Back</Text>
           </TouchableOpacity>
         )}
         <Text style={s.brandmark}>INDEX CASTING</Text>
@@ -434,8 +572,39 @@ export function PublicAgencyProfileScreen({
   // Web: render with native DOM elements so model card <a> clicks are never
   // captured by a React Native ScrollView capture-phase mousedown handler.
   if (Platform.OS === 'web') {
+    const sideLabelText =
+      profile && width >= SIDE_LABEL_MIN_W
+        ? `${profile.name} — ${segment === 'women' ? 'Women' : segment === 'men' ? 'Men' : 'All'}`
+        : null;
+
     return (
       <View style={s.shell}>
+        {/* Left vertical label — desktop only, sits in the left gutter */}
+        {sideLabelText &&
+          React.createElement(
+            'div',
+            {
+              style: {
+                position: 'fixed',
+                left: 16,
+                top: '50vh',
+                writingMode: 'vertical-rl',
+                transform: 'translateY(-50%) rotate(180deg)',
+                color: colors.textSecondary,
+                fontSize: 9,
+                letterSpacing: 3,
+                textTransform: 'uppercase',
+                fontFamily: 'inherit',
+                pointerEvents: 'none',
+                userSelect: 'none',
+                opacity: 0.45,
+                whiteSpace: 'nowrap',
+              },
+            },
+            sideLabelText,
+          )}
+
+        {/* Scrollable content — grid uses native DOM so <a> clicks are never swallowed */}
         {React.createElement(
           'div',
           { style: { flexGrow: 1, overflowY: 'auto' } },
@@ -452,11 +621,11 @@ export function PublicAgencyProfileScreen({
               },
             },
             renderHeader(),
-            filteredModels.length > 0
+            searchedModels.length > 0
               ? React.createElement(
                   'div',
                   { style: { display: 'flex', flexWrap: 'wrap', gap: GRID_GAP } },
-                  filteredModels.map((item) =>
+                  searchedModels.map((item) =>
                     React.createElement(ModelCard, {
                       key: item.id,
                       item,
@@ -477,13 +646,13 @@ export function PublicAgencyProfileScreen({
     <View style={s.shell}>
       <FlatList<PublicAgencyModel>
         key={`${segment}-${numCols}`}
-        data={filteredModels}
+        data={searchedModels}
         numColumns={numCols}
         keyExtractor={(item) => item.id}
         renderItem={renderModel}
         ListHeaderComponent={renderHeader}
         columnWrapperStyle={
-          filteredModels.length > 0 ? { gap: GRID_GAP, marginBottom: GRID_GAP } : undefined
+          searchedModels.length > 0 ? { gap: GRID_GAP, marginBottom: GRID_GAP } : undefined
         }
         contentContainerStyle={[
           s.listContent,
@@ -555,37 +724,38 @@ const s = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // ── Close / back ──
-  closeBtn: {
+  // ── Top bar (back link + search icon) ──
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
-    alignSelf: 'flex-start',
+    minHeight: 36,
   },
-  closeBtnAlt: {
-    position: 'absolute',
-    top: spacing.lg,
-    left: spacing.md,
+  backLink: {
+    paddingVertical: 4,
+    paddingRight: spacing.md,
   },
-  closeBtnText: {
+  backLinkText: {
     ...typography.body,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textSecondary,
   },
+  searchBtn: {
+    padding: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-  // ── Masthead ──
-  masthead: {
+  // ── Centered agency identity ──
+  agencyIdentity: {
+    alignItems: 'center',
     paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  mastheadRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  logoWrap: {},
   logo: {
     width: LOGO_SIZE,
     height: LOGO_SIZE,
@@ -599,30 +769,24 @@ const s = StyleSheet.create({
   },
   logoInitial: {
     ...typography.heading,
-    fontSize: 22,
+    fontSize: 24,
     color: colors.textSecondary,
-  },
-  mastheadInfo: {
-    flex: 1,
   },
   agencyName: {
     ...typography.heading,
-    fontSize: 22,
-    letterSpacing: 3,
+    fontSize: 24,
+    letterSpacing: 4,
     color: colors.textPrimary,
+    textAlign: 'center',
+    marginTop: spacing.md,
     marginBottom: spacing.xs,
-  },
-  description: {
-    ...typography.body,
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginTop: spacing.xs,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     flexWrap: 'wrap',
+    marginTop: 2,
   },
   metaText: {
     ...typography.body,
@@ -636,6 +800,34 @@ const s = StyleSheet.create({
   },
   link: {
     textDecorationLine: 'underline',
+  },
+  description: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    maxWidth: 560,
+    paddingHorizontal: spacing.sm,
+  },
+
+  // ── Search bar ──
+  searchBar: {
+    paddingVertical: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  searchInput: {
+    height: 38,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: 3,
+    paddingHorizontal: 12,
+    ...typography.body,
+    fontSize: 14,
+    color: colors.textPrimary,
+    backgroundColor: colors.background,
   },
 
   // ── Tab navigation ──
@@ -708,7 +900,7 @@ const s = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Hover overlay — web only, bottom-anchored gradient
+  // Hover — gradient overlay (no stats available yet)
   hoverOverlay: {
     position: 'absolute',
     top: 0,
@@ -724,6 +916,44 @@ const s = StyleSheet.create({
     letterSpacing: 1.2,
     color: '#ffffff',
     textAlign: 'left',
+  },
+
+  // Hover — solid stats panel (Elite/IMG style; replaces image visually)
+  hoverPanel: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#0e0e0e',
+    justifyContent: 'center',
+    padding: spacing.sm,
+  },
+  hoverPanelName: {
+    ...typography.label,
+    fontSize: 9,
+    letterSpacing: 1.5,
+    color: '#ffffff',
+    textAlign: 'left',
+    marginBottom: 10,
+  },
+  hoverStats: {
+    gap: 2,
+  },
+  hoverStatRow: {
+    flexDirection: 'row',
+  },
+  hoverStatLabel: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 8,
+    letterSpacing: 0.5,
+    width: 38,
+  },
+  hoverStatValue: {
+    color: '#ffffff',
+    fontSize: 8,
+    letterSpacing: 0.3,
+    flex: 1,
   },
 
   // ── Empty segment ──

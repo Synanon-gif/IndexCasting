@@ -93,6 +93,84 @@ export async function getPublicAgencyProfile(slug: string): Promise<PublicAgency
 }
 
 /**
+ * Public-safe measurements and display fields for a single model.
+ * Returned by get_public_model_profile RPC. Zero values are normalised to null server-side.
+ * Never includes PII (user_id, email, phone, is_minor, photo URLs, internal flags).
+ */
+export interface PublicModelProfile {
+  id: string;
+  name: string;
+  sex: string | null;
+  height: number | null;
+  bust: number | null;
+  chest: number | null;
+  waist: number | null;
+  hips: number | null;
+  legs_inseam: number | null;
+  shoe_size: number | null;
+  hair_color: string | null;
+  eye_color: string | null;
+  city: string | null;
+  country: string | null;
+  mother_agency_name: string | null;
+}
+
+/**
+ * Fetches public-safe measurements for a single model.
+ *
+ * Verifies the agency slug resolves to a public agency AND the model
+ * belongs to that agency with an active relationship — both enforced server-side.
+ *
+ * Returns null when: inputs are empty, slug not found, agency not public,
+ * model not in that agency's roster, or any RPC error.
+ *
+ * Safe for unauthenticated callers (anon Supabase key).
+ */
+export async function getPublicModelProfile(
+  agencySlug: string,
+  modelId: string,
+): Promise<PublicModelProfile | null> {
+  if (!agencySlug || !modelId) return null;
+
+  try {
+    const { data, error } = await supabase.rpc('get_public_model_profile', {
+      p_agency_slug: agencySlug,
+      p_model_id: modelId,
+    });
+
+    if (error) {
+      console.error('[getPublicModelProfile] RPC error:', error);
+      return null;
+    }
+
+    const rows = Array.isArray(data) ? data : data ? [data] : [];
+    if (rows.length === 0) return null;
+
+    const row = rows[0] as Record<string, unknown>;
+    return {
+      id: (row.id as string) ?? '',
+      name: (row.name as string) ?? '',
+      sex: (row.sex as string | null) ?? null,
+      height: (row.height as number | null) ?? null,
+      bust: (row.bust as number | null) ?? null,
+      chest: (row.chest as number | null) ?? null,
+      waist: (row.waist as number | null) ?? null,
+      hips: (row.hips as number | null) ?? null,
+      legs_inseam: (row.legs_inseam as number | null) ?? null,
+      shoe_size: (row.shoe_size as number | null) ?? null,
+      hair_color: (row.hair_color as string | null) ?? null,
+      eye_color: (row.eye_color as string | null) ?? null,
+      city: (row.city as string | null) ?? null,
+      country: (row.country as string | null) ?? null,
+      mother_agency_name: (row.mother_agency_name as string | null) ?? null,
+    };
+  } catch (e) {
+    console.error('[getPublicModelProfile] exception:', e);
+    return null;
+  }
+}
+
+/**
  * One portfolio photo row, returned by the anon-accessible model_photos query.
  * Anon RLS policy (20260817): is_visible_to_clients = true AND photo_type = 'portfolio'.
  */
