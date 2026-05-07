@@ -853,16 +853,27 @@ function credentialHintForThrow(): string {
   return 'Missing PLAYWRIGHT_TEST_PASSWORD or E2E_SEED_USER_PASSWORD — copy .env.e2e.example to .env.e2e';
 }
 
+/** After hosted/web logout the SPA may land on Sign up first; stabilize credential-login branch (harness-only). */
 export async function signOutViaUi(page: Page): Promise<void> {
-  const byText = page.getByText(/^Logout$/i).first();
+  const emailVisibleBudget = { timeout: 45_000 };
+
+  const byText = page.getByText(/^Logout$/i).filter({ visible: true }).first();
+  const asButton = page.getByRole('button', { name: /logout|sign out/i }).filter({ visible: true }).first();
+
   if (await byText.isVisible().catch(() => false)) {
     await byText.click();
-    await expect(emailFieldLocator(page)).toBeVisible({ timeout: 20_000 });
-    return;
-  }
-  const asButton = page.getByRole('button', { name: /logout|sign out/i }).first();
-  if (await asButton.isVisible().catch(() => false)) {
+  } else if (await asButton.isVisible().catch(() => false)) {
     await asButton.click();
-    await expect(emailFieldLocator(page)).toBeVisible({ timeout: 20_000 });
+  } else {
+    throw new Error('signOutViaUi: no visible Logout control');
+  }
+
+  await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+
+  try {
+    await expect(emailFieldLocator(page)).toBeVisible(emailVisibleBudget);
+  } catch {
+    await prepareAuthScreenForCredentialLogin(page);
+    await expect(emailFieldLocator(page)).toBeVisible(emailVisibleBudget);
   }
 }
