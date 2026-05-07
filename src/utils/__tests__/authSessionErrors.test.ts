@@ -1,4 +1,8 @@
-import { isSessionNotFoundError } from '../authSessionErrors';
+import {
+  isInvalidRefreshTokenError,
+  isSessionNotFoundError,
+  shouldClearStaleLocalSession,
+} from '../authSessionErrors';
 
 describe('isSessionNotFoundError', () => {
   test('matches message substring', () => {
@@ -22,5 +26,30 @@ describe('isSessionNotFoundError', () => {
     expect(isSessionNotFoundError(new Error('network'))).toBe(false);
     expect(isSessionNotFoundError(null)).toBe(false);
     expect(isSessionNotFoundError({ status: 401, message: 'JWT expired' })).toBe(false);
+  });
+});
+
+describe('isInvalidRefreshTokenError', () => {
+  test('matches Supabase AuthApiError-style message', () => {
+    expect(
+      isInvalidRefreshTokenError(new Error('Invalid Refresh Token: Refresh Token Not Found')),
+    ).toBe(true);
+  });
+
+  test('matches lowercase phrasing', () => {
+    expect(isInvalidRefreshTokenError({ message: 'invalid refresh token' })).toBe(true);
+  });
+});
+
+describe('shouldClearStaleLocalSession', () => {
+  test('true for session_not_found or invalid refresh', () => {
+    expect(shouldClearStaleLocalSession(new Error('session_not_found'))).toBe(true);
+    expect(
+      shouldClearStaleLocalSession(new Error('Invalid Refresh Token: Refresh Token Not Found')),
+    ).toBe(true);
+  });
+
+  test('false for unrelated', () => {
+    expect(shouldClearStaleLocalSession(new Error('JWT expired'))).toBe(false);
   });
 });

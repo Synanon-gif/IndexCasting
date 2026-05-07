@@ -1,10 +1,12 @@
 const mockCreateSignedUrl = jest.fn();
+const mockCreateSignedUrls = jest.fn();
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     storage: {
       from: jest.fn(() => ({
         createSignedUrl: (...args: unknown[]) => mockCreateSignedUrl(...args),
+        createSignedUrls: (...args: unknown[]) => mockCreateSignedUrls(...args),
       })),
     },
   },
@@ -49,6 +51,8 @@ describe('resolveStorageUrl (mocked supabase)', () => {
   beforeEach(() => {
     jest.resetModules();
     mockCreateSignedUrl.mockReset();
+    mockCreateSignedUrls.mockReset();
+    mockCreateSignedUrls.mockResolvedValue({ data: [], error: null });
   });
 
   it('retries on 504 then succeeds', async () => {
@@ -95,6 +99,28 @@ describe('resolveStorageUrl (mocked supabase)', () => {
     expect(a).toBe('https://signed-one');
     expect(b).toBe('https://signed-one');
     expect(mockCreateSignedUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it('getCachedUrl reads resolveStorageUrl cache (canonical storage key)', async () => {
+    mockCreateSignedUrl.mockResolvedValue({
+      data: { signedUrl: 'https://signed-shared' },
+      error: null,
+    });
+    const { resolveStorageUrl, getCachedUrl } = await import('../storageUrl');
+    const uri = 'supabase-storage://documentspictures/model-photos/x/cache-hit.jpg';
+    await resolveStorageUrl(uri);
+    expect(getCachedUrl(uri)).toBe('https://signed-shared');
+  });
+
+  it('resolveStorageUrlsBatch warms cache for getCachedUrl', async () => {
+    mockCreateSignedUrls.mockResolvedValueOnce({
+      data: [{ signedUrl: 'https://batch-a', path: 'model-photos/x/batch-warm.jpg', error: null }],
+      error: null,
+    });
+    const { resolveStorageUrlsBatch, getCachedUrl } = await import('../storageUrl');
+    const uri = 'supabase-storage://documentspictures/model-photos/x/batch-warm.jpg';
+    await resolveStorageUrlsBatch([uri]);
+    expect(getCachedUrl(uri)).toBe('https://batch-a');
   });
 
   it('never exceeds 5 concurrent createSignedUrl calls under burst', async () => {

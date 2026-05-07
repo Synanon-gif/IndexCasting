@@ -430,10 +430,9 @@ export async function resolveStorageUrl(
 export function getCachedUrl(url: string): string | null {
   if (!url) return null;
   const normalized = publicUrlToStorageUri(url.trim());
-  const extracted = extractBucketAndPath(normalized);
-  if (!extracted) return null;
-  const cacheKey = `${extracted.bucket} ${extracted.path}`;
-  const cached = urlCache.get(cacheKey);
+  const key = storageObjectCacheKey(normalized);
+  if (!key) return null;
+  const cached = urlCache.get(key);
   if (cached && cached.expiresAt > Date.now() / 1_000 + CACHE_GRACE_SECONDS) {
     return cached.signedUrl;
   }
@@ -468,7 +467,8 @@ export async function resolveStorageUrlsBatch(
     const extracted = extractBucketAndPath(normalized);
     if (!extracted) continue; // non-storage URL — no signing needed
 
-    const cacheKey = `${extracted.bucket} ${extracted.path}`;
+    const cacheKey = storageObjectCacheKey(normalized);
+    if (!cacheKey) continue;
     if (seenKeys.has(cacheKey)) continue; // deduplicate
     seenKeys.add(cacheKey);
 
@@ -491,23 +491,48 @@ export async function resolveStorageUrlsBatch(
         await acquireSignSlot();
         try {
           const paths = items.map((i) => i.path);
-          const res = await withTimeout(
-            supabase.storage.from(bucket).createSignedUrls(paths, ttlSeconds),
-            SIGN_PER_ATTEMPT_TIMEOUT_MS,
-          );
+          let batchData: Awaited<
+            ReturnType<ReturnType<typeof supabase.storage.from>['createSignedUrls']>
+          >['data'] = null;
+          let lastErr: unknown = null;
 
-          if (res.error || !res.data) {
+          for (let attempt = 0; attempt < SIGN_MAX_ATTEMPTS; attempt++) {
+            try {
+              const res = await withTimeout(
+                supabase.storage.from(bucket).createSignedUrls(paths, ttlSeconds),
+                SIGN_PER_ATTEMPT_TIMEOUT_MS,
+              );
+              if (!res.error && res.data) {
+                batchData = res.data;
+                lastErr = null;
+                break;
+              }
+              lastErr = res.error;
+              if (!isRetryableStorageSignError(res.error) || attempt === SIGN_MAX_ATTEMPTS - 1) {
+                break;
+              }
+              await new Promise((r) => setTimeout(r, Math.min(4000, 180 * 2 ** attempt)));
+            } catch (e) {
+              lastErr = e;
+              if (!isRetryableStorageSignError(e) || attempt === SIGN_MAX_ATTEMPTS - 1) {
+                break;
+              }
+              await new Promise((r) => setTimeout(r, Math.min(4000, 180 * 2 ** attempt)));
+            }
+          }
+
+          if (!batchData) {
             console.warn('[storageUrl] batch sign failed', {
               bucket,
               count: paths.length,
-              error: res.error,
+              error: lastErr,
             });
             return;
           }
 
           const batchNow = Date.now() / 1_000;
-          for (let i = 0; i < res.data.length; i++) {
-            const row = res.data[i];
+          for (let i = 0; i < batchData.length; i++) {
+            const row = batchData[i];
             const item = items[i];
             if (!row || !item) continue;
 

@@ -19,7 +19,7 @@ import {
   type FinalizeInviteClaimResult,
 } from '../services/finalizePendingInviteOrClaim';
 import { setUserContext } from '../observability/sentry';
-import { isSessionNotFoundError } from '../utils/authSessionErrors';
+import { shouldClearStaleLocalSession } from '../utils/authSessionErrors';
 import { runBootstrapSingleFlight, type BootstrapFlightCell } from '../utils/authBootstrapFlight';
 
 async function teardownSupabaseRealtimeAndNotifications(): Promise<void> {
@@ -549,9 +549,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('[Auth] bootstrapThenLoadProfile: starting for', userId);
       try {
         const { error: userErr } = await supabase.auth.getUser();
-        if (userErr && isSessionNotFoundError(userErr)) {
+        if (userErr && shouldClearStaleLocalSession(userErr)) {
           console.warn(
-            '[Auth] bootstrapThenLoadProfile: session_not_found — clearing local session',
+            '[Auth] bootstrapThenLoadProfile: stale or missing session — clearing local session',
           );
           try {
             await supabase.auth.signOut({ scope: 'local' });
@@ -720,8 +720,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } = await supabase.auth.getSession();
     if (!s?.user) return;
     const { error: userErr } = await supabase.auth.getUser();
-    if (userErr && isSessionNotFoundError(userErr)) {
-      console.warn('[Auth] refreshProfile: session_not_found — clearing local session');
+    if (userErr && shouldClearStaleLocalSession(userErr)) {
+      console.warn('[Auth] refreshProfile: stale or missing session — clearing local session');
       try {
         await supabase.auth.signOut({ scope: 'local' });
       } catch {

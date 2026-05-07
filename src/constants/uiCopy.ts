@@ -24,6 +24,10 @@ export const uiCopy = {
     yes: 'Yes',
     no: 'No',
     reloadPage: 'Reload page',
+    /** Web: stale JS chunk / deploy mismatch — index.html returned instead of a script. */
+    staleWebBundleTitle: 'Update available',
+    staleWebBundleBody:
+      'A new version of the app is available. The page will reload once, or reload manually if the problem continues.',
     retry: 'Retry',
     remove: 'Remove',
     noAgencyContext:

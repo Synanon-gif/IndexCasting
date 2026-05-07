@@ -90,6 +90,7 @@ import {
   clampQueryId,
   parseSharedSelectionParams,
 } from './src/utils/queryParamGuards';
+import { installWebChunkLoadRecovery } from './src/utils/webChunkLoadRecovery';
 
 /** Web: volle Höhe sofort beim Modul-Load (vor erstem React-Paint) – verhindert weißen/leeren Screen. */
 function ensureWebRootHasHeight() {
@@ -107,6 +108,9 @@ function ensureWebRootHasHeight() {
   document.head.appendChild(el);
 }
 ensureWebRootHasHeight();
+if (Platform.OS === 'web') {
+  installWebChunkLoadRecovery();
+}
 
 /** Local alias kept for backwards compatibility — NavigationRole from src/types/roles.ts */
 type Role = NavigationRole;
