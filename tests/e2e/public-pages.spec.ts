@@ -1,17 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/base';
 
 /**
  * Public web behavior (intended product contract)
  *
- * UPDATED ASSUMPTIONS (replacing earlier, incorrect ones):
- * - `/` is NOT a separate marketing landing page with a static HTML `<footer>`.
- *   It serves the Expo/React Native Web app shell and the unauthenticated auth entry.
- * - Do NOT require a marketing `<h1>`, document title "Index Casting", or footer links on `/`.
- * - `/terms` and `/privacy` remain publicly reachable routes (legal content).
- * - Legal entry points for signed-out users live in the auth UI (legal footer row:
- *   "Terms of Service" / "Privacy Policy"), not on a dedicated landing footer.
- *
- * These tests assert: shell load, auth gate, public legal routes, and in-app legal controls.
+ * - `/` serves the Expo/React Native Web app shell and unauthenticated auth entry.
+ * - `/terms` and `/privacy` are publicly reachable.
  */
 
 async function expectAuthEntryUi(page: import('@playwright/test').Page): Promise<void> {
@@ -29,13 +22,13 @@ async function expectAuthEntryUi(page: import('@playwright/test').Page): Promise
 }
 
 test.describe('Root — app shell / auth entry', () => {
-  test('loads successfully (no client error page)', async ({ page }) => {
+  test('loads successfully (no client error page) @smoke @p0', async ({ page }) => {
     const response = await page.goto('/');
     expect(response?.status()).toBeLessThan(400);
     await expect(page.locator('body')).toBeVisible();
   });
 
-  test('shows authentication UI for unauthenticated users', async ({ page }) => {
+  test('shows authentication UI for unauthenticated users @smoke @p0', async ({ page }) => {
     await page.goto('/');
     await page.waitForTimeout(3000);
     await expectAuthEntryUi(page);
@@ -43,7 +36,7 @@ test.describe('Root — app shell / auth entry', () => {
 });
 
 test.describe('/terms — public legal route', () => {
-  test('responds without a hard error', async ({ page }) => {
+  test('responds without a hard error @smoke @p0', async ({ page }) => {
     const response = await page.goto('/terms');
     expect(response?.status()).not.toBeGreaterThanOrEqual(400);
   });
@@ -68,7 +61,7 @@ test.describe('/terms — public legal route', () => {
 });
 
 test.describe('/privacy — public legal route', () => {
-  test('responds without a hard error', async ({ page }) => {
+  test('responds without a hard error @p0', async ({ page }) => {
     const response = await page.goto('/privacy');
     expect(response?.status()).not.toBeGreaterThanOrEqual(400);
   });
@@ -84,10 +77,8 @@ test.describe('/privacy — public legal route', () => {
   });
 });
 
-test.describe('Legal links from public auth UI (not a marketing landing footer)', () => {
-  test('Terms of Service is visible on the auth screen and opens /terms on web', async ({
-    page,
-  }) => {
+test.describe('Legal links from public auth UI', () => {
+  test('Terms of Service opens /terms on web', async ({ page }) => {
     await page.goto('/');
     await page.waitForTimeout(3000);
 
@@ -104,9 +95,7 @@ test.describe('Legal links from public auth UI (not a marketing landing footer)'
     expect(showsTerms).toBe(true);
   });
 
-  test('Privacy Policy is visible on the auth screen and opens /privacy on web', async ({
-    page,
-  }) => {
+  test('Privacy Policy opens /privacy on web', async ({ page }) => {
     await page.goto('/');
     await page.waitForTimeout(3000);
 
@@ -123,7 +112,7 @@ test.describe('Legal links from public auth UI (not a marketing landing footer)'
     expect(showsPrivacy).toBe(true);
   });
 
-  test('Trust is visible on the auth screen and opens /trust on web', async ({ page }) => {
+  test('Trust opens trust content on web', async ({ page }) => {
     await page.goto('/');
     await page.waitForTimeout(3000);
 
@@ -140,7 +129,7 @@ test.describe('Legal links from public auth UI (not a marketing landing footer)'
     expect(showsTrust).toBe(true);
   });
 
-  test('Status is visible on the auth screen and opens /status on web', async ({ page }) => {
+  test('Status opens status content on web', async ({ page }) => {
     await page.goto('/');
     await page.waitForTimeout(3000);
 
