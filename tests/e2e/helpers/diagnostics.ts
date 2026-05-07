@@ -1,5 +1,6 @@
 import type { ConsoleMessage, Page, Request, Response, TestInfo } from '@playwright/test';
 import { getCheckpointReport } from './checkpoints';
+import { collectDiscoveryReadSnapshot } from './discoveryRead';
 import { getE2eDiagnosticContext } from './e2eDiagnosticContext';
 import {
   classifyBaseUrlForDiagnostics,
@@ -171,6 +172,24 @@ export function startPageDiagnostics(page: Page, testInfo: TestInfo): () => Prom
         writeGateLine = 'not applicable';
       }
 
+      let discoveryBlock = '';
+      if (/\bdiscover(y)?\b/i.test(testInfo.title)) {
+        try {
+          const snap = await collectDiscoveryReadSnapshot(page);
+          discoveryBlock = [
+            '',
+            '## Discovery / filters (read snapshot — no secrets)',
+            '',
+            '```json',
+            JSON.stringify(snap, null, 2),
+            '```',
+            '',
+          ].join('\n');
+        } catch {
+          discoveryBlock = '\n## Discovery snapshot\n\n(unavailable — page closed?)\n';
+        }
+      }
+
       const md = [
         '# E2E failure diagnostic summary',
         '',
@@ -226,7 +245,7 @@ export function startPageDiagnostics(page: Page, testInfo: TestInfo): () => Prom
         '',
         '## Console (last 30)',
         ...consoleMessages.slice(-30).map((c) => `- [${c.type}] ${c.text}`),
-        '',
+        discoveryBlock,
       ].join('\n');
 
       await testInfo.attach('failure-summary.md', {
