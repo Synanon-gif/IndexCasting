@@ -299,6 +299,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [modelPhotosLoading, setModelPhotosLoading] = useState(false);
   const [modelPhotosLoadError, setModelPhotosLoadError] = useState<string | null>(null);
   const [photosRetryTick, setPhotosRetryTick] = useState(0);
+  const [modelPhotosLongWait, setModelPhotosLongWait] = useState(false);
 
   // Location state — active source + manual 'current' city input
   const [modelLocation, setModelLocation] = useState<ModelLocation | null>(null);
@@ -841,6 +842,15 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       cancelled = true;
     };
   }, [profile?.id]);
+
+  useEffect(() => {
+    if (!modelPhotosLoading) {
+      setModelPhotosLongWait(false);
+      return;
+    }
+    const t = setTimeout(() => setModelPhotosLongWait(true), 2_600);
+    return () => clearTimeout(t);
+  }, [modelPhotosLoading]);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -1554,8 +1564,22 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 {uiCopy.model.settingsPhotosHint}
               </Text>
               {modelPhotosLoading ? (
-                <View style={{ paddingVertical: spacing.md, alignItems: 'center' }}>
+                <View
+                  style={{ paddingVertical: spacing.md, alignItems: 'center', gap: spacing.sm }}
+                >
                   <ActivityIndicator size="small" color={colors.textSecondary} />
+                  {modelPhotosLongWait ? (
+                    <Text
+                      style={{
+                        ...typography.body,
+                        fontSize: 11,
+                        color: colors.textSecondary,
+                        textAlign: 'center',
+                      }}
+                    >
+                      {uiCopy.common.mediaPhotosStillLoading}
+                    </Text>
+                  ) : null}
                 </View>
               ) : modelPhotosLoadError ? (
                 <View style={{ gap: spacing.sm }}>

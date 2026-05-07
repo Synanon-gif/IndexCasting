@@ -17,6 +17,14 @@ export const uiCopy = {
     error: 'Error',
     success: 'Success',
     loading: 'Loading…',
+    /**
+     * Shown in photo grids / StorageImage when signed-URL resolution takes longer than a short threshold.
+     */
+    mediaPhotosStillLoading: 'Photos are still loading…',
+    /** Per-image retry after storage sign or bitmap load failure (StorageImage). */
+    mediaImageRetry: 'Retry',
+    /** Agency My Models media panel: first load of model_photos + signing. */
+    mediaGridLoadingPhotos: 'Loading photos…',
     /** Minimal busy indicator (single glyph) for inline buttons. */
     busyEllipsis: '…',
     help: 'Help',

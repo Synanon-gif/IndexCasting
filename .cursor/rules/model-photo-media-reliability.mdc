@@ -1,0 +1,68 @@
+# Model photo & media reliability (permanent invariants)
+
+**Scope:** Display and signing of model portfolio/polaroid/private photos across Agency, Model self-service, Client Discovery, Projects, Packages, and package import persistence.  
+**Non-goals:** No RLS/bucket policy changes, no business-rule mutations in option/booking/chat/billing/AI — this file documents **reliability + UX contracts** only.
+
+## 1. IndexCasting-owned storage after successful import/upload
+
+After a successful upload or **Phase-2 package mirror**, authoritative display URLs for `model_photos` rows must use the canonical **`supabase-storage://documentspictures/model-photos/<model_id>/…`** form (or equivalent path contract validated by `assertLocalIndexCastingPhotoUrlOrPath` in tests). External Mediaslide/Netwalk CDN URLs must **not** remain the primary `model_photos.url` after successful persistence.
+
+## 2. Package import persistence
+
+Package imports that run `persistImagesForPackageImport` with persistence enabled must mirror assets into `documentspictures` / `model_photos` per `.cursor/rules/package-import-invariants.mdc` §D2 and §4c.6 freeze. **Display** must not rely on external package URLs as the stable source after a successful mirror.
+
+## 3. Agency model profile (My Models)
+
+The agency-facing media UI (`ModelMediaSettingsPanel`) must list **manual uploads and imported rows** from `model_photos` (portfolio, polaroid, private). Empty states must not be shown as “no photos” while the initial load is still in flight — use loading/skeleton feedback.
+
+## 4. Model account profile / settings
+
+Model self-settings photo sections (`ModelProfileScreen` / settings tab) must show the model’s own portfolio and polaroid rows loaded via the canonical service paths. While photos are loading, show a visible loading state; after a delay, show **“Photos are still loading…”**; on failure, **Retry** (existing patterns + `uiCopy`).
+
+## 5. Client / Discovery visibility
+
+Client-visible surfaces must use **portfolio** rows that are **client-visible** (`is_visible_to_clients` / legacy `visible`), not private or agency-only polaroids in **Discovery** (polaroids only in package/guest contexts per `.cursorrules` §27.1). No cross-model or cross-org photo URLs in client UI.
+
+## 6. No private / cross-model / cross-org leakage
+
+- Gallery code must key images by **`model_id`** + stable `model_photos.id` / URL where applicable.  
+- Do not reuse another model’s storage path.  
+- Signing and cache keys must use **`storageObjectCacheKey`** / canonical path identity so the same object does not get duplicate signs beyond dedupe.
+
+## 7. Loading / skeleton / placeholder while signing
+
+`StorageImage` and list loaders must show **non-blank** feedback while `resolveStorageUrl` / batch signing is in progress. Use activity indicator + optional delayed copy (`uiCopy.common.mediaPhotosStillLoading`). Do not render a completely empty tile for a valid `uri` during resolution.
+
+## 8. One failed image must not break the gallery
+
+- A single `resolveStorageUrl` failure → placeholder + optional **Retry** for that tile; other tiles keep rendering.  
+- `resolveStorageUrls` / batch paths must return **`null` at indices** without throwing; grids map over results safely.
+
+## 9. Signing: cache, dedupe, retry, concurrency
+
+Central logic lives in `src/storage/storageUrl.ts`: negative cache, in-flight dedupe, retry on transient errors, **`MAX_CONCURRENT_STORAGE_SIGNS`**. Any change must preserve these properties; extend **`src/storage/__tests__/storageUrl.test.ts`** when behavior changes.
+
+## 10. Touch list — regression required
+
+Changes touching **any** of the following must preserve the invariants above **and** extend or run the relevant tests:
+
+| Area | Primary files |
+|------|----------------|
+| DB photo rows | `model_photos` usage in services, `modelPhotosSupabase.ts` |
+| Rendering | `StorageImage.tsx`, client/agency galleries |
+| Signing | `storageUrl.ts` |
+| Package mirror | `packageImagePersistence.ts`, `packageImporter.ts` (import path) |
+| Agency media UI | `ModelMediaSettingsPanel.tsx` |
+| Model self UI | `ModelProfileScreen.tsx` |
+| Discovery / projects | Discovery grids, `ClientWebApp.tsx`, `getClientVisiblePortfolioUrlsFromModelPhotos` & related |
+
+## Tests (living contract)
+
+- `src/utils/__tests__/assertLocalIndexCastingPhotoUrlOrPath.test.ts` — canonical URL shape; rejects external hosts.  
+- `src/services/__tests__/packageImagePersistence.test.ts` — persisted rows assert local storage URL.  
+- `src/services/__tests__/modelPhotosSupabase.clientVisible.contract.test.ts` — client-visible portfolio filter contract.  
+- `src/storage/__tests__/storageUrl.test.ts` — dedupe, concurrency, partial batch failure.
+
+## UX copy
+
+All new user-visible strings: **`src/constants/uiCopy.ts`** (`uiCopy.common` / `modelMedia`), English only.

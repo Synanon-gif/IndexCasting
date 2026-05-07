@@ -142,4 +142,17 @@ describe('resolveStorageUrl (mocked supabase)', () => {
     expect(maxSeen).toBeLessThanOrEqual(5);
     expect(mockCreateSignedUrl).toHaveBeenCalledTimes(40);
   }, 35_000);
+
+  it('resolveStorageUrls preserves length; one failure yields null without throwing', async () => {
+    mockCreateSignedUrl
+      .mockResolvedValueOnce({ data: { signedUrl: 'https://one' }, error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: 'Object not found' } });
+    const { resolveStorageUrls } = await import('../storageUrl');
+    const u1 = 'supabase-storage://documentspictures/model-photos/m/a.jpg';
+    const u2 = 'supabase-storage://documentspictures/model-photos/m/b.jpg';
+    const out = await resolveStorageUrls([u1, u2]);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toBe('https://one');
+    expect(out[1]).toBeNull();
+  }, 15_000);
 });

@@ -14,6 +14,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Platform,
@@ -80,6 +81,7 @@ type Props = {
 };
 
 const copy = uiCopy.modelMedia;
+const commonMediaCopy = uiCopy.common;
 const legalCopy = uiCopy.legal;
 
 // ---------------------------------------------------------------------------
@@ -114,6 +116,8 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   const [portfolio, setPortfolio] = useState<ResolvedPhoto[]>([]);
   const [polaroids, setPolaroids] = useState<ResolvedPhoto[]>([]);
   const [privatePhotos, setPrivatePhotos] = useState<ResolvedPhoto[]>([]);
+  /** First fetch for this model (empty grid) — avoids flashing "No photos" during load. */
+  const [mediaListLoading, setMediaListLoading] = useState(true);
 
   const [mediaViewMode, setMediaViewMode] = useState<'manage' | 'gallery'>('manage');
   const { width: _mediaPanelWidth } = useWindowDimensions();
@@ -204,43 +208,51 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     onReconcileCompleteRef.current = onReconcileComplete;
   }, [onReconcileComplete]);
 
+  useEffect(() => {
+    setMediaListLoading(true);
+  }, [modelId]);
+
   // ---------------------------------------------------------------------------
   // Load
   // ---------------------------------------------------------------------------
 
   const loadPhotos = useCallback(async () => {
-    const [port, pola, priv] = await Promise.all([
-      getPhotosForModel(modelId, 'portfolio'),
-      getPhotosForModel(modelId, 'polaroid'),
-      getPhotosForModel(modelId, 'private'),
-    ]);
-    const [resolvedPort, resolvedPola, resolvedPriv] = await Promise.all([
-      resolvePhotosDisplayUrls(port),
-      resolvePhotosDisplayUrls(pola),
-      resolvePhotosDisplayUrls(priv),
-    ]);
-    setPortfolio(resolvedPort);
-    setPolaroids(resolvedPola);
-    setPrivatePhotos(resolvedPriv);
-    onHasVisiblePortfolioChangeRef.current?.(resolvedPort.some((p) => p.is_visible_to_clients));
-    // Align models.portfolio_images / models.polaroids with model_photos (fixes roster & client drift).
-    const okPort = await rebuildPortfolioImagesFromModelPhotos(modelId);
-    const okPol = await rebuildPolaroidsFromModelPhotos(modelId);
-    if (!okPort) {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert(copy.portfolioColumnSyncFailed);
-      } else {
-        Alert.alert(uiCopy.common.error, copy.portfolioColumnSyncFailed);
+    try {
+      const [port, pola, priv] = await Promise.all([
+        getPhotosForModel(modelId, 'portfolio'),
+        getPhotosForModel(modelId, 'polaroid'),
+        getPhotosForModel(modelId, 'private'),
+      ]);
+      const [resolvedPort, resolvedPola, resolvedPriv] = await Promise.all([
+        resolvePhotosDisplayUrls(port),
+        resolvePhotosDisplayUrls(pola),
+        resolvePhotosDisplayUrls(priv),
+      ]);
+      setPortfolio(resolvedPort);
+      setPolaroids(resolvedPola);
+      setPrivatePhotos(resolvedPriv);
+      onHasVisiblePortfolioChangeRef.current?.(resolvedPort.some((p) => p.is_visible_to_clients));
+      // Align models.portfolio_images / models.polaroids with model_photos (fixes roster & client drift).
+      const okPort = await rebuildPortfolioImagesFromModelPhotos(modelId);
+      const okPol = await rebuildPolaroidsFromModelPhotos(modelId);
+      if (!okPort) {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.alert(copy.portfolioColumnSyncFailed);
+        } else {
+          Alert.alert(uiCopy.common.error, copy.portfolioColumnSyncFailed);
+        }
       }
-    }
-    if (!okPol) {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert(copy.polaroidColumnSyncFailed);
-      } else {
-        Alert.alert(uiCopy.common.error, copy.polaroidColumnSyncFailed);
+      if (!okPol) {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.alert(copy.polaroidColumnSyncFailed);
+        } else {
+          Alert.alert(uiCopy.common.error, copy.polaroidColumnSyncFailed);
+        }
       }
+      onReconcileCompleteRef.current?.();
+    } finally {
+      setMediaListLoading(false);
     }
-    onReconcileCompleteRef.current?.();
     // Only modelId in deps — callbacks are accessed via stable refs to avoid
     // re-creating this function (and re-triggering the useEffect) on every parent render.
   }, [modelId]);
@@ -871,6 +883,16 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   // ---------------------------------------------------------------------------
   const renderGalleryGrid = (photos: ResolvedPhoto[]) => {
     if (photos.length === 0) {
+      if (mediaListLoading) {
+        return (
+          <View style={{ paddingVertical: spacing.md, alignItems: 'center', gap: spacing.sm }}>
+            <ActivityIndicator color={colors.textSecondary} />
+            <Text style={[typography.body, { fontSize: 12, color: colors.textSecondary }]}>
+              {commonMediaCopy.mediaGridLoadingPhotos}
+            </Text>
+          </View>
+        );
+      }
       return <Text style={s.emptyLabel}>{copy.noPhotos}</Text>;
     }
     const galColCount = _mediaPanelWidth >= 960 ? 4 : _mediaPanelWidth >= 640 ? 3 : 2;
@@ -1069,6 +1091,25 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
         ))}
       </View>
 
+      {mediaListLoading &&
+        portfolio.length === 0 &&
+        polaroids.length === 0 &&
+        privatePhotos.length === 0 && (
+          <View
+            style={{
+              paddingVertical: spacing.lg,
+              alignItems: 'center',
+              gap: spacing.sm,
+              marginBottom: spacing.md,
+            }}
+          >
+            <ActivityIndicator color={colors.textSecondary} />
+            <Text style={{ fontSize: 12, color: colors.textSecondary, textAlign: 'center' }}>
+              {commonMediaCopy.mediaGridLoadingPhotos}
+            </Text>
+          </View>
+        )}
+
       {/* ── Gallery mode ───────────────────────────────────────── */}
       {mediaViewMode === 'gallery' && (
         <>
@@ -1183,7 +1224,9 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
               <Text style={s.dropHint}>{copy.dropToMoveToPortfolio}</Text>
             )}
 
-            {portfolio.length === 0 && <Text style={s.emptyLabel}>{copy.noPhotos}</Text>}
+            {portfolio.length === 0 && !mediaListLoading && (
+              <Text style={s.emptyLabel}>{copy.noPhotos}</Text>
+            )}
             {portfolio.map((photo, idx) =>
               renderPhotoRow(photo, idx, portfolio, 'portfolio', setPortfolio, syncPortfolio),
             )}
@@ -1228,7 +1271,9 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
               <Text style={s.dropHint}>{copy.dropToMoveToPolaroid}</Text>
             )}
 
-            {polaroids.length === 0 && <Text style={s.emptyLabel}>{copy.noPhotos}</Text>}
+            {polaroids.length === 0 && !mediaListLoading && (
+              <Text style={s.emptyLabel}>{copy.noPhotos}</Text>
+            )}
             {polaroids.map((photo, idx) =>
               renderPhotoRow(photo, idx, polaroids, 'polaroid', setPolaroids, syncPolaroids),
             )}
@@ -1248,7 +1293,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
               )}
             </View>
 
-            {privatePhotos.length === 0 && (
+            {privatePhotos.length === 0 && !mediaListLoading && (
               <Text style={[s.emptyLabel, { color: colors.textSecondary }]}>{copy.noPhotos}</Text>
             )}
             {privatePhotos.map((photo, idx) =>
