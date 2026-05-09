@@ -457,3 +457,9 @@ export async function fetchUserOrganizationIds(userId: string): Promise<string[]
     return [];
   }
 }
+
+/** Batch INSERT path used by `../utils/notificationBatcher` (re-export for discoverability). */
+export {
+  insertNotificationBatch,
+  type NotificationBatchInsertRow,
+} from './notificationsInsertBatch';

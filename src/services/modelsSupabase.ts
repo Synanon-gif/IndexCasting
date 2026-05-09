@@ -827,6 +827,22 @@ export async function getModelClaimPreview(token: string): Promise<ModelClaimPre
 }
 
 /**
+ * Best-effort DELETE for an unused model claim token row (plaintext `token`, `used_at` IS NULL).
+ * Same query as the former inline cleanup in InviteHealthCheckScreen — admin health-check only.
+ * May return RLS errors Caller ignores; token expires naturally if DELETE is not permitted.
+ */
+export async function deleteUnusedModelClaimTokenByToken(
+  token: string,
+): Promise<{ error: PostgrestError | null }> {
+  const { error } = await supabase
+    .from('model_claim_tokens')
+    .delete()
+    .eq('token', token)
+    .is('used_at', null);
+  return { error };
+}
+
+/**
  * Fix H: Returns all agencies + territories for the calling model user.
  * Models use model_agency_territories (not organization_members) as their org anchor.
  * Returns an empty array during the application phase (before any agency link is confirmed).
