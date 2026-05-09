@@ -3,11 +3,10 @@
  * time window and flushes them as a single bulk INSERT, reducing HTTP round-trips
  * from N to 1.
  *
- * Only notifications that go through the direct `.from('notifications').insert()`
- * path are batchable. Cross-party RPCs (send_notification, notify_org_for_*)
- * bypass the batcher and execute immediately.
+ * Flush delegates the INSERT to `insertNotificationBatch` under `src/services/`
+ * so the audit rule engine keeps `from(` calls inside `src/services/**`.
  */
-import { supabase } from '../../lib/supabase';
+import { insertNotificationBatch } from '../services/notificationsInsertBatch';
 
 type BatchableRow = {
   user_id: string | null;
@@ -38,7 +37,7 @@ async function flushQueue(): Promise<void> {
   const batch = queue.splice(0, MAX_BATCH_SIZE);
 
   try {
-    const { error } = await supabase.from('notifications').insert(batch);
+    const { error } = await insertNotificationBatch(batch);
     if (error) {
       console.error('[notificationBatcher] bulk insert error:', error, `(${batch.length} rows)`);
     }

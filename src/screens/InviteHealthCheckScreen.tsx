@@ -24,7 +24,11 @@ import {
   View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
-import { generateModelClaimToken, getModelClaimPreview } from '../services/modelsSupabase';
+import {
+  deleteUnusedModelClaimTokenByToken,
+  generateModelClaimToken,
+  getModelClaimPreview,
+} from '../services/modelsSupabase';
 import { createOrganizationInvitation } from '../services/organizationsInvitationsSupabase';
 import { colors, spacing, typography } from '../theme/theme';
 
@@ -224,12 +228,12 @@ async function runTokenRoundtrip(
   if (!preview || !(preview as { valid?: boolean }).valid) {
     const errCode = (preview as { error?: string } | null)?.error ?? 'null response';
     // Attempt cleanup even on failure
-    await supabase.from('model_claim_tokens').delete().eq('token', token).is('used_at', null);
+    await deleteUnusedModelClaimTokenByToken(token);
     return { status: 'fail', detail: `Preview returned invalid: ${errCode}` };
   }
 
   // Cleanup — may silently fail if admin lacks DELETE RLS; token expires naturally.
-  await supabase.from('model_claim_tokens').delete().eq('token', token).is('used_at', null);
+  await deleteUnusedModelClaimTokenByToken(token);
 
   const p = preview as { model_name?: string; agency_name?: string };
   return {
