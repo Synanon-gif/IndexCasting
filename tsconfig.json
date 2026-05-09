@@ -10,7 +10,7 @@
     "dist",
     "marketing-site",
     "supabase/functions",
-    "e2e",
+    "tests/e2e",
     "playwright.config.ts"
   ]
 }

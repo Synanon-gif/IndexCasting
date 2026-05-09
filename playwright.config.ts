@@ -1,52 +1,107 @@
+import path from 'node:path';
+import { config as loadEnv } from 'dotenv';
 import { defineConfig, devices } from '@playwright/test';
 
+// Local secrets + base URL (never committed)
+loadEnv({ path: path.join(process.cwd(), '.env.e2e') });
+
+const BASE_URL =
+  process.env.E2E_BASE_URL?.trim() ||
+  process.env.PLAYWRIGHT_BASE_URL?.trim() ||
+  'http://localhost:8081';
+
+function isLocalBaseUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+  } catch {
+    return false;
+  }
+}
+
+const shouldStartExpoWeb =
+  isLocalBaseUrl(BASE_URL) &&
+  process.env.PLAYWRIGHT_SKIP_WEB_SERVER !== '1' &&
+  process.env.E2E_SKIP_WEB_SERVER !== '1';
+
 /**
- * Playwright E2E Config — IndexCasting Web
+ * Playwright E2E — IndexCasting Web
  *
- * Runs against the Expo web dev server on localhost:8081.
- * Set PLAYWRIGHT_BASE_URL env var to override (e.g. Vercel preview URL).
+ * - `E2E_BASE_URL` (preferred) or `PLAYWRIGHT_BASE_URL` — e.g. https://www.index-casting.com
+ * - Local default `http://localhost:8081` starts Expo web unless `PLAYWRIGHT_SKIP_WEB_SERVER=1`
  *
- * To run against a pre-running server (skip auto-start):
- *   PLAYWRIGHT_SKIP_WEB_SERVER=1 npx playwright test
+ * See `docs/e2e-testing-setup.md` and `docs/e2e-test-matrix.md`.
  */
-
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:8081';
-const SKIP_WEB_SERVER = !!process.env.PLAYWRIGHT_SKIP_WEB_SERVER;
-
 export default defineConfig({
-  testDir: './e2e',
-  fullyParallel: false, // Expo dev server is shared; avoid concurrent page restarts
+  globalSetup: require.resolve('./tests/e2e/global-setup.ts'),
+  testDir: './tests/e2e',
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
-  reporter: process.env.CI ? 'github' : 'list',
+  timeout: 120_000,
+  expect: { timeout: 20_000 },
+  outputDir: 'test-results',
+
+  reporter: [
+    ['list'],
+    ['html', { open: 'never', outputFolder: 'playwright-report' }],
+    ['json', { outputFile: 'e2e-artifacts/results.json' }],
+  ],
 
   use: {
     baseURL: BASE_URL,
-    trace:   'on-first-retry',
-    // Expo web bundles can be slow; generous timeout
-    actionTimeout:     15_000,
-    navigationTimeout: 30_000,
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
+    actionTimeout: 20_000,
+    navigationTimeout: 60_000,
   },
 
   projects: [
     {
-      name:  'chromium',
-      use:   { ...devices['Desktop Chrome'] },
+      name: 'chromium-desktop',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1440, height: 900 },
+      },
     },
-    // Uncomment to test mobile viewports
-    // { name: 'mobile-chrome', use: { ...devices['Pixel 5'] } },
+    {
+      name: 'firefox-desktop',
+      use: {
+        ...devices['Desktop Firefox'],
+        viewport: { width: 1440, height: 900 },
+      },
+    },
+    {
+      name: 'webkit-desktop',
+      use: {
+        ...devices['Desktop Safari'],
+        viewport: { width: 1440, height: 900 },
+      },
+    },
+    {
+      name: 'mobile-iphone-se',
+      use: { ...devices['iPhone SE'] },
+    },
+    {
+      name: 'mobile-iphone-14',
+      use: { ...devices['iPhone 14'] },
+    },
+    {
+      name: 'tablet-ipad',
+      use: { ...devices['iPad (gen 7)'] },
+    },
   ],
 
-  // Auto-start the Expo web server when running E2E locally
-  webServer: SKIP_WEB_SERVER
-    ? undefined
-    : {
-        command:          'npx expo start --web --port 8081 --no-dev',
-        url:              BASE_URL,
+  webServer: shouldStartExpoWeb
+    ? {
+        command: 'npx expo start --web --port 8081 --no-dev',
+        url: BASE_URL,
         reuseExistingServer: !process.env.CI,
-        timeout:          120_000,
-        stdout:           'pipe',
-        stderr:           'pipe',
-      },
+        timeout: 180_000,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      }
+    : undefined,
 });
