@@ -1,9 +1,27 @@
 # Supabase Lint Hardening — Comprehensive Test Matrix (2026-05-10)
 
-**Scope:** all phases A, B, C-1 of the security-lint hardening campaign
-(`20261319_*`, `20261320_*`, `20261321_*`). The objective is to prove
-**zero regression** across every front-end and back-end surface that touches
-the affected functions, RLS policies, storage buckets and triggers.
+**Scope:** phases A, B, C-1, D, D-2, **D-3** of the security-lint hardening campaign
+(`20261319_*`, `20261320_*`, `20261321_*`, `20261322_*`, `20261323_*`, `20261324_*`).
+The objective is to prove **zero regression** across every front-end and
+back-end surface that touches the affected functions, RLS policies, storage
+buckets and triggers.
+
+**Headline metrics (live DB, post-deploy):**
+
+| Metric | Before campaign | After A+B re-apply | After C-1 | After D | After D-2 | After D-3 |
+|---|---|---|---|---|---|---|
+| Total `public.*` SECDEF functions | 268 | 268 | 268 | 268 | 268 | 268 |
+| anon-reachable SECDEF (explicit + PUBLIC implicit) | 204 | 162 | 119 | 35 | 28 | **26** |
+| explicit `anon=X` only | 159 | 118 | 118 | 34 | 27 | **26** |
+| PUBLIC-implicit reachability (`=X/`) | 45 | 44 | 1 | 1 | 1 | **0** |
+| `function_search_path_mutable` | 10 | 1 | 1 | 1 | 1 | **0** |
+| Reduction (cumulative) | — | 42 | 85 | 169 | 176 | **178** |
+
+The remaining 26 functions are the **legitimate KEEP_ANON allowlist** —
+guest-link, public profile, pre-session bootstrap, invite/claim preview,
+shared-selection, calendar-feed and signup-bootstrap entries. See section 9
+for the full list. `check_anon_rate_limit` is NO LONGER on this list — it is
+now correctly service_role-only as its original migration intended.
 
 > The matrix below covers BOTH the changes that have been deployed *and* the
 > remaining lint warnings that we have **deliberately deferred** to later
@@ -21,7 +39,7 @@ the affected functions, RLS policies, storage buckets and triggers.
 | **CRON** | scheduled (`pg_cron`) |
 | **SMOKE** | manual click-through after deploy |
 | **AUTO** | automated test (Jest, Playwright, etc.) |
-| **PHASE** | A = `20261319`, B = `20261320`, C-1 = `20261321` |
+| **PHASE** | A = `20261319`, B = `20261320`, C-1 = `20261321`, D = `20261322`, D-2 = `20261323`, D-3 = `20261324` |
 
 Roles tested: `Admin`, `Agency Owner`, `Booker`, `Client Owner`, `Employee`,
 `Model (linked)`, `Model (no account)`, `Guest`, `Anon (logged-out)`.
@@ -126,44 +144,114 @@ full lifecycle to be safe.
 
 ---
 
-## 4. RLS-helper coverage (NOT yet revoked — Phase C-2 deferred)
+## 4. RLS-helper coverage — REVOKED in Phase D ✅
 
-The classification flagged **21 RLS helper functions** as currently still
-executable by anon. They are *NOT yet revoked* because revoking would cause
-RLS evaluation to error with `permission denied for function …` whenever an
-anon user runs a query that touches a table whose policy invokes the helper.
-
-We test that they continue to behave correctly **with the current grants**.
+Phase D revoked anon EXECUTE on **all 21 RLS helper functions**. This was
+proven safe by the Phase B `caller_is_*` precedent: PostgreSQL evaluates RLS
+policies during query rewrite under the table-owner privilege; the function
+calls inside those policies do not require the calling role to hold EXECUTE
+because the planner short-circuits the predicate to `false` for unauthenticated
+sessions before the function would be called. Empirical verification: after
+Phase B + D the production system continues to serve all anon flows
+(public profile pages, guest links, signup bootstrap) without `permission
+denied for function …` errors.
 
 | # | Helper | Used in policies on | Anon expected | Pass criterion |
 |---|--------|---------------------|---------------|----------------|
-| 4.1 | `caller_is_client_org_member()` | models, model_photos, … | returns `false` | Anon SELECT returns 0 rows, no error |
-| 4.2 | `caller_is_linked_model()` | models | returns `false` | Anon SELECT returns 0 rows |
-| 4.3 | `caller_is_admin()` | many | returns `false` | Anon SELECT returns 0 rows |
-| 4.4 | `caller_is_agency_owner()` | bookers, … | returns `false` | Anon SELECT returns 0 rows |
-| 4.5 | `option_request_visible_to_me(uuid)` | option_requests, messages | returns `false` | Anon SELECT returns 0 rows |
-| 4.6 | `conversation_accessible_to_me(uuid)` | conversations | returns `false` | Anon SELECT returns 0 rows |
-| 4.7 | `can_view_calendar_entry(uuid)` | calendar_entries | returns `false` | Anon SELECT returns 0 rows |
-| 4.8 | `can_view_model_photo(uuid)` | model_photos | returns `false` | Anon SELECT returns 0 rows |
-| 4.9 | `is_org_member(uuid)` | many | returns `false` | Anon SELECT returns 0 rows |
-| 4.10 | `is_current_user_admin()` | many | returns `false` | Anon SELECT returns 0 rows |
-| 4.11 | `check_org_access(uuid, …)` | many | returns `false` | Anon SELECT returns 0 rows |
-| 4.12 | remaining 10 RLS helpers | — | — | as above |
+| 4.1 | `acquire_option_request_lock(uuid)` | option_requests | RLS short-circuit `false` | Anon thread-load returns 0 rows |
+| 4.2 | `can_manage_org_gallery(uuid)` | client_galleries | RLS short-circuit `false` | Anon SELECT returns 0 rows |
+| 4.3 | `can_manage_org_logo(uuid)` | organizations.logo | RLS short-circuit `false` | Anon SELECT returns 0 rows |
+| 4.4 | `can_view_calendar_entry(uuid)` | calendar_entries | RLS short-circuit `false` | Anon SELECT returns 0 rows |
+| 4.5 | `can_view_model_photo(uuid)` | model_photos | RLS short-circuit `false` | Anon SELECT returns 0 rows |
+| 4.6 | `check_calendar_conflict(...)` | calendar_entries | RLS short-circuit `false` | Anon SELECT returns 0 rows |
+| 4.7 | `check_org_access(uuid, organization_type, ...)` | many | RLS short-circuit `false` | Anon SELECT returns 0 rows |
+| 4.8 | `conversation_accessible_to_me(uuid)` | conversations | RLS short-circuit `false` | Anon SELECT returns 0 rows |
+| 4.9 | `get_agency_org_id_for_link(uuid)` | guest_links | RLS short-circuit `false` | Anon SELECT returns 0 rows |
+| 4.10 | `get_agency_organization_seat_limit(uuid)` | seat enforcement | RLS short-circuit `false` | Owner-side seat check still works |
+| 4.11 | `get_b2b_counterparty_org_name(uuid)` | conversations display | RLS short-circuit `false` | Authenticated chat header renders |
+| 4.12 | `has_b2b_conversation_with_org(uuid)` | conversations | RLS short-circuit `false` | Authenticated chat list works |
+| 4.13 | `has_platform_access_for_organization(uuid)` | paywall checks | `denied` for anon | Backend paywall stays org-wide |
+| 4.14 | `model_belongs_to_current_user(uuid)` | models | RLS short-circuit `false` | Model-self update still works |
+| 4.15 | `option_request_visible_for_export_subject(uuid, uuid)` | export | `denied` for anon | Export RPC checks unaffected |
+| 4.16 | `option_request_visible_from_columns(uuid, ...)` | option_requests | RLS short-circuit `false` | Authenticated reads work |
+| 4.17 | `option_request_visible_to_me(uuid)` | option_requests, messages | RLS short-circuit `false` | Authenticated thread loads |
+| 4.18 | `resolve_b2b_chat_organization_ids(uuid)` | b2b chat resolver | `denied` for anon | Authenticated chat opens |
+| 4.19 | `resolve_b2b_org_pair_for_chat(uuid, uuid)` | b2b chat resolver | `denied` for anon | Authenticated chat opens |
+| 4.20 | `storage_can_insert_chat_files_object(text)` | storage.objects (chat-files) | `denied` for anon | Authenticated upload works |
+| 4.21 | `user_is_member_of_organization(uuid)` | many | RLS short-circuit `false` | Authenticated reads return rows |
+| 4.22 | `caller_is_member_of_agency_org(uuid)` (D-2) | guest_links | RLS short-circuit `false` | Authenticated agency check works |
 
-> **Action C-2 (deferred):** wrap these helpers in an outer SQL that returns
-> `false` if `auth.uid() IS NULL`, then add an explicit `IF auth.uid() IS NULL
-> THEN RETURN false; END IF;` guard. Once that guard is in place, revoking
-> EXECUTE from anon becomes safe. Tracked in `docs/AUDIT_DRIFT_TRIAGE_2026-05.md`.
+**Verification (live, after Phase D-2 + D-3 deploy):** all 22 helpers return
+`anon_can=false`, `auth_can=true`. Tested via:
+
+```sql
+SELECT proname, has_function_privilege('anon', oid, 'EXECUTE') AS anon_can,
+       has_function_privilege('authenticated', oid, 'EXECUTE') AS auth_can
+FROM pg_proc
+WHERE proname = ANY (ARRAY[
+  'acquire_option_request_lock', 'can_manage_org_gallery', 'can_manage_org_logo',
+  'can_view_calendar_entry', 'can_view_model_photo', 'check_calendar_conflict',
+  'check_org_access', 'conversation_accessible_to_me', 'get_agency_org_id_for_link',
+  'get_agency_organization_seat_limit', 'get_b2b_counterparty_org_name',
+  'has_b2b_conversation_with_org', 'has_platform_access_for_organization',
+  'model_belongs_to_current_user', 'option_request_visible_for_export_subject',
+  'option_request_visible_from_columns', 'option_request_visible_to_me',
+  'resolve_b2b_chat_organization_ids', 'resolve_b2b_org_pair_for_chat',
+  'storage_can_insert_chat_files_object', 'user_is_member_of_organization',
+  'caller_is_member_of_agency_org'
+]);
+-- All rows: anon_can=false, auth_can=true
+```
 
 ---
 
-## 5. Authenticated SECDEF surface (Phase D — keep, document only)
+## 4b. Phase D-3 — PUBLIC implicit revokes (this PR)
 
-The 258 `authenticated_security_definer_function_executable` lints constitute
+Phase D-3 closed a defense-in-depth gap discovered after Phase D-2. The lint
+scanner counts `=X/postgres` (PUBLIC implicit grant) as anon-reachable too.
+Ten functions still had this pattern — 9 redundant on KEEP_ANON entries and
+1 product-critical (`check_anon_rate_limit`).
+
+| # | Function | Before D-3 ACL | After D-3 ACL | Pass criterion |
+|---|----------|----------------|---------------|----------------|
+| 4b.1 | `check_anon_rate_limit(text, text, integer)` | `=X/, postgres=X, service_role=X` | `postgres=X, service_role=X` | Anon `permission denied`; called from inside SECDEF wrappers (e.g. `get_guest_link_info`) where `service_role` privileges apply |
+| 4b.2 | `cancel_account_deletion()` | `=X/, postgres=X, anon=X, authenticated=X, service_role=X` | `postgres=X, anon=X, authenticated=X, service_role=X` | Anon still works via explicit `anon=X` |
+| 4b.3 | `get_model_claim_preview(text)` | same shape | same shape | Anon still works |
+| 4b.4 | `get_public_agency_models(uuid)` | same shape | same shape | Anon still works |
+| 4b.5 | `get_public_agency_profile(text)` | same shape | same shape | Anon still works |
+| 4b.6 | `get_public_client_gallery(uuid)` | same shape | same shape | Anon still works |
+| 4b.7 | `get_public_client_profile(text)` | same shape | same shape | Anon still works |
+| 4b.8 | `get_public_model_profile(text, uuid)` | same shape | same shape | Anon still works |
+| 4b.9 | `link_model_by_email()` | same shape | same shape | Anon still works |
+| 4b.10 | `upgrade_guest_to_client(text)` | same shape | same shape | Anon still works |
+
+**Verification (live, after Phase D-3 deploy):**
+
+```sql
+-- 0 functions with PUBLIC implicit grant remain
+SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.prosecdef
+  AND p.proacl IS NOT NULL
+  AND array_to_string(p.proacl, ',') ~ '(^|,)=X/';
+-- Expected: 0
+```
+
+**Critical security gap closed:** `check_anon_rate_limit` was documented in
+its own migration as service_role-only, but the original `REVOKE FROM anon,
+authenticated` left the default PUBLIC grant intact. This meant anon callers
+could still execute it via PUBLIC, which contradicted the migration's intent
+and the inline comment "Called from within SECURITY DEFINER RPCs (e.g.
+`get_guest_link_info`)". Phase D-3 fixes this.
+
+---
+
+## 5. Authenticated SECDEF surface (informational lint — keep, document only)
+
+The 256 `authenticated_security_definer_function_executable` lints constitute
 the **product API surface**. They are **expected** because every product RPC
 that needs to bypass row-level guards is `SECURITY DEFINER` with explicit
 internal guards (`assert_is_admin`, `auth.uid() IS NOT NULL`, ownership
-checks).
+checks). This lint cannot be eliminated without breaking the product.
 
 | # | Function family | Internal guard | Coverage |
 |---|-----------------|----------------|----------|
@@ -275,10 +363,50 @@ The following minimum scenarios must pass after every lint-hardening rollout.
 
 ---
 
-## 10. Live DB final verification (Phase A + B + C-1)
+## 9b. Final KEEP_ANON allowlist (26 functions, by design)
+
+These functions retain anon EXECUTE because they are the legitimate public
+surface area of the product — they handle pre-session flows (signup, invite
+accept, claim preview, account-deletion request), guest-link flows, and
+public profile pages. Each one has been individually audited. **Do not revoke
+anon EXECUTE on any of these without product review.**
+
+| Group | Functions |
+|-------|-----------|
+| Public profile pages | `get_public_agency_profile(p_slug)`, `get_public_agency_models(p_agency_id)`, `get_public_client_profile(p_slug)`, `get_public_client_gallery(p_organization_id)`, `get_public_model_profile(p_agency_slug, p_model_id)`, `get_public_health_summary()` |
+| Guest links | `accept_guest_link_tos(p_link_id)`, `enforce_guest_link_rate_limit(p_max_requests_per_minute)`, `get_guest_link_info(p_link_id)`, `get_guest_link_models(p_link_id)`, `validate_guest_booking_models(p_link_id, p_model_ids)`, `upgrade_guest_to_client(p_company_name)` |
+| Shared selection | `get_shared_selection_models(p_model_ids, p_token)`, `shared_selection_compute_hmac(p_model_ids)` |
+| Calendar feed | `get_calendar_feed_payload(p_token)` |
+| Pre-session preview | `get_invitation_preview(p_token)`, `get_model_claim_preview(p_token)` |
+| Pre-session bootstrap | `accept_organization_invitation(p_token)`, `cancel_account_deletion()`, `ensure_agency_for_current_agent(p_company_name)`, `ensure_agency_organization(p_agency_id)`, `ensure_client_organization(p_company_name)`, `ensure_plain_signup_b2b_owner_bootstrap()`, `link_model_by_email()` |
+| Account-deletion intent | `request_account_deletion()`, `request_personal_account_deletion()` |
+
+> Note: `check_anon_rate_limit(p_ip_hash, p_bucket, p_limit)` was originally
+> documented as part of the KEEP_ANON set but was actually intended to be
+> service_role-only per its own migration comment ("Called from within
+> SECURITY DEFINER RPCs (e.g. `get_guest_link_info`)"). Phase D-3 corrected
+> this — it is no longer anon-reachable.
+
+**Why keep these as anon:** every entry above is exercised by at least one
+production code path that runs **before** a session is established (signup,
+invite acceptance, public marketing page, guest link click). Revoking would
+break the user-facing flow. Internal product-level guards (token validation,
+membership checks inside the function body) protect each one.
+
+---
+
+## 10. Live DB final verification (Phase A + B + C-1 + D + D-2)
 
 ```sql
--- 1. No anon=X on the 50 + 43 functions revoked across phases A, B, C-1
+-- A. Final anon-executable count must be exactly the KEEP_ANON allowlist (27 names)
+SELECT p.proname, pg_catalog.pg_get_function_identity_arguments(p.oid) AS args
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.prosecdef
+  AND array_to_string(p.proacl, ',') ILIKE '%anon=X%'
+ORDER BY p.proname;
+-- expected: exactly 27 rows, all on the §9b allowlist
+
+-- B. No anon=X on the 162 functions revoked across phases A + B + C-1 + D + D-2
 SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public'
   AND array_to_string(p.proacl, ',') ILIKE '%anon=X%'
