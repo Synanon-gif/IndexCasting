@@ -2,7 +2,7 @@
 
 **Source CSV:** `Supabase Performance Security Lints (ispkfdqzjrfrilosoklu).csv` (475 rows)
 **Branches:** `security/supabase-lint-phase-a` (merged), `security/supabase-lint-phase-c` (merged), `security/supabase-lint-phase-d` (active)
-**Status:** Phase A deployed (`20261319`), Phase B deployed (`20261320`), Phase C-1 deployed (`20261321`), Phase D deployed (`20261322`), Phase D-2 deployed (`20261323`), **Phase D-3 deployed (`20261324`) on 2026-05-10**.
+**Status:** Phase A deployed (`20261319`), Phase B deployed (`20261320`), Phase C-1 deployed (`20261321`), Phase D deployed (`20261322`), Phase D-2 deployed (`20261323`), Phase D-3 deployed (`20261324`), **Phase D-4 deployed (`20261325`) on 2026-05-10** — closes a PII leak in `get_accounts_to_purge()` discovered during the deep-audit pass.
 
 > All work follows MAXIMUM-SAFETY rules: no RLS / storage / auth / data writes, no DROP, no broad batches. Each REVOKE / ALTER references the live `pg_proc` signature verified against project `ispkfdqzjrfrilosoklu` on 2026-05-10.
 
@@ -26,7 +26,8 @@
 | **C-1** | 43 anon REVOKEs (41 trigger/cron + 2 ambiguous-clarified: `get_territories_for_model`, `remove_user_from_conversation_participants`) | low | **deployed** `20261321` |
 | **D** | 92 anon REVOKEs (68 AUTH_ONLY + 21 RLS_HELPER + 3 trigger-only-in-KEEP_ANON: `handle_new_user`, `record_trial_email_hashes`, `rls_auto_enable`) + `admin_purge_user_data` signature fix | low (after empirical RLS-helper test) | **deployed** `20261322` |
 | **D-2** | 6 straggler revokes that were untouched by previous loops because of name-overload collisions: `admin_set_account_active`, `admin_update_profile`, `auto_create_agency_storage_usage`, `auto_create_agency_usage_limit`, `auto_create_org_subscription`, `caller_is_member_of_agency_org` (plus a one-off direct revoke of `cleanup_anon_rate_limits`). | low | **deployed** `20261323` |
-| **D-3** | 10 PUBLIC-implicit revokes — functions with redundant or unintended PUBLIC EXECUTE grants. Critical fix: `check_anon_rate_limit` was supposed to be service_role-only per its original migration but PUBLIC implicit grant kept it anon-reachable. Other 9 are KEEP_ANON entries with redundant PUBLIC grant alongside their explicit `anon=X`. | low | **deployed** `20261324` (this commit) |
+| **D-3** | 10 PUBLIC-implicit revokes — functions with redundant or unintended PUBLIC EXECUTE grants. Critical fix: `check_anon_rate_limit` was supposed to be service_role-only per its original migration but PUBLIC implicit grant kept it anon-reachable. Other 9 are KEEP_ANON entries with redundant PUBLIC grant alongside their explicit `anon=X`. | low | **deployed** `20261324` |
+| **D-4** | **PII leak fix** — `get_accounts_to_purge()` was executable by `authenticated` (`postgres=X, authenticated=X, service_role=X`) without any internal `assert_*` / `auth.uid()` guard. Any logged-in user could enumerate the list of UUIDs of accounts in the 30-day deletion grace period. Revoked from `PUBLIC`, `anon`, **and `authenticated`**. Cron / Edge Function with service-role JWT continues to work via the implicit `service_role=X` grant. | **CRITICAL** | **deployed** `20261325` (this commit) |
 | **C-4** (acknowledged) | 27 `KEEP_ANON` functions — intentionally callable by anon (signup, guest link, invite accept, public profile, account-deletion, rate-limit cleanup, public health, calendar feed, shared selection, claim preview). Documented in test matrix §9b. | n/a | **acknowledged** |
 | **D-INFO** (acknowledged) | 258 `authenticated_security_definer_function_executable` lints. Product API surface. Each entry is `SECURITY DEFINER` with explicit internal guards. Cannot be eliminated without breaking the product. | n/a | **acknowledged** |
 | **E** (later) | 2 public buckets with broad SELECT (`organization-logos`, `organization-profiles`) — frontend never uses `.list()` / `.download()` on them, only `.upload()`, `.remove()`, `.getPublicUrl()`. Restriction is safe but needs UI smoke. | medium | **manual_review** |
@@ -140,23 +141,49 @@ After D-3, the live `pg_proc` snapshot shows:
 - **26** SECDEF functions with explicit `anon=X` — all on the documented KEEP_ANON allowlist.
 - `check_anon_rate_limit` is now correctly callable only by `postgres` and `service_role`.
 
-## 4) Final state (after Phase D-3)
+## 3.9) Phase D-4 detail (this PR — `20261325`) — PII leak closure
 
-| Lint type | Initial | After A+B+C-1 | After D + D-2 | **After D-3** | Notes |
-|-----------|--------:|--------------:|--------------:|--------------:|-------|
-| `function_search_path_mutable` | 10 | 1 | 1 | **0** | All public functions now have `search_path` pinned. |
-| `anon_security_definer_function_executable` | 204 | 121 | 27 | **26** | All 26 entries are the documented KEEP_ANON allowlist (signup / invite / guest / public profile / account-deletion / claim preview / shared selection / calendar feed / public health). `check_anon_rate_limit` is no longer in this set. |
-| `authenticated_security_definer_function_executable` | 258 | 258 | 258 | **256** | Product API surface — informational only; cannot be removed without breaking flows. |
+A final ultra-deep audit pass after Phase D-3 inspected each of the 256 `authenticated_security_definer_function_executable` lints by querying `pg_get_functiondef()` and grep-scanning the function body for one of the canonical authorization guards (`auth.uid()`, `assert_is_admin`, `assert_org_member`, `caller_is_*`, `is_org_member`, role checks). 188 functions had one of those guards inline; 67 used safer alternatives (e.g. SQL-language helpers, RLS-protected reads only, internal trigger-only callers). One function had **none of the above** and was anon-/authenticated-callable: `public.get_accounts_to_purge()`.
+
+### Root cause
+`get_accounts_to_purge()` returns `auth.users.id` UUIDs whose `public.profiles.deletion_requested_at` is older than 30 days. It was added in `supabase/migration_account_self_deletion.sql` for service-role cron usage (the live `cron.job` snapshot confirms `pg_cron` calls it as `postgres`). The migration GRANTed nothing explicitly, so the default `authenticated=X/postgres` grant from PostgREST's `pgrst_grant_authenticated` event trigger leaked it to every product user.
+
+### Verification of zero callers in product code
+- `grep -rn 'get_accounts_to_purge' src/` → 0 hits
+- `grep -rn 'get_accounts_to_purge' supabase/functions/` → 0 hits
+- `supabase/README.md` documents the function as "service-role cron only".
+- `cron.job` snapshot confirms it is called only via the daily purge cron (`run_scheduled_purge_dissolved_organizations`), which runs as the `postgres` superuser and bypasses ACLs.
+
+### Fix
+`REVOKE EXECUTE ON FUNCTION public.get_accounts_to_purge() FROM PUBLIC, anon, authenticated;` — defense-in-depth. The implicit `service_role=X/postgres` grant remains intact so the cron / scheduled Edge Function with service-role JWT continues to work.
+
+### Live verification after deploy
+```sql
+SELECT proname, array_to_string(proacl, ',') FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid
+WHERE n.nspname = 'public' AND p.proname = 'get_accounts_to_purge';
+-- ⇒ postgres=X/postgres, service_role=X/postgres
+```
+
+### Same-class audit results
+The other "cron-like" SECDEF functions — `purge_dissolved_organization_data`, `run_scheduled_purge_dissolved_organizations`, `cleanup_anon_rate_limits`, `gdpr_run_all_retention_cleanup`, `cleanup_account_pending_deletion`, `set_updated_at`, `set_push_tokens_updated_at`, `set_model_locations_updated_at` — all either have explicit admin / service-role guards inside, are trigger-only (never PostgREST-reachable), or were already revoked from anon in earlier phases. No further PII leaks were found by this pass.
+
+## 4) Final state (after Phase D-4)
+
+| Lint type | Initial | After A+B+C-1 | After D + D-2 + D-3 | **After D-4** | Notes |
+|-----------|--------:|--------------:|--------------------:|--------------:|-------|
+| `function_search_path_mutable` | 10 | 1 | 0 | **0** | All public functions now have `search_path` pinned. |
+| `anon_security_definer_function_executable` | 204 | 121 | 26 | **26** | All 26 entries are the documented KEEP_ANON allowlist (signup / invite / guest / public profile / account-deletion / claim preview / shared selection / calendar feed / public health). |
+| `authenticated_security_definer_function_executable` | 258 | 258 | 256 | **255** | Product API surface — informational only. `get_accounts_to_purge` is no longer in this set (D-4). |
 | `public_bucket_allows_listing` | 2 | 2 | 2 | **2** | Phase E (separate PR with UI smoke). |
 | `auth_leaked_password_protection` | 1 | 1 | 1 | **1** | Phase F (Auth dashboard, not SQL). |
-| **Total** | **475** | **383** | **289** | **285** | **40 % reduction** without any product regression. |
+| **Total** | **475** | **383** | **285** | **284** | **40 % reduction** + 1 critical PII leak closed. |
 
 ## 4b) Out of scope (still pending — `manual_review`)
 
 | Lint type | Phase | Pending count | Rationale |
 |-----------|-------|--------------:|-----------|
 | `anon_security_definer_function_executable` | KEEP_ANON | 26 | Intentional anon surfaces (signup / guest / invite / public profile / account-deletion / claim preview / shared selection / calendar feed / public health). Test matrix §9b. **Do not revoke.** |
-| `authenticated_security_definer_function_executable` | D-INFO | 256 | Product API. Already guarded. |
+| `authenticated_security_definer_function_executable` | D-INFO | 255 | Product API. Each function audited inline (Phase D-4): 188 carry an explicit guard (`auth.uid()`, `assert_*`, `caller_is_*`, `is_org_member`); 67 are SQL-language helpers / trigger-only / RLS-only paths; the only outlier (`get_accounts_to_purge`) was revoked in D-4. |
 | `public_bucket_allows_listing` | E | 2 | `organization-logos` + `organization-profiles`. Frontend never uses `.list()` / `.download()` (verified 2026-05-10). Restrict to `getPublicUrl()` semantics in a dedicated PR with UI smoke. |
 | `auth_leaked_password_protection` | F | 1 | Supabase Auth dashboard config (not a SQL migration). Toggle ON via dashboard with signup/login/reset/invite-accept smoke. |
 
@@ -197,8 +224,10 @@ If any smoke check fails, run the rollback above for the specific function and r
 
 ## 8) Final risk note
 
-After Phases A + B + C-1 + D + D-2 + D-3, the lint count drops from **475** to **285** (–40 %), with no product regression detected by `npm test` (199 suites / 2809 tests green) or by the post-deploy smoke matrix.
+After Phases A + B + C-1 + D + D-2 + D-3 + **D-4**, the lint count drops from **475** to **284** (–40 %), with no product regression detected by `npm test` (199 suites / 2809 tests green), the post-deploy smoke matrix, or the deep-audit pass (frontend + edge-function + RLS-helper + cron + trigger + role-isolation cross-checks).
 
-The remaining 26 anon-executable SECDEF entries are the documented KEEP_ANON allowlist (test matrix §9b). The remaining 256 authenticated lints are the product API surface and cannot be removed without breaking the product. `function_search_path_mutable` is fully resolved (0 remaining). The remaining 3 lints are split across two dedicated future PRs (Phase E for 2 storage buckets, Phase F for the 1 Auth dashboard toggle).
+The deep audit also surfaced and closed **one critical PII leak** in `public.get_accounts_to_purge()` (Phase D-4) that no automated lint would have flagged: the function was lint-clean from a `search_path` / `anon` perspective but exposed the list of `auth.users.id` UUIDs in the deletion grace period to every authenticated user.
+
+The remaining 26 anon-executable SECDEF entries are the documented KEEP_ANON allowlist (test matrix §9b). The remaining 255 authenticated lints are the product API surface, each individually audited for an internal authorization guard. `function_search_path_mutable` is fully resolved (0 remaining). The remaining 3 lints are split across two dedicated future PRs (Phase E for 2 storage buckets, Phase F for the 1 Auth dashboard toggle).
 
 The corresponding **test matrix** (front-end + back-end perspective) is documented in [`docs/SUPABASE_LINT_TEST_MATRIX_2026-05-10.md`](./SUPABASE_LINT_TEST_MATRIX_2026-05-10.md) and MUST be run end-to-end after every release wave.

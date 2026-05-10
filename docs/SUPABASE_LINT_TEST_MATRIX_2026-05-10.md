@@ -1,27 +1,31 @@
 # Supabase Lint Hardening — Comprehensive Test Matrix (2026-05-10)
 
-**Scope:** phases A, B, C-1, D, D-2, **D-3** of the security-lint hardening campaign
-(`20261319_*`, `20261320_*`, `20261321_*`, `20261322_*`, `20261323_*`, `20261324_*`).
+**Scope:** phases A, B, C-1, D, D-2, D-3, **D-4** of the security-lint hardening campaign
+(`20261319_*`, `20261320_*`, `20261321_*`, `20261322_*`, `20261323_*`, `20261324_*`, `20261325_*`).
 The objective is to prove **zero regression** across every front-end and
 back-end surface that touches the affected functions, RLS policies, storage
 buckets and triggers.
 
 **Headline metrics (live DB, post-deploy):**
 
-| Metric | Before campaign | After A+B re-apply | After C-1 | After D | After D-2 | After D-3 |
-|---|---|---|---|---|---|---|
-| Total `public.*` SECDEF functions | 268 | 268 | 268 | 268 | 268 | 268 |
-| anon-reachable SECDEF (explicit + PUBLIC implicit) | 204 | 162 | 119 | 35 | 28 | **26** |
-| explicit `anon=X` only | 159 | 118 | 118 | 34 | 27 | **26** |
-| PUBLIC-implicit reachability (`=X/`) | 45 | 44 | 1 | 1 | 1 | **0** |
-| `function_search_path_mutable` | 10 | 1 | 1 | 1 | 1 | **0** |
-| Reduction (cumulative) | — | 42 | 85 | 169 | 176 | **178** |
+| Metric | Before campaign | After A+B re-apply | After C-1 | After D | After D-2 | After D-3 | **After D-4** |
+|---|---|---|---|---|---|---|---|
+| Total `public.*` SECDEF functions | 268 | 268 | 268 | 268 | 268 | 268 | 268 |
+| anon-reachable SECDEF (explicit + PUBLIC implicit) | 204 | 162 | 119 | 35 | 28 | 26 | **26** |
+| explicit `anon=X` only | 159 | 118 | 118 | 34 | 27 | 26 | **26** |
+| PUBLIC-implicit reachability (`=X/`) | 45 | 44 | 1 | 1 | 1 | 0 | **0** |
+| `function_search_path_mutable` | 10 | 1 | 0 | 0 | 0 | 0 | **0** |
+| `authenticated_security_definer_function_executable` | 258 | 258 | 258 | 258 | 256 | 256 | **255** |
+| Reduction (cumulative SECDEF) | — | 42 | 85 | 169 | 176 | 178 | **179** |
 
 The remaining 26 functions are the **legitimate KEEP_ANON allowlist** —
 guest-link, public profile, pre-session bootstrap, invite/claim preview,
 shared-selection, calendar-feed and signup-bootstrap entries. See section 9
 for the full list. `check_anon_rate_limit` is NO LONGER on this list — it is
 now correctly service_role-only as its original migration intended.
+
+**D-4 fixed 1 critical PII leak** (`get_accounts_to_purge`) found by the
+deep-audit pass — see §4c.
 
 > The matrix below covers BOTH the changes that have been deployed *and* the
 > remaining lint warnings that we have **deliberately deferred** to later
@@ -39,7 +43,7 @@ now correctly service_role-only as its original migration intended.
 | **CRON** | scheduled (`pg_cron`) |
 | **SMOKE** | manual click-through after deploy |
 | **AUTO** | automated test (Jest, Playwright, etc.) |
-| **PHASE** | A = `20261319`, B = `20261320`, C-1 = `20261321`, D = `20261322`, D-2 = `20261323`, D-3 = `20261324` |
+| **PHASE** | A = `20261319`, B = `20261320`, C-1 = `20261321`, D = `20261322`, D-2 = `20261323`, D-3 = `20261324`, **D-4 = `20261325`** |
 
 Roles tested: `Admin`, `Agency Owner`, `Booker`, `Client Owner`, `Employee`,
 `Model (linked)`, `Model (no account)`, `Guest`, `Anon (logged-out)`.
@@ -245,13 +249,78 @@ and the inline comment "Called from within SECURITY DEFINER RPCs (e.g.
 
 ---
 
+## 4c. Phase D-4 — `get_accounts_to_purge` PII leak closure (this PR)
+
+**Discovered during the deep-audit pass after Phase D-3.** No automated lint
+flagged this — the function had a stable `search_path`, no broken `SECDEF`
+shape, and no `anon=X`. But it had an **`authenticated=X/postgres`** grant
+without any internal authorization guard.
+
+| # | Function | Pre-D-4 ACL | Post-D-4 ACL | Behaviour change |
+|---|----------|-------------|--------------|------------------|
+| 4c.1 | `public.get_accounts_to_purge()` | `postgres=X, authenticated=X, service_role=X` | `postgres=X, service_role=X` | Authenticated callers now receive `permission denied`. Service-role cron / Edge Function continues to work. |
+
+**Why this matters:** the function returns the list of `auth.users.id` UUIDs
+whose `public.profiles.deletion_requested_at` is older than 30 days. Without
+the D-4 fix, **any** logged-in product user (Booker, Employee, Model, Guest,
+even an attacker who completed signup) could call:
+
+```typescript
+const { data } = await supabase.rpc('get_accounts_to_purge');
+// → list of UUIDs in deletion grace period
+```
+
+Joined with `public.profiles` (which has org-scoped RLS) the attacker would
+get a leaderboard of "who recently asked to delete their account in the
+agency I belong to" — which is PII outside any product workflow.
+
+**Verification of zero callers in product code:**
+
+```bash
+grep -rn 'get_accounts_to_purge' src/
+# ⇒ 0 hits
+
+grep -rn 'get_accounts_to_purge' supabase/functions/
+# ⇒ 0 hits
+```
+
+The function is documented in `supabase/README.md` as service-role cron only.
+The live `cron.job` snapshot confirms it is invoked exclusively from the
+daily 03:17 purge cron via `run_scheduled_purge_dissolved_organizations`,
+which runs as `postgres` (superuser bypass), not via PostgREST.
+
+**Live verification after deploy:**
+
+```sql
+SELECT proname, array_to_string(proacl, ',')
+FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid
+WHERE n.nspname = 'public' AND p.proname = 'get_accounts_to_purge';
+-- Expected: postgres=X/postgres, service_role=X/postgres
+```
+
+**Same-class audit results (other potential leaks):** the deep-audit pass
+also inspected every other `authenticated_security_definer_function_executable`
+function for an inline guard (`auth.uid()`, `assert_*`, `caller_is_*`,
+`is_org_member`, role checks). 188 carry an explicit guard inline; 67 use
+safer alternatives (SQL-language helpers, RLS-protected reads, trigger-only
+callers). `get_accounts_to_purge` was the only outlier. No further PII leaks
+were found.
+
+---
+
 ## 5. Authenticated SECDEF surface (informational lint — keep, document only)
 
-The 256 `authenticated_security_definer_function_executable` lints constitute
+The 255 `authenticated_security_definer_function_executable` lints constitute
 the **product API surface**. They are **expected** because every product RPC
 that needs to bypass row-level guards is `SECURITY DEFINER` with explicit
 internal guards (`assert_is_admin`, `auth.uid() IS NOT NULL`, ownership
 checks). This lint cannot be eliminated without breaking the product.
+
+**Phase D-4 deep-audit verdict (2026-05-10):**
+- 188 functions: explicit guard inline in the function body.
+- 67 functions: SQL-language helpers, trigger-only paths, RLS-protected
+  reads, or chained-via-other-SECDEF (where the outer guard applies).
+- 1 function (`get_accounts_to_purge`): outlier, fixed in D-4.
 
 | # | Function family | Internal guard | Coverage |
 |---|-----------------|----------------|----------|
@@ -262,6 +331,7 @@ checks). This lint cannot be eliminated without breaking the product.
 | 5.5 | territory RPCs | MAT membership + bookers fallback | Jest territory tests |
 | 5.6 | option/casting flow | role-stamp + `model_account_linked` | extensive Jest coverage |
 | 5.7 | calendar / booking | role + conflict checks | Jest |
+| 5.8 | cron / service-role only (`get_accounts_to_purge`, `purge_dissolved_organization_data`, `cleanup_anon_rate_limits`, `gdpr_run_all_retention_cleanup`, `run_scheduled_*`, `run_system_health_checks`) | revoked from authenticated/anon (D-4) OR explicit admin assert inside | Live `pg_cron.job` snapshot + manual SELECT against `pg_proc.proacl` |
 
 > **No revoke on this set.** The lint is informational; mitigation is internal
 > guards, which already exist per the system invariants. We document this
