@@ -340,3 +340,25 @@ export async function assertBaseUrlReachable(
     throw new Error(`Base URL ${root} returned HTTP ${res.status()}`);
   }
 }
+
+/**
+ * Returns true when BOTH billing guard environment variables are set.
+ * Both must be present for any billing mutation test to proceed.
+ * If either is missing, the test should skip/fail immediately.
+ *
+ * INVARIANT: These vars must NEVER be removed during active E2E test runs.
+ */
+export function billingGuardActive(): boolean {
+  return (
+    process.env.E2E_BILLING_NO_EXTERNAL_SIDE_EFFECTS?.trim() === 'I_UNDERSTAND' &&
+    process.env.E2E_STRIPE_LIVE_EXTERNAL_BLOCK?.trim() === 'I_UNDERSTAND'
+  );
+}
+
+export function billingGuardSkipMessage(): string {
+  return [
+    'BLOCKER: billing guard not active.',
+    'Set E2E_BILLING_NO_EXTERNAL_SIDE_EFFECTS=I_UNDERSTAND and E2E_STRIPE_LIVE_EXTERNAL_BLOCK=I_UNDERSTAND.',
+    'These guards MUST remain active during all E2E runs — they prevent real Stripe/Resend side effects.',
+  ].join(' ');
+}
