@@ -11,8 +11,25 @@ export function getBaseUrl(): string {
   );
 }
 
+/**
+ * Active Playwright/seed env file basename relative to repo root.
+ * Set in the shell or npm script only (not inside the file being loaded — chicken/egg).
+ */
+export function e2eEnvFileBasename(): string {
+  const raw = (process.env.E2E_ENV_FILE || '').trim() || '.env.e2e';
+  const abs = path.resolve(process.cwd(), raw);
+  const root = path.resolve(process.cwd());
+  if (!abs.startsWith(root + path.sep) && abs !== root) {
+    console.warn(
+      `[e2e] E2E_ENV_FILE must resolve under repo root (got "${raw}"); falling back to .env.e2e`,
+    );
+    return '.env.e2e';
+  }
+  return raw;
+}
+
 export function pathToE2eEnvFile(): string {
-  return path.join(process.cwd(), '.env.e2e');
+  return path.join(process.cwd(), e2eEnvFileBasename());
 }
 
 export function isE2eEnvFilePresent(): boolean {
@@ -65,9 +82,13 @@ export function credentialGapMessage(): string {
     'Missing PLAYWRIGHT_TEST_PASSWORD or E2E_SEED_USER_PASSWORD (same value as E2E_SEED_USER_PASSWORD after `npm run seed:e2e`).',
   ];
   if (!isE2eEnvFilePresent()) {
-    parts.push(`No .env.e2e at repo root — copy .env.e2e.example to .env.e2e (file is gitignored).`);
+    parts.push(
+      `No E2E env file at ${pathToE2eEnvFile()} — copy .env.e2e.example or a profile from .env.e2e.*.example (set E2E_ENV_FILE for non-default names).`,
+    );
   } else {
-    parts.push('.env.e2e present but password env vars empty — set PLAYWRIGHT_TEST_PASSWORD or E2E_SEED_USER_PASSWORD inside it.');
+    parts.push(
+      'E2E env file present but password env vars empty — set PLAYWRIGHT_TEST_PASSWORD or E2E_SEED_USER_PASSWORD inside it.',
+    );
   }
   return parts.join(' ');
 }

@@ -1,6 +1,6 @@
 /**
  * Playwright global setup — fail-closed safety guard, base URL reachability + env warnings.
- * Does not require .env.e2e (smoke can run without); logs hints only.
+ * Does not require an E2E env file (smoke can run without); logs hints only.
  */
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
@@ -36,7 +36,7 @@ async function globalSetup(config: FullConfig): Promise<void> {
 
   if (!fs.existsSync(envFile)) {
     console.warn(
-      `[e2e:global-setup] No ${path.relative(process.cwd(), envFile)} found — password-based tests will skip. Copy .env.e2e.example.`,
+      `[e2e:global-setup] No ${path.relative(process.cwd(), envFile)} found — password-based tests will skip. Copy .env.e2e.example or a .env.e2e.*.example profile.`,
     );
   }
 

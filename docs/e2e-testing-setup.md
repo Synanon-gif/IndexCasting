@@ -5,9 +5,10 @@ This describes the **operational** E2E / Playwright data layer added on branch `
 
 - `scripts/e2e/seed-e2e-world.mjs` — seed runner
 - `docs/e2e-test-accounts.md` — account matrix
-- `.env.e2e.example` — env template
-- `package.json` — `npm run seed:e2e`
-- `.gitignore` — ignores `.env.e2e` and generated `docs/e2e-seed-manifest.json`
+- `.env.e2e.example` — env template (generic)
+- `.env.e2e.production-readonly.example`, `.env.e2e.staging.example`, `.env.e2e.local.example` — **profile** templates (no secrets)
+- `package.json` — `npm run seed:e2e`, profile-aware Playwright presets (see below)
+- `.gitignore` — ignores `.env.e2e` and named profile files (`*.production-readonly`, `.staging`, `.local`), plus generated `docs/e2e-seed-manifest.json`
 
 ---
 
@@ -32,10 +33,22 @@ Provide **realistic, cross-role** data so Playwright can exercise:
 ## 2. Safety rules
 
 1. **Dedicated database only** — empty Supabase project, local stack, or Supabase **branch**; never run against production with real customers.
-2. Set `E2E_ALLOW_SEED_ON_THIS_DATABASE=I_UNDERSTAND` in `.env.e2e`.
+2. Set `E2E_ALLOW_SEED_ON_THIS_DATABASE=I_UNDERSTAND` in the **staging** E2E env file (e.g. `.env.e2e.staging` with `E2E_ENV_FILE`).
 3. Script is **additive** (upsert / insert). It does **not** delete or rewrite unrelated rows. Partial failures log warnings.
 4. **Email**: Auth users use `email_confirm: true` — **no magic-link inbox** required. Disable or redirect real SMTP in non-prod if your project sends mail.
 5. **Service role** is required — treat like a root credential; keep only in CI secrets or local `.env.e2e`.
+
+### 2a. Env profiles (`E2E_ENV_FILE`)
+
+Playwright and `npm run seed:e2e` load **one** file: default `.env.e2e`, or override with `E2E_ENV_FILE` (shell / npm script **only** — do not put `E2E_ENV_FILE` inside the env file you are loading).
+
+| Profile | Example file in repo | Real file (gitignored) | Typical use |
+|--------|----------------------|-------------------------|-------------|
+| Production-readonly | `.env.e2e.production-readonly.example` | `.env.e2e.production-readonly` | Public/read-only smoke; **no** service role, seed latch, or write latches |
+| Staging / preview | `.env.e2e.staging.example` | `.env.e2e.staging` | Full E2E + seed only if URL + Supabase are non-production and DB is disposable |
+| Local | `.env.e2e.local.example` | `.env.e2e.local` or `.env.e2e` | `http://localhost:8081` + local/branch backend |
+
+Presets: `npm run e2e:prod:public`, `e2e:staging:auth`, `e2e:staging:write`, `e2e:staging:seed` (all set `E2E_ENV_FILE` — **create the matching real file first**).
 
 ### 2b. Playwright write gates (harness-only)
 
@@ -155,7 +168,7 @@ If you later need **`model_photos` + Storage** parity, run a **separate** follow
 
 ## 11. Playwright harness (`tests/e2e`)
 
-- **Config:** root `playwright.config.ts` — loads `.env.e2e` via `dotenv`; **`E2E_BASE_URL`** (preferred) or `PLAYWRIGHT_BASE_URL`; starts `npx expo start --web --port 8081` when the base URL is localhost unless `PLAYWRIGHT_SKIP_WEB_SERVER=1` or `E2E_SKIP_WEB_SERVER=1`.
+- **Config:** root `playwright.config.ts` — loads the E2E env file via `dotenv` (default `.env.e2e`, override with **`E2E_ENV_FILE`**); **`E2E_BASE_URL`** (preferred) or `PLAYWRIGHT_BASE_URL`; starts `npx expo start --web --port 8081` when the base URL is localhost unless `PLAYWRIGHT_SKIP_WEB_SERVER=1` or `E2E_SKIP_WEB_SERVER=1`.
 - **Projects:** `chromium-desktop` (1440×900), `firefox-desktop`, `webkit-desktop`, `mobile-iphone-se`, `mobile-iphone-14`, `tablet-ipad`.
 - **Reports:** HTML → `playwright-report/`, JSON → `e2e-artifacts/results.json`, failures → `test-results/` (screenshots, video, trace — gitignored).
 - **Diagnostics:** `tests/e2e/helpers/diagnostics.ts` + `fixtures/base.ts` — per-test `diagnostics.json` + `failure-summary.md` on failure (console, page errors, 4xx/5xx + requestfailed, redacted URLs/JWT-like strings).

@@ -28,7 +28,18 @@ const { assertSeedScriptSafe } = requireCjs('./e2eSafetyGuard.cjs');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..');
 
-config({ path: path.join(ROOT, '.env.e2e') });
+function resolveE2eEnvBasename() {
+  const raw = (process.env.E2E_ENV_FILE || '').trim() || '.env.e2e';
+  const abs = path.resolve(ROOT, raw);
+  const rootResolved = path.resolve(ROOT);
+  if (!abs.startsWith(rootResolved + path.sep) && abs !== rootResolved) {
+    console.warn('[e2e-seed] E2E_ENV_FILE must resolve under repo root; using .env.e2e');
+    return '.env.e2e';
+  }
+  return raw;
+}
+
+config({ path: path.join(ROOT, resolveE2eEnvBasename()) });
 config({ path: path.join(ROOT, '.env.local') });
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
@@ -75,7 +86,7 @@ function die(msg) {
 
 if (SAFETY !== 'I_UNDERSTAND') {
   die(
-    'Set E2E_ALLOW_SEED_ON_THIS_DATABASE=I_UNDERSTAND in .env.e2e (isolated DB only).',
+    `Set E2E_ALLOW_SEED_ON_THIS_DATABASE=I_UNDERSTAND in your E2E env file (default .env.e2e; set E2E_ENV_FILE for profiles). Isolated DB only.`,
   );
 }
 if (!SUPABASE_URL || !ANON || !SERVICE) {

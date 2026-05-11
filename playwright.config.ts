@@ -1,9 +1,10 @@
-import path from 'node:path';
 import { config as loadEnv } from 'dotenv';
 import { defineConfig, devices } from '@playwright/test';
 
-// Local secrets + base URL (never committed)
-loadEnv({ path: path.join(process.cwd(), '.env.e2e') });
+import { pathToE2eEnvFile } from './tests/e2e/helpers/env';
+
+// Local secrets + base URL (never committed). Override file with E2E_ENV_FILE=.env.e2e.staging (shell/npm only).
+loadEnv({ path: pathToE2eEnvFile() });
 
 const BASE_URL =
   process.env.E2E_BASE_URL?.trim() ||
@@ -28,6 +29,7 @@ const shouldStartExpoWeb =
  * Playwright E2E — IndexCasting Web
  *
  * - `E2E_BASE_URL` (preferred) or `PLAYWRIGHT_BASE_URL` — e.g. https://www.index-casting.com
+ * - `E2E_ENV_FILE` — optional; defaults to `.env.e2e`. Use named profiles (see `.env.e2e.*.example`).
  * - Local default `http://localhost:8081` starts Expo web unless `PLAYWRIGHT_SKIP_WEB_SERVER=1`
  *
  * See `docs/e2e-testing-setup.md` and `docs/e2e-test-matrix.md`.
