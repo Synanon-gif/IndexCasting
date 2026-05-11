@@ -677,6 +677,13 @@ export type SignInAsOptions = {
   preflight?: boolean;
   /** When set, workspace gate skips the test instead of running a doomed login. */
   testInfo?: TestInfo;
+  /**
+   * Override the authenticated-shell wait cap (ms).
+   * Useful for Wave3/hosted suites where the RN Web app can take longer to hydrate
+   * on the first load (e.g. cold Supabase connection, slow CDN).
+   * Default: 42_000 (normal) / 28_000 (first attempt).
+   */
+  shellTimeoutMs?: number;
 };
 
 /**
@@ -692,9 +699,10 @@ export async function signInAs(page: Page, role: E2EAccountRole, options?: SignI
 
   const preflight = options?.preflight === true;
   const maxAttempts = preflight ? 1 : 2;
-  const legalShellMs = preflight ? PREFLIGHT_SHELL_MS : 40_000;
+  const customShellMs = options?.shellTimeoutMs;
+  const legalShellMs = preflight ? PREFLIGHT_SHELL_MS : (customShellMs ?? 40_000);
   const sessionProbeMs = preflight ? 8_000 : 12_000;
-  const modelFollowupShellMs = preflight ? PREFLIGHT_SHELL_MS : 40_000;
+  const modelFollowupShellMs = preflight ? PREFLIGHT_SHELL_MS : (customShellMs ?? 40_000);
 
   let lastErr: unknown;
 
@@ -730,7 +738,7 @@ export async function signInAs(page: Page, role: E2EAccountRole, options?: SignI
             await dismissLegalAcceptanceIfPresent(page, { requireAgencyRightsCheckbox: agencyLegalExtras });
           }
           const resumeShellMs =
-            role === 'modelLinked' ? sessionProbeMs : preflight ? sessionProbeMs : AUTH_SHELL_MS;
+            role === 'modelLinked' ? sessionProbeMs : preflight ? sessionProbeMs : (customShellMs ?? AUTH_SHELL_MS);
           await assertAuthenticatedShell(page, role, resumeShellMs);
           if (role === 'modelLinked') {
             await dismissLegalAcceptanceIfPresent(page, { requireAgencyRightsCheckbox: false });
@@ -810,8 +818,8 @@ export async function signInAs(page: Page, role: E2EAccountRole, options?: SignI
       const shellAfterSubmit = preflight
         ? PREFLIGHT_SHELL_MS
         : attempt === 0
-          ? 28_000
-          : AUTH_SHELL_MS;
+          ? (customShellMs ?? 28_000)
+          : (customShellMs ?? AUTH_SHELL_MS);
       await assertAuthenticatedShell(page, role, shellAfterSubmit);
       if (role === 'modelLinked') {
         await dismissLegalAcceptanceIfPresent(page, { requireAgencyRightsCheckbox: false });
