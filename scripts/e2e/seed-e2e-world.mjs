@@ -18,8 +18,12 @@
 import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import fs from 'fs';
+import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+const requireCjs = createRequire(import.meta.url);
+const { assertSeedScriptSafe } = requireCjs('./e2eSafetyGuard.cjs');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -80,6 +84,12 @@ if (!SUPABASE_URL || !ANON || !SERVICE) {
 if (!PASS || PASS.length < 16) {
   die('E2E_SEED_USER_PASSWORD must be set and at least 16 characters.');
 }
+
+assertSeedScriptSafe(
+  SUPABASE_URL,
+  process.env.E2E_BASE_URL?.trim() || process.env.PLAYWRIGHT_BASE_URL?.trim() || '',
+  process.env,
+);
 
 /** Stable list copy for Playwright — keep in sync with `tests/e2e/p0-option-casting.spec.ts`. */
 const E2E_OPTION_JOB_LINKED = 'E2E TEST — Linked option workflow';

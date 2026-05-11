@@ -1,8 +1,9 @@
 /**
- * Playwright global setup — base URL reachability + safe env warnings.
+ * Playwright global setup — fail-closed safety guard, base URL reachability + env warnings.
  * Does not require .env.e2e (smoke can run without); logs hints only.
  */
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import type { FullConfig } from '@playwright/test';
@@ -12,10 +13,17 @@ import {
 } from './helpers/b2bWorkspaceGate';
 import { getBaseUrl, logE2EEnvWarnings, pathToE2eEnvFile, warnProductionE2EAccounts } from './helpers/env';
 
+const requireCjs = createRequire(path.join(process.cwd(), 'package.json'));
+const { assertPlaywrightHarnessSafe } = requireCjs(
+  path.join(process.cwd(), 'scripts/e2e/e2eSafetyGuard.cjs'),
+) as { assertPlaywrightHarnessSafe: (baseUrl: string, env?: NodeJS.ProcessEnv) => void };
+
 async function globalSetup(config: FullConfig): Promise<void> {
   const fromConfig = config.projects[0]?.use?.baseURL?.trim();
   const base = fromConfig || getBaseUrl();
   const envFile = pathToE2eEnvFile();
+
+  assertPlaywrightHarnessSafe(base, process.env);
 
   try {
     fs.unlinkSync(RUNTIME_B2B_BLOCK_PATH);
