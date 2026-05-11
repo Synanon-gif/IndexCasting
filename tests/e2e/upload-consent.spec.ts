@@ -5,10 +5,10 @@
  *   **no** extra write gates (see docs/e2e-test-matrix.md). If a future change adds Save/Upload/Create, gate it like chat/lifecycle.
  */
 import { test, expect } from './fixtures/base';
-import { credentialGapMessage, emailForRole, getTestPassword, hasAuthCredentials } from './helpers/env';
+import { signInAs } from './helpers/auth';
+import { credentialGapMessage, emailForRole, hasAuthCredentials } from './helpers/env';
 
 const TEST_EMAIL = process.env.PLAYWRIGHT_TEST_EMAIL?.trim() || emailForRole('agencyOwner');
-const TEST_PASSWORD = getTestPassword();
 const AUTHENTICATED = hasAuthCredentials() && !!TEST_EMAIL;
 
 test.describe('Upload protection — unauthenticated', () => {
@@ -31,14 +31,10 @@ test.describe('Upload protection — unauthenticated', () => {
 test.describe('Image rights checkbox — authenticated', () => {
   test.skip(!AUTHENTICATED, credentialGapMessage());
 
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(2000);
-
-    await page.getByPlaceholder('Email').first().fill(TEST_EMAIL!);
-    await page.getByPlaceholder('Password').first().fill(TEST_PASSWORD!);
-    await page.getByRole('button', { name: /^Login$/i }).click();
-    await page.waitForTimeout(3500);
+  test.beforeEach(async ({ page }, testInfo) => {
+    // Use the canonical resilient signInAs helper (handles Login / Sign in / Log in / geometry fallback).
+    // P2-2026-05-11-001 fix: replaced brittle /^Login$/i raw selector with signInAs().
+    await signInAs(page, 'agencyOwner', { testInfo });
   });
 
   test('My Models path shows rights-related UI when adding a model (best-effort)', async ({
@@ -72,13 +68,10 @@ test.describe('Image rights checkbox — authenticated', () => {
 test.describe('Chat file upload consent', () => {
   test.skip(!AUTHENTICATED, credentialGapMessage());
 
-  test('booking chat file rights checkbox (best-effort; skips if no chat)', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(2000);
-    await page.getByPlaceholder('Email').first().fill(TEST_EMAIL!);
-    await page.getByPlaceholder('Password').first().fill(TEST_PASSWORD!);
-    await page.getByRole('button', { name: /^Login$/i }).click();
-    await page.waitForTimeout(4000);
+  test('booking chat file rights checkbox (best-effort; skips if no chat)', async ({ page }, testInfo) => {
+    // Use the canonical resilient signInAs helper.
+    // P2-2026-05-11-002 fix: replaced brittle /^Login$/i raw selector with signInAs().
+    await signInAs(page, 'agencyOwner', { testInfo });
 
     const chatArea = page.getByTestId('booking-chat').or(page.getByText(/booking chat/i).first());
     if (!(await chatArea.isVisible({ timeout: 3000 }).catch(() => false))) {

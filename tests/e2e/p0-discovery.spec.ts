@@ -143,7 +143,14 @@ test.describe('P0.7 Client discovery (read-only)', () => {
     await gotoDiscoverSignedIn(page, testInfo);
     await expectDiscoverShellReady(page);
 
-    await page.mouse.wheel(0, 900);
+    // mobile-webkit does not support mouse.wheel — use evaluate-based scroll instead
+    const isMobileDevice =
+      testInfo.project.name.includes('mobile') || testInfo.project.name.includes('ipad');
+    if (isMobileDevice) {
+      await page.evaluate(() => window.scrollBy(0, 900));
+    } else {
+      await page.mouse.wheel(0, 900);
+    }
     await page.waitForTimeout(600);
 
     await clickAndCheckpoint(
