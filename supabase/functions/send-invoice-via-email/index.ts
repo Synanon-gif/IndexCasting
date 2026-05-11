@@ -52,9 +52,14 @@
  *
  * Deploy:
  *   supabase functions deploy send-invoice-via-email
+ *
+ * Optional E2E safety (Edge secret):
+ *   E2E_BILLING_NO_EXTERNAL_SIDE_EFFECTS=I_UNDERSTAND → blocks Resend dispatch (200 + blocked JSON).
+ *   Does not use E2E_STRIPE_LIVE_EXTERNAL_BLOCK (e-mail is not Stripe).
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { maybeE2eBillingExternalBlockResponse } from '../_shared/e2eBillingGuard.ts';
 import { withObservability } from '../_shared/logger.ts';
 
 const ALWAYS_ALLOWED_ORIGINS = [
@@ -551,6 +556,14 @@ Deno.serve(withObservability('send-invoice-via-email', async (req: Request) => {
   const ccList = Array.isArray(body.cc)
     ? body.cc.map((s) => (s ?? '').trim()).filter((s) => isValidEmail(s))
     : [];
+
+  const emailBillingGuard = maybeE2eBillingExternalBlockResponse(
+    cors,
+    'send-invoice-via-email',
+    'invoke',
+    'resend',
+  );
+  if (emailBillingGuard) return emailBillingGuard;
 
   // ── Pre-lock + invoice number + snapshots (parity w/ Stripe path) ─────────
   let invoiceNumber: string;

@@ -29,9 +29,12 @@
  *   SUPABASE_SERVICE_ROLE_KEY
  *   SUPABASE_ANON_KEY
  *   STRIPE_SECRET_KEY
+ *
+ * Optional E2E safety (Edge secrets): same as create-checkout-session (main latch + optional strict live).
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { maybeE2eBillingExternalBlockResponse } from '../_shared/e2eBillingGuard.ts';
 import { withObservability } from '../_shared/logger.ts';
 import Stripe from 'npm:stripe@14';
 
@@ -182,6 +185,14 @@ Deno.serve(withObservability('stripe-cancel-dissolved-org', async (req: Request)
       { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
+
+  const cancelBillingGuard = maybeE2eBillingExternalBlockResponse(
+    cors,
+    'stripe-cancel-dissolved-org',
+    'invoke',
+    'stripe',
+  );
+  if (cancelBillingGuard) return cancelBillingGuard;
 
   // ── Cancel via Stripe ──────────────────────────────────────────────────────
   const stripe = new Stripe(stripeSecretKey, {

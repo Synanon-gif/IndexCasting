@@ -25,10 +25,17 @@
  *   STRIPE_PRICE_AGENCY_ENTERPRISE    (price_…)
  *   STRIPE_PRICE_CLIENT               (price_…)
  *   APP_URL                           (https://your-app.com — for redirect URLs)
+ *
+ * Optional E2E / staging safety (Supabase Edge secrets — no client exposure):
+ *   E2E_BILLING_NO_EXTERNAL_SIDE_EFFECTS=I_UNDERSTAND
+ *     → blocks Stripe Checkout session creation (409 + e2e_billing_external_side_effect_blocked).
+ *   E2E_STRIPE_LIVE_EXTERNAL_BLOCK=I_UNDERSTAND
+ *     → when STRIPE_SECRET_KEY is sk_live_…, same block (belt-and-suspenders; unset in normal prod).
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'npm:stripe@14';
+import { maybeE2eBillingExternalBlockResponse } from '../_shared/e2eBillingGuard.ts';
 import { withObservability } from '../_shared/logger.ts';
 
 const ALWAYS_ALLOWED_ORIGINS = [
@@ -189,6 +196,14 @@ Deno.serve(withObservability('create-checkout-session', async (req: Request) => 
       { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
+
+  const billingGuard = maybeE2eBillingExternalBlockResponse(
+    cors,
+    'create-checkout-session',
+    'fetch',
+    'stripe',
+  );
+  if (billingGuard) return billingGuard;
 
   // ── Resolve Stripe price ID ────────────────────────────────────────────────
   const priceEnvMap: Record<PlanType, string> = {

@@ -47,9 +47,14 @@
  *
  * Deploy:
  *   supabase functions deploy send-invoice-via-stripe
+ *
+ * Optional E2E safety (Edge secrets):
+ *   E2E_BILLING_NO_EXTERNAL_SIDE_EFFECTS=I_UNDERSTAND → block Stripe invoice pipeline (200 + blocked JSON for invoke clients).
+ *   E2E_STRIPE_LIVE_EXTERNAL_BLOCK=I_UNDERSTAND → same when sk_live_… (Stripe paths only).
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { maybeE2eBillingExternalBlockResponse } from '../_shared/e2eBillingGuard.ts';
 import { withObservability } from '../_shared/logger.ts';
 import Stripe from 'npm:stripe@14';
 
@@ -305,6 +310,14 @@ Deno.serve(withObservability('send-invoice-via-stripe', async (req: Request) => 
       { status: 422, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
+
+  const stripeBillingGuard = maybeE2eBillingExternalBlockResponse(
+    cors,
+    'send-invoice-via-stripe',
+    'invoke',
+    'stripe',
+  );
+  if (stripeBillingGuard) return stripeBillingGuard;
 
   // ── Phase B.4 (2026-11-20): Pre-Lock BEFORE drawing invoice_number.
   //    Old order (draw number → CAS UPDATE) lost numbers when 2 concurrent
