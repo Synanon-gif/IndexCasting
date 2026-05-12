@@ -138,6 +138,10 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
           denseOverviewMaxVisibleChips={1}
           onSelectDay={openWeekForDate}
           onDenseOverflowPress={openWeekForDate}
+          onEventPress={(ev) => {
+            const row = filteredUnified.find((r) => r.id === ev.id);
+            if (row) onOpenUnifiedRow(row);
+          }}
           onPrevMonth={() =>
             setCalendarMonth((m) =>
               m.month === 0

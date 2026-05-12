@@ -1932,6 +1932,16 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   shiftModelFocus(d);
                   setCalendarViewMode('day');
                 }}
+                onEventPress={(ev) => {
+                  const entry = calEntries.find((e) => e.id === ev.id);
+                  if (!entry) return;
+                  setOpenEntry(entry);
+                  setSharedNoteDraft('');
+                  const existing =
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (entry.booking_details as any)?.model_notes ?? entry.note ?? '';
+                  setModelNotesDraft(existing);
+                }}
                 onPrevMonth={() =>
                   setCalMonth((p) =>
                     p.month === 0 ? { year: p.year - 1, month: 11 } : { ...p, month: p.month - 1 },

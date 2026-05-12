@@ -43,6 +43,12 @@ export type MonthCalendarViewProps = {
    * When unset, "+N" is only part of the main day `onSelectDay` target.
    */
   onDenseOverflowPress?: (date: string) => void;
+  /**
+   * Optional handler for individual event chip taps (e.g. open detail overlay with booking notes).
+   * When provided, event chips become tappable; the outer day-level `onSelectDay` is NOT fired.
+   * Works in both dense-overview and standalone month grid modes. Compact dot-mode excluded.
+   */
+  onEventPress?: (ev: CalendarDayEvent) => void;
 };
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -80,6 +86,7 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
   denseOverview = false,
   denseOverviewMaxVisibleChips = 1,
   onDenseOverflowPress,
+  onEventPress,
 }) => {
   const grid = React.useMemo(() => getMonthGrid(year, month), [year, month]);
   const monthLabel = new Date(year, month).toLocaleString('en-US', {
@@ -150,17 +157,31 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
                 </View>
               ) : null}
               <View style={s.eventsCol}>
-                {denseShown.map((ev) => (
-                  <View
-                    key={ev.id}
-                    style={[s.eventChip, { backgroundColor: ev.color }]}
-                    accessibilityLabel={ev.title}
-                  >
-                    <Text style={s.eventChipText} numberOfLines={1}>
-                      {ev.title}
-                    </Text>
-                  </View>
-                ))}
+                {denseShown.map((ev) =>
+                  onEventPress ? (
+                    <TouchableOpacity
+                      key={ev.id}
+                      style={[s.eventChip, { backgroundColor: ev.color }]}
+                      accessibilityLabel={ev.title}
+                      activeOpacity={0.75}
+                      onPress={() => onEventPress(ev)}
+                    >
+                      <Text style={s.eventChipText} numberOfLines={1}>
+                        {ev.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View
+                      key={ev.id}
+                      style={[s.eventChip, { backgroundColor: ev.color }]}
+                      accessibilityLabel={ev.title}
+                    >
+                      <Text style={s.eventChipText} numberOfLines={1}>
+                        {ev.title}
+                      </Text>
+                    </View>
+                  ),
+                )}
                 {!splitOverflow && denseMore > 0 ? (
                   <Text style={s.moreText}>+{denseMore}</Text>
                 ) : null}
@@ -217,17 +238,31 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
                     // every party (per product invariant — see calendar legend).
                     // Titles are truncated; full title is on the day-detail tap.
                     <View style={s.eventsCol}>
-                      {events.slice(0, 2).map((ev) => (
-                        <View
-                          key={ev.id}
-                          style={[s.eventChip, { backgroundColor: ev.color }]}
-                          accessibilityLabel={ev.title}
-                        >
-                          <Text style={s.eventChipText} numberOfLines={1}>
-                            {ev.title}
-                          </Text>
-                        </View>
-                      ))}
+                      {events.slice(0, 2).map((ev) =>
+                        onEventPress ? (
+                          <TouchableOpacity
+                            key={ev.id}
+                            style={[s.eventChip, { backgroundColor: ev.color }]}
+                            accessibilityLabel={ev.title}
+                            activeOpacity={0.75}
+                            onPress={() => onEventPress(ev)}
+                          >
+                            <Text style={s.eventChipText} numberOfLines={1}>
+                              {ev.title}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <View
+                            key={ev.id}
+                            style={[s.eventChip, { backgroundColor: ev.color }]}
+                            accessibilityLabel={ev.title}
+                          >
+                            <Text style={s.eventChipText} numberOfLines={1}>
+                              {ev.title}
+                            </Text>
+                          </View>
+                        ),
+                      )}
                       {events.length > 2 && <Text style={s.moreText}>+{events.length - 2}</Text>}
                     </View>
                   ))}
