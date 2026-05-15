@@ -192,6 +192,19 @@ export const uiCopy = {
     locationUpdatedTitle: 'Location Updated',
     locationErrorTitle: 'Location Error',
     locationErrorFallback: 'Could not retrieve your location.',
+    /** Model Share GPS — browser/device has no geolocation API. */
+    shareGpsNotSupportedBody:
+      'This device or browser cannot access location services. Try the Expo web app over HTTPS or set your city manually.',
+    /** Model Share GPS — OS or browser denied permission. */
+    shareGpsPermissionDeniedBody:
+      'Location permission was denied. Allow location for this site in browser or system settings, or set your city manually.',
+    shareGpsTimeoutBody:
+      'Getting your location timed out. Try again with a clearer sky view or stronger signal.',
+    shareGpsUnavailableBody:
+      'Your position could not be determined right now. Try again later or set your city manually.',
+    /** Reverse geocode failed after GPS (Nominatim HTTP or empty result). */
+    shareGpsReverseGeocodeFailedBody:
+      'Could not resolve your approximate area name. Try again later or enter your city manually.',
     missingFieldsTitle: 'Missing fields',
     missingFieldsLocationBody: 'Please enter both a city and country code (e.g. DE, FR, US).',
     cityNotFoundTitle: 'City not found',

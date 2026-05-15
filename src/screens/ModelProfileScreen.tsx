@@ -149,6 +149,12 @@ import {
   todayYmd,
   weekDayDates,
 } from '../utils/calendarTimelineLayout';
+import { reverseGeocodeRoundedCoords } from '../utils/nominatimReverseApprox';
+import {
+  MODEL_GPS_ERROR,
+  captureDeviceLatLngRawForModelShare,
+  isModelGpsErrorCode,
+} from '../utils/modelLiveGpsCapture';
 
 type ModelProfile = {
   id: string;
@@ -310,42 +316,32 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 
   const handleShareLocation = async () => {
     if (!profile) return;
+    if (locationLoading) return;
     setLocationLoading(true);
     try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: false,
-          timeout: 10000,
-        }),
-      );
-      const { latitude, longitude } = position.coords;
+      const { latitude, longitude } = await captureDeviceLatLngRawForModelShare();
 
-      // Round before sending to any third-party service to avoid exposing exact GPS.
+      // Round before any third-party or DB round-trip (~5 km grid — never exact GPS on the wire).
       const latRounded = roundCoord(latitude);
       const lngRounded = roundCoord(longitude);
 
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${latRounded}&lon=${lngRounded}&format=json`,
-        { headers: { 'Accept-Language': 'en' } },
-      );
-      const data = await res.json();
-      const cityName =
-        data.address?.city ??
-        data.address?.town ??
-        data.address?.village ??
-        data.address?.state ??
-        'Unknown';
-      const countryCode: string =
-        (data.address?.country_code as string | undefined)?.toUpperCase() ??
-        profile.countryCode ??
-        'XX';
+      const geo = await reverseGeocodeRoundedCoords(latRounded, lngRounded);
+      if (!geo) {
+        Alert.alert(
+          uiCopy.alerts.locationErrorTitle,
+          uiCopy.alerts.shareGpsReverseGeocodeFailedBody,
+        );
+        return;
+      }
 
-      // Canonical write first (model_locations live); legacy models.current_location mirror second.
+      const countryCode: string =
+        geo.countryCodeIso2 ?? profile.countryCode?.slice(0, 2)?.toUpperCase() ?? 'XX';
+
       const upsertOk = await upsertModelLocation(
         profile.id,
         {
           country_code: countryCode,
-          city: cityName,
+          city: geo.city,
           lat: latRounded,
           lng: lngRounded,
           share_approximate_location: true,
@@ -358,7 +354,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       }
 
       const { error: mirrorErr } = await supabase.rpc('model_update_own_profile_safe', {
-        p_current_location: cityName,
+        p_current_location: geo.city,
       });
       if (mirrorErr) {
         console.warn(
@@ -367,19 +363,23 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         );
       }
 
-      setProfile((prev) => (prev ? { ...prev, currentLocation: cityName } : prev));
-      // Reload to reflect the new highest-priority source (live now overrides current/agency)
+      setProfile((prev) => (prev ? { ...prev, currentLocation: geo.city } : prev));
       const refreshed = await import('../services/modelLocationsSupabase').then((m) =>
         m.getModelLocation(profile.id),
       );
       setModelLocation(refreshed);
-      Alert.alert(uiCopy.alerts.locationUpdatedTitle, uiCopy.alerts.liveGpsLocationSet(cityName));
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      Alert.alert(
-        uiCopy.alerts.locationErrorTitle,
-        err?.message ?? uiCopy.alerts.locationErrorFallback,
-      );
+      Alert.alert(uiCopy.alerts.locationUpdatedTitle, uiCopy.alerts.liveGpsLocationSet(geo.city));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      let body: string = uiCopy.alerts.locationErrorFallback;
+      if (isModelGpsErrorCode(msg)) {
+        if (msg === MODEL_GPS_ERROR.NOT_SUPPORTED) body = uiCopy.alerts.shareGpsNotSupportedBody;
+        else if (msg === MODEL_GPS_ERROR.PERMISSION_DENIED)
+          body = uiCopy.alerts.shareGpsPermissionDeniedBody;
+        else if (msg === MODEL_GPS_ERROR.TIMEOUT) body = uiCopy.alerts.shareGpsTimeoutBody;
+        else if (msg === MODEL_GPS_ERROR.UNAVAILABLE) body = uiCopy.alerts.shareGpsUnavailableBody;
+      }
+      Alert.alert(uiCopy.alerts.locationErrorTitle, body);
     } finally {
       setLocationLoading(false);
     }

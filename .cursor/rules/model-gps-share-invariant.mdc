@@ -1,0 +1,39 @@
+---
+description: Model Share GPS — self-scoped writes, approximate precision, no raw GPS leakage
+alwaysApply: true
+---
+
+# Model GPS sharing (Share GPS) — invariantes Verhalten
+
+Diese Regeln gelten für **Model-Self-Service** („Share GPS“ / Live-Standort) und alle zugehörigen
+Flows (`model_locations.source = live`, Reverse-Geocode, Near-Me / effective location).
+
+## A. Scope & Ownership (nicht verwässern)
+
+- **Nur das verknüpfte Model** darf eigene **`live`**-Koordinaten setzen (`models.user_id = auth.uid()`).
+- **Kein** Aufruf, der Fremd-Modelle per beliebigem Client-`model_id` ohne Server-Ownership-Check beschreiben kann.
+- **RLS/RPC**: Schreibpfad bleibt über **`upsert_model_location`** (oder Nachfolger) mit Auth-Split; keine breiteren Grants.
+
+## B. Precision (~5 km) — doppelt konsistent halten
+
+- **Client-Vor-Verdünnung:** `roundCoord` in `modelLocationsSupabase` (`Math.round(coord * 20) / 20`) vor dem RPC-Aufruf.
+- **Server:** `ROUND(lat_approx/lng_approx, 2)` o.Ä. wie in bestehenden Migrationen (**keine** höhere Auflösung speichern als Produkt festlegt).
+- **UI/Logs:** Keine Rohtelemetrie (<~5 km) für Agency/Client/Logs gezielt ausgeben; keine präzisen Koordinaten in User-facing Copy ohne explizites Produkt-O.K.
+
+## C. Nominatim / Reverse-Geocode
+
+- Immer gemeinsamen Helper mit gültigem **`User-Agent`** (`nominatimReverseApprox` / Projektstandard) verwenden — **nie** Reverse-Calls ohne Agent-Header.
+- Nicht‑OK HTTP / fehlende Stadt → **kein** stiller Fallback mit Fake-Städten; User-Feedback über `uiCopy`.
+
+## D. UX — kein Silent Fail
+
+- Share-GPS muss Loading, Erfolg, Verweigerung, Timeout, „unsupported“ und RPC-Fehler klar über **`uiCopy`** signalisieren.
+- DoppelSubmit während Laden verhindern (`locationLoading`/Guard).
+
+## E. Änderungen an diesem Stack
+
+Touches an **`model_locations`**, Geolocation auf Web/Native, Discovery-„Near Me“ oder effective-city-Fetches **erffordern**:
+
+- bestehende **Precision-Ownership-Tests** grün halten / erweitern (`modelLiveGpsCapture`, `nominatimReverseApprox`, `modelLocations`/RPC-Kontrakte wo vorhanden);
+- **keine** Änderung an Discovery-Ranking-Semantik nur „wegen GPS“;
+- **keine** Schwächung von RLS.

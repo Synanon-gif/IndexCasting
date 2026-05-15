@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { roundCoord } from '../services/modelLocationsSupabase';
 import { showConfirmAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
+import { reverseGeocodeRoundedCoords } from '../utils/nominatimReverseApprox';
 
 const GEO_CONSENT_KEY = 'ic_geo_consent_v1';
 
@@ -101,15 +102,8 @@ export function useNearMeClientLocation(
           const lng = roundCoord(pos.coords.longitude);
           setUserLat(lat);
           setUserLng(lng);
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
-            { headers: { 'Accept-Language': 'en', 'User-Agent': 'IndexCasting/1.0' } },
-          );
-          const data = (await res.json()) as {
-            address?: { city?: string; town?: string; village?: string };
-          };
-          const city = data.address?.city || data.address?.town || data.address?.village || null;
-          if (city) setUserCity(city);
+          const geo = await reverseGeocodeRoundedCoords(lat, lng);
+          if (geo?.city) setUserCity(geo.city);
         } catch (e) {
           console.warn('[useNearMeClientLocation] reverse geocoding failed:', e);
         }

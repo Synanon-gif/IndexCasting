@@ -40,6 +40,12 @@
           "project": "react-native",
           "url": "https://de.sentry.io"
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "IndexCasting uses your location only to share an approximate area (~5 km) for discovery — exact GPS is not stored."
+        }
       ]
     ],
     "web": {
