@@ -27,13 +27,24 @@ Flows (`model_locations.source = live`, Reverse-Geocode, Near-Me / effective loc
 
 ## D. UX — kein Silent Fail
 
-- Share-GPS muss Loading, Erfolg, Verweigerung, Timeout, „unsupported“ und RPC-Fehler klar über **`uiCopy`** signalisieren.
+- Share-GPS muss Loading, Erfolg, Verweigerung, Timeout, „unsupported“ und RPC-Fehler klar über **`uiCopy`** signalisieren (`shareGpsRequestingLabel`, mobiles Permission-/Timeout-/HTTPS-Copy).
 - DoppelSubmit während Laden verhindern (`locationLoading`/Guard).
 
-## E. Änderungen an diesem Stack
+## E. Desktop vs. mobil Web (Zuverlässigkeit ohne Logik-Bruch)
 
-Touches an **`model_locations`**, Geolocation auf Web/Native, Discovery-„Near Me“ oder effective-city-Fetches **erffordern**:
+- **Mobile Browser** (`iPhone`/`iPad`/`Android` UA-Heuristik nur für Acquisition-Defaults): erste `getCurrentPosition`-Optionen mit **moderatem Timeout**, **`maximumAge` > 0** (hilft Safari), **`enableHighAccuracy: false`**; bei **Zeitüberschreitung** höchstens **ein** zweiter Versuch mit längeren Timeouts/`maximumAge`.
+- **Sicherer Kontext:** `globalThis.isSecureContext === false` → klarer Fehler (**HTTPS erforderlich**), keine stillen Fallbacks.
+- **Permissions API:** optional `navigator.permissions.query({ name: 'geolocation' })` nur als Prefetch („denied“ ohne Prompt); Safari darf fehlen — dann normaler Browser-Flow.
 
-- bestehende **Precision-Ownership-Tests** grün halten / erweitern (`modelLiveGpsCapture`, `nominatimReverseApprox`, `modelLocations`/RPC-Kontrakte wo vorhanden);
+## F. Native / Expo-Pfad
+
+- **Foreground only**, **one-shot**, **keine** Background/Watch nur für Share-GPS.
+- **Globales Zeitlimit** um `getCurrentPositionAsync`-Hangs abzufangen ↔ klare Timeout-Copy wie Web.
+
+## G. Änderungen an diesem Stack
+
+Touches an **`model_locations`**, Geolocation auf Web/Native, Discovery-„Near Me“ oder effective-city-Fetches **erfordern**:
+
+- bestehende **Precision-, Ownership-, Mobile-Web-Tests** grün halten / erweitern (`modelLiveGpsCapture`, `nominatimReverseApprox`, `modelLocations`/RPC-Kontrakte wo vorhanden);
 - **keine** Änderung an Discovery-Ranking-Semantik nur „wegen GPS“;
 - **keine** Schwächung von RLS.

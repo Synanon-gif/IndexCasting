@@ -192,16 +192,21 @@ export const uiCopy = {
     locationUpdatedTitle: 'Location Updated',
     locationErrorTitle: 'Location Error',
     locationErrorFallback: 'Could not retrieve your location.',
+    /** Model Share GPS — while the button request is running. */
+    shareGpsRequestingLabel: 'Requesting location…',
+    /** Model Share GPS — non-HTTPS / insecure context (common on broken embeds only). */
+    shareGpsInsecureContextBody:
+      'Sharing location requires a secure HTTPS page. Open the app in Safari/Chrome using https:// and try again, or enter your city manually.',
     /** Model Share GPS — browser/device has no geolocation API. */
     shareGpsNotSupportedBody:
       'This device or browser cannot access location services. Try the Expo web app over HTTPS or set your city manually.',
     /** Model Share GPS — OS or browser denied permission. */
     shareGpsPermissionDeniedBody:
-      'Location permission was denied. Allow location for this site in browser or system settings, or set your city manually.',
+      'Location permission was denied. iPhone: Settings → Privacy & Security → Location Services (Safari / Chrome must be While Using). Safari: Website Settings → Location. Android Chrome: Tap the lock or ⋮ → Permissions → Location. Or set your city manually.',
     shareGpsTimeoutBody:
-      'Getting your location timed out. Try again with a clearer sky view or stronger signal.',
+      'Location update timed out. Try again outside or wait for a clearer signal; cached location may help on retry.',
     shareGpsUnavailableBody:
-      'Your position could not be determined right now. Try again later or set your city manually.',
+      'Location unavailable right now (GPS or browser). Please try again or set your city manually.',
     /** Reverse geocode failed after GPS (Nominatim HTTP or empty result). */
     shareGpsReverseGeocodeFailedBody:
       'Could not resolve your approximate area name. Try again later or enter your city manually.',
@@ -215,7 +220,8 @@ export const uiCopy = {
     couldNotRemoveLocation: 'Could not remove location. Please try again.',
     couldNotSaveLocation: 'Could not save your location. Please try again.',
     /** Model: live GPS location was set successfully — accepts the resolved city name. */
-    liveGpsLocationSet: (cityName: string) => `Live GPS location set to: ${cityName}`,
+    liveGpsLocationSet: (cityName: string) =>
+      `Approximate location shared (${cityName}). Your position is rounded to ~5 km for privacy.`,
     /** Model: confirm-availability RPC failed (status changed or agency not yet confirmed). */
     couldNotConfirmAvailability:
       'Could not confirm availability. The agency may not have confirmed yet, or the request status has changed. Please try again later.',

@@ -376,6 +376,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         if (msg === MODEL_GPS_ERROR.NOT_SUPPORTED) body = uiCopy.alerts.shareGpsNotSupportedBody;
         else if (msg === MODEL_GPS_ERROR.PERMISSION_DENIED)
           body = uiCopy.alerts.shareGpsPermissionDeniedBody;
+        else if (msg === MODEL_GPS_ERROR.INSECURE_CONTEXT)
+          body = uiCopy.alerts.shareGpsInsecureContextBody;
         else if (msg === MODEL_GPS_ERROR.TIMEOUT) body = uiCopy.alerts.shareGpsTimeoutBody;
         else if (msg === MODEL_GPS_ERROR.UNAVAILABLE) body = uiCopy.alerts.shareGpsUnavailableBody;
       }
@@ -1524,7 +1526,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 >
                   {locationLoading && <ActivityIndicator size="small" color="#fff" />}
                   <Text style={{ ...typography.label, color: '#fff', fontSize: 12 }}>
-                    {locationLoading ? 'Locating…' : 'Share GPS'}
+                    {locationLoading ? uiCopy.alerts.shareGpsRequestingLabel : 'Share GPS'}
                   </Text>
                 </TouchableOpacity>
               </View>
