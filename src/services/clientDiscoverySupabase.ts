@@ -94,6 +94,9 @@ export type DiscoveryCursor = { score: number; modelId: string } | null;
 /** Page size used for all paginated discovery calls. */
 export const DISCOVERY_PAGE_SIZE = 50;
 
+/** Max session-seen IDs sent to get_discovery_models (recent-first, scale-safe). */
+export const MAX_DISCOVERY_EXCLUDE_IDS = DISCOVERY_PAGE_SIZE * 4;
+
 // ─── Retry helper ─────────────────────────────────────────────────────────────
 
 /**
@@ -154,6 +157,11 @@ function pruneExpiredSessionEntries(
   return entries.filter((entry) => nowMs - entry.seenAt < DISCOVERY_SEEN_TTL_MS);
 }
 
+function capSessionEntries(entries: SessionSeenEntry[]): SessionSeenEntry[] {
+  if (entries.length <= MAX_DISCOVERY_EXCLUDE_IDS) return entries;
+  return [...entries].sort((a, b) => b.seenAt - a.seenAt).slice(0, MAX_DISCOVERY_EXCLUDE_IDS);
+}
+
 function persistSessionEntries(clientOrgId: string, entries: SessionSeenEntry[]): void {
   try {
     if (typeof localStorage === 'undefined') return;
@@ -203,7 +211,10 @@ export function saveSessionId(clientOrgId: string, modelId: string): void {
     const nowMs = Date.now();
     const entries = readActiveSessionEntries(clientOrgId).filter((entry) => entry.id !== modelId);
     entries.push({ id: modelId, seenAt: nowMs });
-    persistSessionEntries(clientOrgId, entries);
+    persistSessionEntries(
+      clientOrgId,
+      capSessionEntries(pruneExpiredSessionEntries(entries, nowMs)),
+    );
   } catch {
     // localStorage write failures (e.g. private mode quota) are non-fatal.
   }
@@ -288,6 +299,32 @@ export function filterDiscoveryModelsExcludingSeen<T extends { id: string }>(
   if (sessionSeenIds.size === 0) return models;
   const pin = keepVisibleId?.trim() || null;
   return models.filter((m) => m.id === pin || !sessionSeenIds.has(m.id));
+}
+
+/** Drops stale pin when the model is no longer in the loaded page (filter/refetch drift). */
+export function resolvePinnedDiscoverModelId<T extends { id: string }>(
+  pinnedId: string | null | undefined,
+  baseModels: T[],
+): string | null {
+  const pin = pinnedId?.trim() || null;
+  if (!pin) return null;
+  return baseModels.some((m) => m.id === pin) ? pin : null;
+}
+
+/**
+ * Recent-first capped exclude list for get_discovery_models (prevents unbounded p_exclude_ids).
+ */
+export function buildDiscoveryExcludeIdsForRpc(
+  clientOrgId: string,
+  sessionSeenIds: Set<string>,
+  nowMs: number = Date.now(),
+): string[] {
+  if (sessionSeenIds.size === 0) return [];
+  const entries = readActiveSessionEntries(clientOrgId);
+  const seenAtById = new Map(entries.map((entry) => [entry.id, entry.seenAt]));
+  const ids = Array.from(sessionSeenIds);
+  ids.sort((a, b) => (seenAtById.get(b) ?? nowMs) - (seenAtById.get(a) ?? nowMs));
+  return ids.slice(0, MAX_DISCOVERY_EXCLUDE_IDS);
 }
 
 /**
@@ -497,7 +534,7 @@ export async function getDiscoveryModels(
     throw e;
   }
 
-  const excludeIds: string[] = Array.from(sessionSeenIds);
+  const excludeIds = buildDiscoveryExcludeIdsForRpc(clientOrgId, sessionSeenIds);
 
   try {
     const { data, error } = await supabase.rpc('get_discovery_models', {

@@ -77,6 +77,7 @@ import {
   buildDiscoveryFilterSignature,
   shouldResetDiscoverySessionSeen,
   filterDiscoveryModelsExcludingSeen,
+  resolvePinnedDiscoverModelId,
   shouldTriggerDiscoveryLoadMore,
   shouldShowDiscoveryLoadingMore,
   shouldShowDiscoveryEmptyState,
@@ -758,6 +759,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   /** Keeps the on-screen card visible after view-mark; cleared on Next/Pass/refresh. */
   const [pinnedDiscoverModelId, setPinnedDiscoverModelId] = useState<string | null>(null);
   const discoveryFilterSignatureRef = useRef<string | null>(null);
+  const prevClientOrgIdRef = useRef<string | null>(null);
 
   /** Prevents concurrent paginated load-more fetches. */
   const isLoadingMoreRef = useRef(false);
@@ -965,8 +967,13 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     }
     const profileOrgId = auth.profile?.organization_id;
     if (profileOrgId) {
+      if (prevClientOrgIdRef.current && prevClientOrgIdRef.current !== profileOrgId) {
+        setPinnedDiscoverModelId(null);
+      }
+      prevClientOrgIdRef.current = profileOrgId;
       setClientOrgId(profileOrgId);
       sessionSeenIds.current = loadSessionIds(profileOrgId);
+      setSessionSeenCount(sessionSeenIds.current.size);
       return;
     }
     // Fallback: org not yet bootstrapped (e.g. brand-new owner) — create it.
@@ -975,7 +982,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         const oid = await ensureClientOrganization();
         setClientOrgId(oid);
         if (oid) {
+          if (prevClientOrgIdRef.current && prevClientOrgIdRef.current !== oid) {
+            setPinnedDiscoverModelId(null);
+          }
+          prevClientOrgIdRef.current = oid;
           sessionSeenIds.current = loadSessionIds(oid);
+          setSessionSeenCount(sessionSeenIds.current.size);
         }
       } catch (e) {
         console.error('ClientWebApp: failed to resolve clientOrgId', e);
@@ -1578,7 +1590,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     return filterDiscoveryModelsExcludingSeen(
       baseModels,
       sessionSeenIds.current,
-      pinnedDiscoverModelId,
+      resolvePinnedDiscoverModelId(pinnedDiscoverModelId, baseModels),
     );
     // sessionSeenCount ensures re-eval when the seen-set grows (Next / viewed card).
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sessionSeenIds is a ref; sessionSeenCount is the reactive trigger
@@ -1680,7 +1692,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         );
         if (more.length > 0) {
           setDiscoveryLoadMoreFailed(false);
-          setModels((prev) => [...prev, ...more.map(mapDiscoveryModelToSummary)]);
+          setModels((prev) => {
+            const existing = new Set(prev.map((m) => m.id));
+            const novel = more.filter((m) => !existing.has(m.id)).map(mapDiscoveryModelToSummary);
+            return novel.length > 0 ? [...prev, ...novel] : prev;
+          });
           setDiscoveryCursor(nextCursor);
         } else {
           setDiscoveryLoadMoreFailed(false);
@@ -2591,6 +2607,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       sessionSeenIds.current = loadSessionIds(clientOrgId);
       setSessionSeenCount(sessionSeenIds.current.size);
     }
+    setPinnedDiscoverModelId(null);
     setCurrentIndex(0);
   }, [clientOrgId]);
 

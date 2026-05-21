@@ -73,6 +73,8 @@ import {
   buildDiscoveryFilterSignature,
   shouldResetDiscoverySessionSeen,
   filterDiscoveryModelsExcludingSeen,
+  resolvePinnedDiscoverModelId,
+  buildDiscoveryExcludeIdsForRpc,
   shouldTriggerDiscoveryLoadMore,
   shouldShowDiscoveryLoadingMore,
   shouldShowDiscoveryEmptyState,
@@ -82,6 +84,7 @@ import {
   DISCOVERY_WEIGHTS,
   DISCOVERY_SEEN_TTL_MS,
   DISCOVERY_PAGE_SIZE,
+  MAX_DISCOVERY_EXCLUDE_IDS,
   type DiscoveryFilters,
   type DiscoveryModel,
   type DiscoveryCursor,
@@ -521,6 +524,64 @@ describe('filterDiscoveryModelsExcludingSeen', () => {
       'c',
     ]);
     expect(filterDiscoveryModelsExcludingSeen(models, seen, null).map((m) => m.id)).toEqual(['c']);
+  });
+});
+
+describe('resolvePinnedDiscoverModelId', () => {
+  it('returns pin when model is in baseModels', () => {
+    expect(resolvePinnedDiscoverModelId('a', [{ id: 'a' }, { id: 'b' }])).toBe('a');
+  });
+
+  it('returns null when pin is stale (not in baseModels)', () => {
+    expect(resolvePinnedDiscoverModelId('missing', [{ id: 'a' }])).toBeNull();
+    expect(resolvePinnedDiscoverModelId('', [{ id: 'a' }])).toBeNull();
+  });
+});
+
+describe('buildDiscoveryExcludeIdsForRpc', () => {
+  it('caps p_exclude_ids to MAX_DISCOVERY_EXCLUDE_IDS (recent-first)', async () => {
+    const nowMs = 1_700_000_000_000;
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(nowMs);
+    try {
+      const entries = Array.from({ length: MAX_DISCOVERY_EXCLUDE_IDS + 25 }, (_, i) => ({
+        id: `model-${i}`,
+        seenAt: nowMs - i * 1_000,
+      }));
+      localStorageMock.setItem(`discovery_session_seen_${ORG_ID}`, JSON.stringify(entries));
+      const seen = loadSessionIds(ORG_ID);
+      expect(seen.size).toBe(MAX_DISCOVERY_EXCLUDE_IDS + 25);
+
+      const capped = buildDiscoveryExcludeIdsForRpc(ORG_ID, seen, nowMs);
+      expect(capped).toHaveLength(MAX_DISCOVERY_EXCLUDE_IDS);
+      expect(capped[0]).toBe('model-0');
+      expect(capped[capped.length - 1]).toBe(`model-${MAX_DISCOVERY_EXCLUDE_IDS - 1}`);
+
+      mockRpc.mockResolvedValueOnce({ data: [], error: null });
+      await getDiscoveryModels(ORG_ID, BASE_FILTERS, null, seen);
+      const sent = mockRpc.mock.calls[0][1].p_exclude_ids as string[];
+      expect(sent).toHaveLength(MAX_DISCOVERY_EXCLUDE_IDS);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('saveSessionId trims persisted entries to MAX_DISCOVERY_EXCLUDE_IDS', () => {
+    let tick = 1_700_000_000_000;
+    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => {
+      tick += 1;
+      return tick;
+    });
+    try {
+      for (let i = 0; i < MAX_DISCOVERY_EXCLUDE_IDS + 10; i++) {
+        saveSessionId('org-cap', `model-${i}`);
+      }
+      const raw = localStorageMock.getItem('discovery_session_seen_org-cap');
+      const parsed = JSON.parse(raw!) as { id: string }[];
+      expect(parsed).toHaveLength(MAX_DISCOVERY_EXCLUDE_IDS);
+      expect(loadSessionIds('org-cap').size).toBe(MAX_DISCOVERY_EXCLUDE_IDS);
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 });
 
