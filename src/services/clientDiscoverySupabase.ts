@@ -8,7 +8,7 @@
  *   • withRetry           — 1-2 retries on network failure, non-blocking.
  *   • loadSessionIds /
  *     saveSessionId /
- *     clearSessionIds     — localStorage-backed session persistence.
+ *     clearSessionIds     — localStorage-backed session persistence (TTL).
  *   • applyDiversityShuffle — tier-based shuffle for variety.
  *   • DiscoveryCursor /
  *     getDiscoveryModels  — cursor-based pagination (score + model_id keyset).
@@ -116,31 +116,94 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries: number = 2): Promi
   throw lastError;
 }
 
-// ─── Session persistence (localStorage) ──────────────────────────────────────
+// ─── Session persistence (localStorage, TTL) ───────────────────────────────────
+
+/** View/Next soft-suppress window — not permanent across hard refresh. */
+export const DISCOVERY_SEEN_TTL_MS = 90 * 60 * 1000;
 
 const SESSION_KEY = (orgId: string) => `discovery_session_seen_${orgId}`;
 
-/** Loads the set of model IDs seen in the current discovery session from localStorage. */
-export function loadSessionIds(clientOrgId: string): Set<string> {
+type SessionSeenEntry = { id: string; seenAt: number };
+
+function isLegacySessionArray(parsed: unknown): parsed is string[] {
+  return Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string';
+}
+
+function parseSessionEntries(raw: string | null): SessionSeenEntry[] {
+  if (!raw) return [];
   try {
-    if (typeof localStorage === 'undefined') return new Set();
-    const raw = localStorage.getItem(SESSION_KEY(clientOrgId));
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set<string>(parsed);
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    if (parsed.length === 0) return [];
+    return parsed.filter(
+      (entry): entry is SessionSeenEntry =>
+        !!entry &&
+        typeof entry === 'object' &&
+        typeof (entry as SessionSeenEntry).id === 'string' &&
+        typeof (entry as SessionSeenEntry).seenAt === 'number',
+    );
   } catch {
-    return new Set();
+    return [];
   }
 }
 
-/** Adds a single model ID to the persisted session set. */
+function pruneExpiredSessionEntries(
+  entries: SessionSeenEntry[],
+  nowMs: number = Date.now(),
+): SessionSeenEntry[] {
+  return entries.filter((entry) => nowMs - entry.seenAt < DISCOVERY_SEEN_TTL_MS);
+}
+
+function persistSessionEntries(clientOrgId: string, entries: SessionSeenEntry[]): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    if (entries.length === 0) {
+      localStorage.removeItem(SESSION_KEY(clientOrgId));
+      return;
+    }
+    localStorage.setItem(SESSION_KEY(clientOrgId), JSON.stringify(entries));
+  } catch {
+    // localStorage write failures (e.g. private mode quota) are non-fatal.
+  }
+}
+
+function readActiveSessionEntries(clientOrgId: string): SessionSeenEntry[] {
+  try {
+    if (typeof localStorage === 'undefined') return [];
+    const raw = localStorage.getItem(SESSION_KEY(clientOrgId));
+    if (!raw) return [];
+    let legacy = false;
+    try {
+      legacy = isLegacySessionArray(JSON.parse(raw));
+    } catch {
+      localStorage.removeItem(SESSION_KEY(clientOrgId));
+      return [];
+    }
+    const parsed = legacy ? [] : parseSessionEntries(raw);
+    const active = pruneExpiredSessionEntries(parsed);
+    if (legacy || active.length !== parsed.length) {
+      persistSessionEntries(clientOrgId, active);
+    }
+    return active;
+  } catch {
+    return [];
+  }
+}
+
+/** Loads non-expired model IDs seen via View/Next from localStorage. */
+export function loadSessionIds(clientOrgId: string): Set<string> {
+  const active = readActiveSessionEntries(clientOrgId);
+  return new Set(active.map((entry) => entry.id));
+}
+
+/** Adds a single model ID to the persisted session set (TTL-scoped). */
 export function saveSessionId(clientOrgId: string, modelId: string): void {
   try {
     if (typeof localStorage === 'undefined') return;
-    const existing = loadSessionIds(clientOrgId);
-    existing.add(modelId);
-    localStorage.setItem(SESSION_KEY(clientOrgId), JSON.stringify(Array.from(existing)));
+    const nowMs = Date.now();
+    const entries = readActiveSessionEntries(clientOrgId).filter((entry) => entry.id !== modelId);
+    entries.push({ id: modelId, seenAt: nowMs });
+    persistSessionEntries(clientOrgId, entries);
   } catch {
     // localStorage write failures (e.g. private mode quota) are non-fatal.
   }
@@ -233,6 +296,43 @@ export function shouldTriggerDiscoveryLoadMore(
   if (!hasCursor) return false;
   if (filteredQueueLength === 0) return true;
   return filteredQueueLength - 1 - currentIndex <= threshold;
+}
+
+/** True while initial fetch or load-more may still produce models. */
+export function shouldShowDiscoveryLoadingMore(input: {
+  isInitialLoading: boolean;
+  isLoadingMore: boolean;
+  hasCursor: boolean;
+  filteredQueueLength: number;
+}): boolean {
+  if (input.isInitialLoading) return true;
+  if (input.isLoadingMore) return true;
+  return input.hasCursor && input.filteredQueueLength === 0;
+}
+
+/** Empty discover card — not during active fetch/pagination. */
+export function shouldShowDiscoveryEmptyState(input: {
+  isPackageMode: boolean;
+  isSharedMode: boolean;
+  isInitialLoading: boolean;
+  isLoadingMore: boolean;
+  hasCursor: boolean;
+  filteredQueueLength: number;
+}): boolean {
+  if (input.isPackageMode || input.isSharedMode) return false;
+  if (shouldShowDiscoveryLoadingMore(input)) return false;
+  return input.filteredQueueLength === 0;
+}
+
+/** Refresh queue clears View/Next seen only — not Pass/Reject (DB) or active requests. */
+export function shouldAllowRefreshDiscoveryQueue(input: {
+  sessionSeenCount: number;
+  filteredQueueLength: number;
+  isInitialLoading: boolean;
+  isLoadingMore: boolean;
+}): boolean {
+  if (input.isInitialLoading || input.isLoadingMore) return false;
+  return input.sessionSeenCount > 0 && input.filteredQueueLength === 0;
 }
 
 /** Row shape mirrored by get_discovery_models active-request NOT EXISTS guard (20261329). */

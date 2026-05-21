@@ -78,6 +78,9 @@ import {
   shouldResetDiscoverySessionSeen,
   filterDiscoveryModelsExcludingSeen,
   shouldTriggerDiscoveryLoadMore,
+  shouldShowDiscoveryLoadingMore,
+  shouldShowDiscoveryEmptyState,
+  shouldAllowRefreshDiscoveryQueue,
   type DiscoveryModel,
   type DiscoveryCursor,
 } from '../services/clientDiscoverySupabase';
@@ -756,6 +759,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
   /** Prevents concurrent paginated load-more fetches. */
   const isLoadingMoreRef = useRef(false);
+  const [discoveryInitialLoading, setDiscoveryInitialLoading] = useState(false);
+  const [isDiscoveryLoadingMore, setIsDiscoveryLoadingMore] = useState(false);
+  /** Bumps ranked discovery refetch after manual queue refresh. */
+  const [discoveryRefreshNonce, setDiscoveryRefreshNonce] = useState(0);
 
   /** Cursor for keyset pagination — updated after each successful ranked load. */
   const [discoveryCursor, setDiscoveryCursor] = useState<DiscoveryCursor>(null);
@@ -1185,137 +1192,140 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     setCurrentIndex(0);
     setDiscoveryCursor(null);
     setDiscoveryLoadMoreFailed(false);
+    setDiscoveryInitialLoading(true);
 
     void (async () => {
-      const countryIso = filters.countryCode.trim() || undefined;
-      const cityFilter = countryIso && filters.city.trim() ? filters.city.trim() : undefined;
+      try {
+        const countryIso = filters.countryCode.trim() || undefined;
+        const cityFilter = countryIso && filters.city.trim() ? filters.city.trim() : undefined;
 
-      // Derive effective clientType / category from unified category filter.
-      const cat = filters.category;
-      const effectiveClientType = !cat ? 'all' : cat === 'Commercial' ? 'commercial' : 'fashion';
-      const effectiveCategory = cat === 'High Fashion' ? 'High Fashion' : undefined;
+        // Derive effective clientType / category from unified category filter.
+        const cat = filters.category;
+        const effectiveClientType = !cat ? 'all' : cat === 'Commercial' ? 'commercial' : 'fashion';
+        const effectiveCategory = cat === 'High Fashion' ? 'High Fashion' : undefined;
 
-      // Convert height range strings → numeric values for backend filtering.
-      const pInt = (v: string) => {
-        const n = parseInt(v, 10);
-        return isNaN(n) ? undefined : n;
-      };
-
-      const measurementFilters = {
-        heightMin: pInt(filters.heightMin),
-        heightMax: pInt(filters.heightMax),
-        ethnicities: filters.ethnicities.length ? filters.ethnicities : undefined,
-        hairColor: filters.hairColor.trim() || undefined,
-        hipsMin: pInt(filters.hipsMin),
-        hipsMax: pInt(filters.hipsMax),
-        waistMin: pInt(filters.waistMin),
-        waistMax: pInt(filters.waistMax),
-        chestMin: pInt(filters.chestMin),
-        chestMax: pInt(filters.chestMax),
-        legsInseamMin: pInt(filters.legsInseamMin),
-        legsInseamMax: pInt(filters.legsInseamMax),
-        sex: (filters.sex !== 'all' ? filters.sex : undefined) as 'male' | 'female' | undefined,
-      };
-
-      // Ranked discovery: use get_discovery_models RPC when a client org +
-      // country code are known. Falls back to the unranked legacy path otherwise.
-      if (clientOrgId && countryIso) {
-        const cityTrim = filters.city.trim();
-        let searchLat: number | undefined;
-        let searchLng: number | undefined;
-        let cityRadiusKm: number | undefined;
-        if (countryIso && cityTrim) {
-          const pin = await getCitySearchGeocodedPin(countryIso, cityTrim);
-          if (pin) {
-            searchLat = pin.lat;
-            searchLng = pin.lng;
-            cityRadiusKm = CITY_SEARCH_RADIUS_KM_DEFAULT;
-          }
-        }
-        const discoveryFilters = {
-          countryCode: countryIso,
-          clientCity: userCity ?? null,
-          city: cityTrim || null,
-          category: effectiveCategory ?? null,
-          sportsWinter: filters.sportsWinter || false,
-          sportsSummer: filters.sportsSummer || false,
-          ...measurementFilters,
-          ...(searchLat != null && searchLng != null
-            ? { searchLat, searchLng, cityRadiusKm: cityRadiusKm ?? CITY_SEARCH_RADIUS_KM_DEFAULT }
-            : {}),
+        // Convert height range strings → numeric values for backend filtering.
+        const pInt = (v: string) => {
+          const n = parseInt(v, 10);
+          return isNaN(n) ? undefined : n;
         };
 
-        const { models: ranked, nextCursor } = await getDiscoveryModels(
-          clientOrgId,
-          discoveryFilters,
-          null,
-          sessionSeenIds.current,
-        );
+        const measurementFilters = {
+          heightMin: pInt(filters.heightMin),
+          heightMax: pInt(filters.heightMax),
+          ethnicities: filters.ethnicities.length ? filters.ethnicities : undefined,
+          hairColor: filters.hairColor.trim() || undefined,
+          hipsMin: pInt(filters.hipsMin),
+          hipsMax: pInt(filters.hipsMax),
+          waistMin: pInt(filters.waistMin),
+          waistMax: pInt(filters.waistMax),
+          chestMin: pInt(filters.chestMin),
+          chestMax: pInt(filters.chestMax),
+          legsInseamMin: pInt(filters.legsInseamMin),
+          legsInseamMax: pInt(filters.legsInseamMax),
+          sex: (filters.sex !== 'all' ? filters.sex : undefined) as 'male' | 'female' | undefined,
+        };
 
-        if (ranked.length === 0 && sessionSeenIds.current.size > 0) {
-          // Session exhausted: keep seen IDs; show empty discover state (no blind reset).
-          setModels([]);
-          setDiscoveryCursor(null);
+        // Ranked discovery: use get_discovery_models RPC when a client org +
+        // country code are known. Falls back to the unranked legacy path otherwise.
+        if (clientOrgId && countryIso) {
+          const cityTrim = filters.city.trim();
+          let searchLat: number | undefined;
+          let searchLng: number | undefined;
+          let cityRadiusKm: number | undefined;
+          if (countryIso && cityTrim) {
+            const pin = await getCitySearchGeocodedPin(countryIso, cityTrim);
+            if (pin) {
+              searchLat = pin.lat;
+              searchLng = pin.lng;
+              cityRadiusKm = CITY_SEARCH_RADIUS_KM_DEFAULT;
+            }
+          }
+          const discoveryFilters = {
+            countryCode: countryIso,
+            clientCity: userCity ?? null,
+            city: cityTrim || null,
+            category: effectiveCategory ?? null,
+            sportsWinter: filters.sportsWinter || false,
+            sportsSummer: filters.sportsSummer || false,
+            ...measurementFilters,
+            ...(searchLat != null && searchLng != null
+              ? {
+                  searchLat,
+                  searchLng,
+                  cityRadiusKm: cityRadiusKm ?? CITY_SEARCH_RADIUS_KM_DEFAULT,
+                }
+              : {}),
+          };
+
+          const { models: ranked, nextCursor } = await getDiscoveryModels(
+            clientOrgId,
+            discoveryFilters,
+            null,
+            sessionSeenIds.current,
+          );
+
+          setModels(ranked.map(mapDiscoveryModelToSummary));
+          setDiscoveryCursor(nextCursor);
           return;
         }
 
-        setModels(ranked.map(mapDiscoveryModelToSummary));
-        setDiscoveryCursor(nextCursor);
-        return;
-      }
-
-      // Legacy unranked path (no clientOrgId resolved yet, or no country filter).
-      let legacyCityLat: number | undefined;
-      let legacyCityLng: number | undefined;
-      let legacyCityRadiusKm: number | undefined;
-      if (countryIso && cityFilter) {
-        const pin = await getCitySearchGeocodedPin(countryIso, cityFilter);
-        if (pin) {
-          legacyCityLat = pin.lat;
-          legacyCityLng = pin.lng;
-          legacyCityRadiusKm = CITY_SEARCH_RADIUS_KM_DEFAULT;
+        // Legacy unranked path (no clientOrgId resolved yet, or no country filter).
+        let legacyCityLat: number | undefined;
+        let legacyCityLng: number | undefined;
+        let legacyCityRadiusKm: number | undefined;
+        if (countryIso && cityFilter) {
+          const pin = await getCitySearchGeocodedPin(countryIso, cityFilter);
+          if (pin) {
+            legacyCityLat = pin.lat;
+            legacyCityLng = pin.lng;
+            legacyCityRadiusKm = CITY_SEARCH_RADIUS_KM_DEFAULT;
+          }
         }
+        const data: any[] = await getModelsForClient(
+          effectiveClientType,
+          countryIso,
+          cityFilter,
+          effectiveCategory,
+          filters.sportsWinter || undefined,
+          filters.sportsSummer || undefined,
+          measurementFilters,
+          legacyCityLat,
+          legacyCityLng,
+          legacyCityRadiusKm,
+        );
+        const mapped: ModelSummary[] = data.map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          effective_city: m.effective_city ?? null,
+          city: m.city ?? '',
+          hairColor: m.hairColor ?? m.hair_color ?? '',
+          height: m.height,
+          bust: m.bust ?? 0,
+          waist: m.waist ?? 0,
+          hips: m.hips ?? 0,
+          chest: m.chest ?? m.bust ?? 0,
+          legsInseam: m.legsInseam ?? m.legs_inseam ?? 0,
+          coverUrl: normalizeDocumentspicturesModelImageRef(m.gallery?.[0] ?? '', m.id),
+          imageUrls: (m.gallery ?? []).map((u: string) =>
+            normalizeDocumentspicturesModelImageRef(u, m.id),
+          ),
+          agencyId: m.agencyId ?? m.agency_id ?? null,
+          agencyName: m.agencyName ?? m.agency_name ?? null,
+          countryCode: m.countryCode ?? null,
+          hasRealLocation: m.hasRealLocation ?? false,
+          isSportsWinter: m.isSportsWinter ?? false,
+          isSportsSummer: m.isSportsSummer ?? false,
+          sex: m.sex ?? null,
+        }));
+        setModels(mapped);
+      } finally {
+        setDiscoveryInitialLoading(false);
       }
-      const data: any[] = await getModelsForClient(
-        effectiveClientType,
-        countryIso,
-        cityFilter,
-        effectiveCategory,
-        filters.sportsWinter || undefined,
-        filters.sportsSummer || undefined,
-        measurementFilters,
-        legacyCityLat,
-        legacyCityLng,
-        legacyCityRadiusKm,
-      );
-      const mapped: ModelSummary[] = data.map((m: any) => ({
-        id: m.id,
-        name: m.name,
-        effective_city: m.effective_city ?? null,
-        city: m.city ?? '',
-        hairColor: m.hairColor ?? m.hair_color ?? '',
-        height: m.height,
-        bust: m.bust ?? 0,
-        waist: m.waist ?? 0,
-        hips: m.hips ?? 0,
-        chest: m.chest ?? m.bust ?? 0,
-        legsInseam: m.legsInseam ?? m.legs_inseam ?? 0,
-        coverUrl: normalizeDocumentspicturesModelImageRef(m.gallery?.[0] ?? '', m.id),
-        imageUrls: (m.gallery ?? []).map((u: string) =>
-          normalizeDocumentspicturesModelImageRef(u, m.id),
-        ),
-        agencyId: m.agencyId ?? m.agency_id ?? null,
-        agencyName: m.agencyName ?? m.agency_name ?? null,
-        countryCode: m.countryCode ?? null,
-        hasRealLocation: m.hasRealLocation ?? false,
-        isSportsWinter: m.isSportsWinter ?? false,
-        isSportsSummer: m.isSportsSummer ?? false,
-        sex: m.sex ?? null,
-      }));
-      setModels(mapped);
     })();
   }, [
     clientOrgId,
+    discoveryRefreshNonce,
     filters.sex,
     filters.heightMin,
     filters.heightMax,
@@ -1604,6 +1614,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     if (!countryIso) return;
 
     isLoadingMoreRef.current = true;
+    setIsDiscoveryLoadingMore(true);
     const cat = filters.category;
     const effectiveCategory = cat === 'High Fashion' ? 'High Fashion' : undefined;
     const pInt = (v: string) => {
@@ -1671,6 +1682,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         setDiscoveryLoadMoreFailed(true);
       } finally {
         isLoadingMoreRef.current = false;
+        setIsDiscoveryLoadingMore(false);
       }
     })();
   }, [
@@ -2263,6 +2275,39 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     }, 300);
   };
 
+  const handleRefreshDiscoveryQueue = useCallback(() => {
+    if (!clientOrgId) return;
+    clearSessionIds(clientOrgId);
+    sessionSeenIds.current = new Set();
+    setSessionSeenCount(0);
+    setCurrentIndex(0);
+    setDiscoveryCursor(null);
+    setDiscoveryRefreshNonce((n) => n + 1);
+  }, [clientOrgId]);
+
+  const showDiscoveryLoadingMore = shouldShowDiscoveryLoadingMore({
+    isInitialLoading: discoveryInitialLoading,
+    isLoadingMore: isDiscoveryLoadingMore,
+    hasCursor: discoveryCursor != null,
+    filteredQueueLength: filteredModels.length,
+  });
+
+  const showDiscoveryEmpty = shouldShowDiscoveryEmptyState({
+    isPackageMode,
+    isSharedMode,
+    isInitialLoading: discoveryInitialLoading,
+    isLoadingMore: isDiscoveryLoadingMore,
+    hasCursor: discoveryCursor != null,
+    filteredQueueLength: filteredModels.length,
+  });
+
+  const allowRefreshDiscoveryQueue = shouldAllowRefreshDiscoveryQueue({
+    sessionSeenCount,
+    filteredQueueLength: filteredModels.length,
+    isInitialLoading: discoveryInitialLoading,
+    isLoadingMore: isDiscoveryLoadingMore,
+  });
+
   const _openSharedLinkForProject = (projectId: string) => {
     setActiveProjectId(projectId);
     setSharedProjectId(projectId);
@@ -2854,6 +2899,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             filterSaveStatus={filterSaveStatus}
             onNext={onNext}
             onPass={onPass}
+            showDiscoveryEmpty={showDiscoveryEmpty}
+            showDiscoveryLoadingMore={showDiscoveryLoadingMore}
+            allowRefreshDiscoveryQueue={allowRefreshDiscoveryQueue}
+            onRefreshDiscoveryQueue={handleRefreshDiscoveryQueue}
             onAddToProject={openProjectPickerForModel}
             onOpenDetails={openDetails}
             onOpenOptionDatePicker={openOptionDatePicker}
@@ -4451,6 +4500,10 @@ type DiscoverProps = {
   filterSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
   onNext: () => void;
   onPass: () => void;
+  showDiscoveryEmpty?: boolean;
+  showDiscoveryLoadingMore?: boolean;
+  allowRefreshDiscoveryQueue?: boolean;
+  onRefreshDiscoveryQueue?: () => void;
   onAddToProject: (model: ModelSummary) => void;
   onOpenDetails: (id: string) => void;
   onOpenOptionDatePicker: (model: ModelSummary) => void;
@@ -4494,6 +4547,10 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   filterSaveStatus,
   onNext,
   onPass,
+  showDiscoveryEmpty = false,
+  showDiscoveryLoadingMore = false,
+  allowRefreshDiscoveryQueue = false,
+  onRefreshDiscoveryQueue,
   onAddToProject,
   userCity,
   onOpenDetails,
@@ -4762,12 +4819,24 @@ const DiscoverView: React.FC<DiscoverProps> = ({
               )}
             </View>
           </View>
-        ) : (
+        ) : showDiscoveryLoadingMore ? (
+          <View style={styles.emptyDiscover}>
+            <Text style={styles.emptyTitle}>{uiCopy.discover.loadingMoreModels}</Text>
+          </View>
+        ) : showDiscoveryEmpty ? (
           <View style={styles.emptyDiscover}>
             <Text style={styles.emptyTitle}>{uiCopy.discover.noMoreModels}</Text>
             <Text style={styles.emptyCopy}>{uiCopy.discover.noMoreModelsSub}</Text>
+            {allowRefreshDiscoveryQueue && onRefreshDiscoveryQueue ? (
+              <TouchableOpacity
+                style={[styles.nextButton, { marginTop: spacing.md, alignSelf: 'center' }]}
+                onPress={onRefreshDiscoveryQueue}
+              >
+                <Text style={styles.nextButtonLabel}>{uiCopy.discover.refreshQueue}</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
-        )}
+        ) : null}
       </ScrollView>
     </View>
   );

@@ -74,9 +74,13 @@ import {
   shouldResetDiscoverySessionSeen,
   filterDiscoveryModelsExcludingSeen,
   shouldTriggerDiscoveryLoadMore,
+  shouldShowDiscoveryLoadingMore,
+  shouldShowDiscoveryEmptyState,
+  shouldAllowRefreshDiscoveryQueue,
   isDiscoveryActiveOptionOrCastingRequest,
   applyDiversityShuffle,
   DISCOVERY_WEIGHTS,
+  DISCOVERY_SEEN_TTL_MS,
   DISCOVERY_PAGE_SIZE,
   type DiscoveryFilters,
   type DiscoveryModel,
@@ -384,10 +388,19 @@ describe('loadSessionIds / saveSessionId / clearSessionIds', () => {
     expect(ids.size).toBe(0);
   });
 
-  it('saveSessionId persists a model ID', () => {
-    saveSessionId('org-1', 'model-a');
-    const ids = loadSessionIds('org-1');
-    expect(ids.has('model-a')).toBe(true);
+  it('saveSessionId persists a model ID with TTL metadata', () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    try {
+      saveSessionId('org-1', 'model-a');
+      const raw = localStorageMock.getItem('discovery_session_seen_org-1');
+      expect(raw).toBeTruthy();
+      const parsed = JSON.parse(raw!);
+      expect(parsed).toEqual([{ id: 'model-a', seenAt: 1_700_000_000_000 }]);
+      const ids = loadSessionIds('org-1');
+      expect(ids.has('model-a')).toBe(true);
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it('saveSessionId accumulates multiple IDs', () => {
@@ -397,6 +410,38 @@ describe('loadSessionIds / saveSessionId / clearSessionIds', () => {
     const ids = loadSessionIds('org-1');
     expect(ids.size).toBe(3);
     expect(ids.has('model-b')).toBe(true);
+  });
+
+  it('loadSessionIds ignores expired seen IDs', () => {
+    const nowMs = 1_700_000_000_000;
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(nowMs);
+    try {
+      localStorageMock.setItem(
+        'discovery_session_seen_org-1',
+        JSON.stringify([
+          { id: 'fresh', seenAt: nowMs - 1_000 },
+          { id: 'stale', seenAt: nowMs - DISCOVERY_SEEN_TTL_MS - 1 },
+        ]),
+      );
+      const ids = loadSessionIds('org-1');
+      expect(ids.has('fresh')).toBe(true);
+      expect(ids.has('stale')).toBe(false);
+      const raw = localStorageMock.getItem('discovery_session_seen_org-1');
+      const persisted = JSON.parse(raw!);
+      expect(persisted).toEqual([{ id: 'fresh', seenAt: nowMs - 1_000 }]);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('migrates legacy string[] storage to empty (drops permanent hard exclude)', () => {
+    localStorageMock.setItem(
+      'discovery_session_seen_org-1',
+      JSON.stringify(['legacy-a', 'legacy-b']),
+    );
+    const ids = loadSessionIds('org-1');
+    expect(ids.size).toBe(0);
+    expect(localStorageMock.getItem('discovery_session_seen_org-1')).toBeNull();
   });
 
   it('clearSessionIds removes the persisted set', () => {
@@ -500,6 +545,78 @@ describe('shouldTriggerDiscoveryLoadMore', () => {
 
   it('returns false when plenty of models remain', () => {
     expect(shouldTriggerDiscoveryLoadMore(50, 0, 10, true)).toBe(false);
+  });
+});
+
+describe('discovery empty / loading UI helpers', () => {
+  it('shouldShowDiscoveryLoadingMore during initial load', () => {
+    expect(
+      shouldShowDiscoveryLoadingMore({
+        isInitialLoading: true,
+        isLoadingMore: false,
+        hasCursor: false,
+        filteredQueueLength: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it('shouldShowDiscoveryLoadingMore when cursor exists but queue empty', () => {
+    expect(
+      shouldShowDiscoveryLoadingMore({
+        isInitialLoading: false,
+        isLoadingMore: false,
+        hasCursor: true,
+        filteredQueueLength: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it('shouldShowDiscoveryEmptyState not during loading', () => {
+    expect(
+      shouldShowDiscoveryEmptyState({
+        isPackageMode: false,
+        isSharedMode: false,
+        isInitialLoading: true,
+        isLoadingMore: false,
+        hasCursor: false,
+        filteredQueueLength: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it('shouldShowDiscoveryEmptyState when exhausted and idle', () => {
+    expect(
+      shouldShowDiscoveryEmptyState({
+        isPackageMode: false,
+        isSharedMode: false,
+        isInitialLoading: false,
+        isLoadingMore: false,
+        hasCursor: false,
+        filteredQueueLength: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it('shouldAllowRefreshDiscoveryQueue when seen exhausted queue', () => {
+    expect(
+      shouldAllowRefreshDiscoveryQueue({
+        sessionSeenCount: 5,
+        filteredQueueLength: 0,
+        isInitialLoading: false,
+        isLoadingMore: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('shouldAllowRefreshDiscoveryQueue false while loading', () => {
+    expect(
+      shouldAllowRefreshDiscoveryQueue({
+        sessionSeenCount: 5,
+        filteredQueueLength: 0,
+        isInitialLoading: true,
+        isLoadingMore: false,
+      }),
+    ).toBe(false);
   });
 });
 

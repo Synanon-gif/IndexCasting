@@ -1542,6 +1542,10 @@ export const uiCopy = {
     openOptionPicker: 'Option',
     /** Swipe discover — skip model for this session (records rejected interaction). */
     passLabel: 'Pass',
+    /** Ranked discover — reload queue after View/Next soft-suppress only. */
+    refreshQueue: 'Refresh discovery queue',
+    /** Shown while initial fetch or load-more pagination is in flight. */
+    loadingMoreModels: 'Loading more models…',
     /** Local-only gallery favorite toggle (accessibility label). */
     toggleFavoriteA11y: 'Mark as favorite',
     toggleUnfavoriteA11y: 'Remove favorite',
