@@ -120,12 +120,16 @@ describe('shouldShowClientAcceptCounterAction', () => {
 });
 
 describe('isAgencyPriceNegotiationOpen', () => {
-  it('is false after model approval sets status=confirmed', () => {
-    expect(isAgencyPriceNegotiationOpen('confirmed')).toBe(false);
+  it('is true when status=confirmed (price may still be open)', () => {
+    expect(isAgencyPriceNegotiationOpen('confirmed')).toBe(true);
   });
 
-  it('is true only for in_negotiation', () => {
+  it('is true for in_negotiation', () => {
     expect(isAgencyPriceNegotiationOpen('in_negotiation')).toBe(true);
+  });
+
+  it('is false for terminal rejected', () => {
+    expect(isAgencyPriceNegotiationOpen('rejected')).toBe(false);
   });
 });
 

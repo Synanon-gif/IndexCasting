@@ -61,7 +61,7 @@ export function shouldShowClientAcceptCounterAction(
   return true;
 }
 
-/** Agency price CTAs require in_negotiation — backend RPCs (e.g. agency_set_counter_offer) enforce it. */
+/** @deprecated Use {@link shouldShowAgencyPriceNegotiationActions} — price Axis-1 stays open on status=confirmed. */
 export function isAgencyPriceNegotiationOpen(status: string | null | undefined): boolean {
-  return status === 'in_negotiation';
+  return status === 'in_negotiation' || status === 'confirmed';
 }

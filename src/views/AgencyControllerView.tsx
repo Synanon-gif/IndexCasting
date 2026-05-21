@@ -7527,8 +7527,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           // the server (counter-offer buttons disappear) and surface a hint.
           setRequests(getOptionRequests());
           Alert.alert(
-            uiCopy.common.error,
-            uiCopy.optionNegotiationChat.counterOfferFailedNotInNegotiation,
+            uiCopy.optionNegotiationChat.negotiationActionFailedTitle,
+            uiCopy.optionNegotiationChat.negotiationActionFailedMessage,
           );
           return;
         }

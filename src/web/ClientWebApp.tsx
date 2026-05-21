@@ -4964,68 +4964,97 @@ const ActiveOptionsView: React.FC<{
     return { negotiating, confirmed, rejected };
   }, [requests]);
 
-  const renderRow = (r: ReturnType<typeof getOptionRequests>[0]) => (
-    <TouchableOpacity
-      key={r.threadId}
-      activeOpacity={0.7}
-      onPress={() => onOpenThread?.(r.threadId)}
-      style={{
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingVertical: spacing.sm,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-      }}
-    >
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textPrimary }}>
-          {r.modelName}
-        </Text>
-        {r.date ? (
-          <Text style={{ fontSize: 11, color: colors.textSecondary }}>{r.date}</Text>
-        ) : null}
-        {r.clientOrganizationId && assignmentByClientOrgId[r.clientOrganizationId] ? (
-          <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 2 }}>
-            {assignmentByClientOrgId[r.clientOrganizationId].label}
-            {assignmentByClientOrgId[r.clientOrganizationId].assignedMemberName
-              ? ` · ${assignmentByClientOrgId[r.clientOrganizationId].assignedMemberName}`
-              : ''}
-          </Text>
-        ) : null}
-      </View>
-      <View
+  const renderRow = (r: ReturnType<typeof getOptionRequests>[0]) => {
+    const attentionListLabel = attentionHeaderLabelFromSignals(
+      attentionSignalsFromOptionRequestLike({
+        status: r.status,
+        finalStatus: r.finalStatus ?? null,
+        clientPriceStatus: r.clientPriceStatus ?? null,
+        modelApproval: r.modelApproval,
+        modelAccountLinked: r.modelAccountLinked ?? false,
+        agencyCounterPrice: r.agencyCounterPrice ?? null,
+        proposedPrice: r.proposedPrice ?? null,
+        isAgencyOnly: r.isAgencyOnly ?? false,
+        requestType: r.requestType ?? null,
+      }),
+      'client',
+    );
+    const needsAction = attentionListLabel != null;
+    const statusLabel =
+      r.status === 'in_negotiation'
+        ? copy.optionRequestStatusInNegotiation
+        : r.status === 'confirmed'
+          ? copy.optionRequestStatusConfirmed
+          : copy.optionRequestStatusRejected;
+    const badgeLabel = needsAction ? copy.smartAttentionLabel : statusLabel;
+    const badgeBg = needsAction
+      ? '#fef3c7'
+      : r.status === 'confirmed'
+        ? '#dcfce7'
+        : r.status === 'rejected'
+          ? '#fee2e2'
+          : '#fef3c7';
+    const badgeColor = needsAction
+      ? '#92400e'
+      : r.status === 'confirmed'
+        ? '#16a34a'
+        : r.status === 'rejected'
+          ? '#dc2626'
+          : '#92400e';
+
+    return (
+      <TouchableOpacity
+        key={r.threadId}
+        activeOpacity={0.7}
+        onPress={() => onOpenThread?.(r.threadId)}
         style={{
-          backgroundColor:
-            r.status === 'confirmed' ? '#dcfce7' : r.status === 'rejected' ? '#fee2e2' : '#fef3c7',
-          borderRadius: 6,
-          paddingHorizontal: spacing.sm,
-          paddingVertical: 2,
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          paddingVertical: spacing.sm,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
         }}
       >
-        <Text
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textPrimary }}>
+            {r.modelName}
+          </Text>
+          {r.date ? (
+            <Text style={{ fontSize: 11, color: colors.textSecondary }}>{r.date}</Text>
+          ) : null}
+          {r.clientOrganizationId && assignmentByClientOrgId[r.clientOrganizationId] ? (
+            <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 2 }}>
+              {assignmentByClientOrgId[r.clientOrganizationId].label}
+              {assignmentByClientOrgId[r.clientOrganizationId].assignedMemberName
+                ? ` · ${assignmentByClientOrgId[r.clientOrganizationId].assignedMemberName}`
+                : ''}
+            </Text>
+          ) : null}
+        </View>
+        <View
           style={{
-            fontSize: 10,
-            fontWeight: '600',
-            textTransform: 'uppercase',
-            letterSpacing: 0.5,
-            color:
-              r.status === 'confirmed'
-                ? '#16a34a'
-                : r.status === 'rejected'
-                  ? '#dc2626'
-                  : '#92400e',
+            backgroundColor: badgeBg,
+            borderRadius: 6,
+            paddingHorizontal: spacing.sm,
+            paddingVertical: 2,
           }}
         >
-          {r.status === 'in_negotiation'
-            ? copy.optionRequestStatusInNegotiation
-            : r.status === 'confirmed'
-              ? copy.optionRequestStatusConfirmed
-              : copy.optionRequestStatusRejected}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+          <Text
+            style={{
+              fontSize: 10,
+              fontWeight: '600',
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+              color: badgeColor,
+            }}
+          >
+            {badgeLabel}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -6284,7 +6313,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         setRequests(getOptionRequests());
         showAppAlert(
           uiCopy.optionNegotiationChat.negotiationActionFailedTitle,
-          uiCopy.optionNegotiationChat.counterOfferFailedNotInNegotiation,
+          uiCopy.optionNegotiationChat.negotiationActionFailedMessage,
         );
         return;
       }
@@ -6853,79 +6882,43 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                       confirmationSummaryLine={negotiationConfirmationSummaryLine}
                       isAgencyOnly={request.isAgencyOnly}
                     />
-                    {isAgency ? (
-                      <NegotiationThreadFooter
-                        request={request}
-                        isAgency={isAgency}
-                        status={status}
-                        finalStatus={finalStatus}
-                        clientPriceStatus={clientPriceStatus}
-                        currency={currency}
-                        agencyCounterPrice={agencyCounterPrice}
-                        negotiationCounterExpanded={negotiationCounterExpanded}
-                        setNegotiationCounterExpanded={setNegotiationCounterExpanded}
-                        agencyCounterInput={agencyCounterInput}
-                        setAgencyCounterInput={setAgencyCounterInput}
-                        assignmentByClientOrgId={assignmentByClientOrgId}
-                        assignableMembers={assignableMembers}
-                        onSaveClientAssignment={onSaveClientAssignment}
-                        editingAssignmentThreadId={editingAssignmentThreadId}
-                        setEditingAssignmentThreadId={setEditingAssignmentThreadId}
-                        openOrgChatBusy={openOrgChatBusy}
-                        openOrgChatFromRequest={openOrgChatFromRequest}
-                        onAgencyConfirmAvailability={runAgencyConfirmAvailability}
-                        onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
-                        onAgencyRejectClientPrice={runAgencyRejectClientPrice}
-                        onAgencyCounterOffer={runAgencyCounterOffer}
-                        onAgencyProposeInitialFee={runAgencyCounterOffer}
-                        onRejectNegotiation={handleRejectOptionNegotiation}
-                        onClientAcceptCounter={runClientAcceptCounter}
-                        onClientRejectCounter={openRejectCounterModal}
-                        onClientConfirmJob={runClientConfirmJob}
-                        onAgencyConfirmJobAgencyOnly={runAgencyConfirmJobAgencyOnly}
-                        showAgencyExtras={false}
-                        suppressDuplicateMeta
-                      />
-                    ) : null}
                   </ScrollView>
                 ) : null
               }
               bottomInset={insets.bottom}
               footerTop={
-                showDesktopNegotiationRail && isAgency ? null : (
-                  <NegotiationThreadFooter
-                    request={request}
-                    isAgency={isAgency}
-                    status={status}
-                    finalStatus={finalStatus}
-                    clientPriceStatus={clientPriceStatus}
-                    currency={currency}
-                    agencyCounterPrice={agencyCounterPrice}
-                    negotiationCounterExpanded={negotiationCounterExpanded}
-                    setNegotiationCounterExpanded={setNegotiationCounterExpanded}
-                    agencyCounterInput={agencyCounterInput}
-                    setAgencyCounterInput={setAgencyCounterInput}
-                    assignmentByClientOrgId={assignmentByClientOrgId}
-                    assignableMembers={assignableMembers}
-                    onSaveClientAssignment={onSaveClientAssignment}
-                    editingAssignmentThreadId={editingAssignmentThreadId}
-                    setEditingAssignmentThreadId={setEditingAssignmentThreadId}
-                    openOrgChatBusy={openOrgChatBusy}
-                    openOrgChatFromRequest={openOrgChatFromRequest}
-                    onAgencyConfirmAvailability={runAgencyConfirmAvailability}
-                    onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
-                    onAgencyRejectClientPrice={runAgencyRejectClientPrice}
-                    onAgencyCounterOffer={runAgencyCounterOffer}
-                    onAgencyProposeInitialFee={runAgencyCounterOffer}
-                    onRejectNegotiation={handleRejectOptionNegotiation}
-                    onClientAcceptCounter={runClientAcceptCounter}
-                    onClientRejectCounter={openRejectCounterModal}
-                    onClientConfirmJob={runClientConfirmJob}
-                    onAgencyConfirmJobAgencyOnly={runAgencyConfirmJobAgencyOnly}
-                    showAgencyExtras={false}
-                    suppressDuplicateMeta
-                  />
-                )
+                <NegotiationThreadFooter
+                  request={request}
+                  isAgency={isAgency}
+                  status={status}
+                  finalStatus={finalStatus}
+                  clientPriceStatus={clientPriceStatus}
+                  currency={currency}
+                  agencyCounterPrice={agencyCounterPrice}
+                  negotiationCounterExpanded={negotiationCounterExpanded}
+                  setNegotiationCounterExpanded={setNegotiationCounterExpanded}
+                  agencyCounterInput={agencyCounterInput}
+                  setAgencyCounterInput={setAgencyCounterInput}
+                  assignmentByClientOrgId={assignmentByClientOrgId}
+                  assignableMembers={assignableMembers}
+                  onSaveClientAssignment={onSaveClientAssignment}
+                  editingAssignmentThreadId={editingAssignmentThreadId}
+                  setEditingAssignmentThreadId={setEditingAssignmentThreadId}
+                  openOrgChatBusy={openOrgChatBusy}
+                  openOrgChatFromRequest={openOrgChatFromRequest}
+                  onAgencyConfirmAvailability={runAgencyConfirmAvailability}
+                  onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
+                  onAgencyRejectClientPrice={runAgencyRejectClientPrice}
+                  onAgencyCounterOffer={runAgencyCounterOffer}
+                  onAgencyProposeInitialFee={runAgencyCounterOffer}
+                  onRejectNegotiation={handleRejectOptionNegotiation}
+                  onClientAcceptCounter={runClientAcceptCounter}
+                  onClientRejectCounter={openRejectCounterModal}
+                  onClientConfirmJob={runClientConfirmJob}
+                  onAgencyConfirmJobAgencyOnly={runAgencyConfirmJobAgencyOnly}
+                  showAgencyExtras={false}
+                  suppressDuplicateMeta
+                />
               }
               composerTopBanner={
                 calendarHint ? (

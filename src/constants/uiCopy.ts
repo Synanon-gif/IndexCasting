@@ -1940,8 +1940,7 @@ export const uiCopy = {
     /** B2B thread: terminal — no further fee negotiation. */
     negotiationFeeClosedRejected: 'This request was rejected. Fee negotiation is closed.',
     negotiationFeeClosedJobConfirmed: 'Job confirmed. Fee negotiation is closed.',
-    /** Agency: counter-offer RPC rejected because status is no longer in_negotiation
-     * (typically the model already confirmed availability → status='confirmed'). */
+    /** @deprecated Prefer negotiationActionFailedMessage — counter may fail for reasons beyond status. */
     counterOfferFailedNotInNegotiation:
       'Could not send the counter-offer — this request is no longer in negotiation. The model may have already confirmed availability or the request was rejected. The view has been refreshed.',
     /**
