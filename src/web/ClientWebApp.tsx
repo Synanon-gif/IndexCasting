@@ -77,6 +77,7 @@ import {
   buildDiscoveryFilterSignature,
   shouldResetDiscoverySessionSeen,
   filterDiscoveryModelsExcludingSeen,
+  shouldTriggerDiscoveryLoadMore,
   type DiscoveryModel,
   type DiscoveryCursor,
 } from '../services/clientDiscoverySupabase';
@@ -1337,127 +1338,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     userCity,
   ]);
 
-  // Load next page of ranked discovery results when the user approaches the end of the list.
-  // Only active for the ranked discovery path (clientOrgId + countryCode); not for nearby,
-  // package views, or shared project views.
-  useEffect(() => {
-    if (
-      !discoveryCursor ||
-      !clientOrgId ||
-      isLoadingMoreRef.current ||
-      filteredModels.length === 0 ||
-      filters.nearby ||
-      packageViewState != null ||
-      sharedProjectId != null
-    )
-      return;
-
-    const remaining = filteredModels.length - 1 - currentIndex;
-    if (remaining > LOAD_MORE_THRESHOLD) return;
-
-    const countryIso = filters.countryCode.trim();
-    if (!countryIso) return;
-
-    isLoadingMoreRef.current = true;
-    const cat = filters.category;
-    const effectiveCategory = cat === 'High Fashion' ? 'High Fashion' : undefined;
-    const pInt = (v: string) => {
-      const n = parseInt(v, 10);
-      return isNaN(n) ? undefined : n;
-    };
-
-    void (async () => {
-      try {
-        const cityTrim = filters.city.trim();
-        let searchLat: number | undefined;
-        let searchLng: number | undefined;
-        let cityRadiusKm: number | undefined;
-        if (cityTrim) {
-          const pin = await getCitySearchGeocodedPin(countryIso, cityTrim);
-          if (pin) {
-            searchLat = pin.lat;
-            searchLng = pin.lng;
-            cityRadiusKm = CITY_SEARCH_RADIUS_KM_DEFAULT;
-          }
-        }
-        const { models: more, nextCursor } = await getDiscoveryModels(
-          clientOrgId,
-          {
-            countryCode: countryIso,
-            clientCity: userCity ?? null,
-            city: cityTrim || null,
-            category: effectiveCategory ?? null,
-            sportsWinter: filters.sportsWinter || false,
-            sportsSummer: filters.sportsSummer || false,
-            heightMin: pInt(filters.heightMin),
-            heightMax: pInt(filters.heightMax),
-            ethnicities: filters.ethnicities.length ? filters.ethnicities : undefined,
-            hairColor: filters.hairColor.trim() || undefined,
-            hipsMin: pInt(filters.hipsMin),
-            hipsMax: pInt(filters.hipsMax),
-            waistMin: pInt(filters.waistMin),
-            waistMax: pInt(filters.waistMax),
-            chestMin: pInt(filters.chestMin),
-            chestMax: pInt(filters.chestMax),
-            legsInseamMin: pInt(filters.legsInseamMin),
-            legsInseamMax: pInt(filters.legsInseamMax),
-            sex: (filters.sex !== 'all' ? filters.sex : undefined) as 'male' | 'female' | undefined,
-            ...(searchLat != null && searchLng != null
-              ? {
-                  searchLat,
-                  searchLng,
-                  cityRadiusKm: cityRadiusKm ?? CITY_SEARCH_RADIUS_KM_DEFAULT,
-                }
-              : {}),
-          },
-          discoveryCursor,
-          sessionSeenIds.current,
-        );
-        if (more.length > 0) {
-          setDiscoveryLoadMoreFailed(false);
-          setModels((prev) => [...prev, ...more.map(mapDiscoveryModelToSummary)]);
-          setDiscoveryCursor(nextCursor);
-        } else {
-          setDiscoveryLoadMoreFailed(false);
-          setDiscoveryCursor(null);
-        }
-      } catch (e) {
-        console.error('[Discovery] loadMore error:', e);
-        setDiscoveryLoadMoreFailed(true);
-      } finally {
-        isLoadingMoreRef.current = false;
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    currentIndex,
-    discoveryCursor,
-    clientOrgId,
-    filters.nearby,
-    packageViewState,
-    sharedProjectId,
-    userCity,
-    filters.countryCode,
-    filters.sex,
-    filters.heightMin,
-    filters.heightMax,
-    filters.ethnicities,
-    filters.category,
-    filters.sportsWinter,
-    filters.sportsSummer,
-    filters.hairColor,
-    filters.hipsMin,
-    filters.hipsMax,
-    filters.waistMin,
-    filters.waistMax,
-    filters.chestMin,
-    filters.chestMax,
-    filters.legsInseamMin,
-    filters.legsInseamMax,
-    filters.city,
-    models.length,
-  ]);
-
   useEffect(() => {
     if (!filters.nearby) {
       setNearbyLoadFailed(false);
@@ -1683,7 +1563,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     }
     return filterDiscoveryModelsExcludingSeen(baseModels, sessionSeenIds.current);
     // sessionSeenCount ensures re-eval when the seen-set grows (Next / viewed card).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sessionSeenIds is a ref; sessionSeenCount is the reactive trigger
   }, [
     baseModels,
     nearbyModels,
@@ -1693,6 +1573,133 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     userCity,
     isPackageMode,
     isSharedMode,
+    sessionSeenCount,
+  ]);
+
+  // Load next page of ranked discovery results when the user approaches the end of the list.
+  // Only active for the ranked discovery path (clientOrgId + countryCode); not for nearby,
+  // package views, or shared project views.
+  useEffect(() => {
+    if (
+      !discoveryCursor ||
+      !clientOrgId ||
+      isLoadingMoreRef.current ||
+      filters.nearby ||
+      packageViewState != null ||
+      sharedProjectId != null
+    )
+      return;
+
+    if (
+      !shouldTriggerDiscoveryLoadMore(
+        filteredModels.length,
+        currentIndex,
+        LOAD_MORE_THRESHOLD,
+        true,
+      )
+    )
+      return;
+
+    const countryIso = filters.countryCode.trim();
+    if (!countryIso) return;
+
+    isLoadingMoreRef.current = true;
+    const cat = filters.category;
+    const effectiveCategory = cat === 'High Fashion' ? 'High Fashion' : undefined;
+    const pInt = (v: string) => {
+      const n = parseInt(v, 10);
+      return isNaN(n) ? undefined : n;
+    };
+
+    void (async () => {
+      try {
+        const cityTrim = filters.city.trim();
+        let searchLat: number | undefined;
+        let searchLng: number | undefined;
+        let cityRadiusKm: number | undefined;
+        if (cityTrim) {
+          const pin = await getCitySearchGeocodedPin(countryIso, cityTrim);
+          if (pin) {
+            searchLat = pin.lat;
+            searchLng = pin.lng;
+            cityRadiusKm = CITY_SEARCH_RADIUS_KM_DEFAULT;
+          }
+        }
+        const { models: more, nextCursor } = await getDiscoveryModels(
+          clientOrgId,
+          {
+            countryCode: countryIso,
+            clientCity: userCity ?? null,
+            city: cityTrim || null,
+            category: effectiveCategory ?? null,
+            sportsWinter: filters.sportsWinter || false,
+            sportsSummer: filters.sportsSummer || false,
+            heightMin: pInt(filters.heightMin),
+            heightMax: pInt(filters.heightMax),
+            ethnicities: filters.ethnicities.length ? filters.ethnicities : undefined,
+            hairColor: filters.hairColor.trim() || undefined,
+            hipsMin: pInt(filters.hipsMin),
+            hipsMax: pInt(filters.hipsMax),
+            waistMin: pInt(filters.waistMin),
+            waistMax: pInt(filters.waistMax),
+            chestMin: pInt(filters.chestMin),
+            chestMax: pInt(filters.chestMax),
+            legsInseamMin: pInt(filters.legsInseamMin),
+            legsInseamMax: pInt(filters.legsInseamMax),
+            sex: (filters.sex !== 'all' ? filters.sex : undefined) as 'male' | 'female' | undefined,
+            ...(searchLat != null && searchLng != null
+              ? {
+                  searchLat,
+                  searchLng,
+                  cityRadiusKm: cityRadiusKm ?? CITY_SEARCH_RADIUS_KM_DEFAULT,
+                }
+              : {}),
+          },
+          discoveryCursor,
+          sessionSeenIds.current,
+        );
+        if (more.length > 0) {
+          setDiscoveryLoadMoreFailed(false);
+          setModels((prev) => [...prev, ...more.map(mapDiscoveryModelToSummary)]);
+          setDiscoveryCursor(nextCursor);
+        } else {
+          setDiscoveryLoadMoreFailed(false);
+          setDiscoveryCursor(null);
+        }
+      } catch (e) {
+        console.error('[Discovery] loadMore error:', e);
+        setDiscoveryLoadMoreFailed(true);
+      } finally {
+        isLoadingMoreRef.current = false;
+      }
+    })();
+  }, [
+    currentIndex,
+    discoveryCursor,
+    clientOrgId,
+    filters.nearby,
+    packageViewState,
+    sharedProjectId,
+    userCity,
+    filters.countryCode,
+    filters.sex,
+    filters.heightMin,
+    filters.heightMax,
+    filters.ethnicities,
+    filters.category,
+    filters.sportsWinter,
+    filters.sportsSummer,
+    filters.hairColor,
+    filters.hipsMin,
+    filters.hipsMax,
+    filters.waistMin,
+    filters.waistMax,
+    filters.chestMin,
+    filters.chestMax,
+    filters.legsInseamMin,
+    filters.legsInseamMax,
+    filters.city,
+    filteredModels.length,
     sessionSeenCount,
   ]);
 
@@ -2243,7 +2250,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     }, 300);
   };
 
-  const _onReject = () => {
+  const onPass = () => {
     if (!filteredModels.length || isNavigatingRef.current) return;
     isNavigatingRef.current = true;
     const current = filteredModels[currentIndex] ?? null;
@@ -2846,6 +2853,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             onSaveFilters={handleSaveFilters}
             filterSaveStatus={filterSaveStatus}
             onNext={onNext}
+            onPass={onPass}
             onAddToProject={openProjectPickerForModel}
             onOpenDetails={openDetails}
             onOpenOptionDatePicker={openOptionDatePicker}
@@ -4442,6 +4450,7 @@ type DiscoverProps = {
   onSaveFilters: () => void;
   filterSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
   onNext: () => void;
+  onPass: () => void;
   onAddToProject: (model: ModelSummary) => void;
   onOpenDetails: (id: string) => void;
   onOpenOptionDatePicker: (model: ModelSummary) => void;
@@ -4484,6 +4493,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   onSaveFilters,
   filterSaveStatus,
   onNext,
+  onPass,
   onAddToProject,
   userCity,
   onOpenDetails,
@@ -4705,6 +4715,9 @@ const DiscoverView: React.FC<DiscoverProps> = ({
               <View style={styles.cardButtonRow}>
                 <TouchableOpacity style={styles.nextButton} onPress={onNext}>
                   <Text style={styles.nextButtonLabel}>Next</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.passButtonOutline} onPress={onPass}>
+                  <Text style={styles.passButtonOutlineLabel}>{uiCopy.discover.passLabel}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.optionButtonOutline}
@@ -9662,6 +9675,20 @@ const styles = StyleSheet.create({
   nextButtonLabel: {
     ...typography.label,
     color: colors.buttonSkipRed,
+  },
+  passButtonOutline: {
+    flex: 1,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: 'transparent',
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passButtonOutlineLabel: {
+    ...typography.label,
+    color: colors.textSecondary,
   },
   optionButtonOutline: {
     flex: 1,

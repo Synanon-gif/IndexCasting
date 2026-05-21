@@ -220,6 +220,45 @@ export function filterDiscoveryModelsExcludingSeen<T extends { id: string }>(
   return models.filter((m) => !sessionSeenIds.has(m.id));
 }
 
+/**
+ * Whether ranked discovery should fetch the next page.
+ * When the visible queue is empty but a cursor remains, paginate to find unseen models.
+ */
+export function shouldTriggerDiscoveryLoadMore(
+  filteredQueueLength: number,
+  currentIndex: number,
+  threshold: number,
+  hasCursor: boolean,
+): boolean {
+  if (!hasCursor) return false;
+  if (filteredQueueLength === 0) return true;
+  return filteredQueueLength - 1 - currentIndex <= threshold;
+}
+
+/** Row shape mirrored by get_discovery_models active-request NOT EXISTS guard (20261329). */
+export type DiscoveryActiveRequestRow = {
+  model_id: string;
+  client_organization_id?: string | null;
+  organization_id?: string | null;
+  request_type?: string | null;
+  status: string | null;
+  final_status?: string | null;
+};
+
+/** True when an option_requests row should hard-exclude the model from discovery for this org. */
+export function isDiscoveryActiveOptionOrCastingRequest(
+  row: DiscoveryActiveRequestRow,
+  clientOrgId: string,
+): boolean {
+  const effectiveOrg = row.client_organization_id ?? row.organization_id ?? '';
+  if (effectiveOrg !== clientOrgId) return false;
+  const requestType = row.request_type ?? 'option';
+  if (requestType !== 'option' && requestType !== 'casting') return false;
+  if (row.status === 'rejected') return false;
+  if (row.final_status === 'job_confirmed') return false;
+  return true;
+}
+
 // ─── Diversity shuffle ────────────────────────────────────────────────────────
 
 /**

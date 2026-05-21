@@ -1540,6 +1540,8 @@ export const uiCopy = {
     detailMeasurementInseam: 'Inseam',
     /** Primary CTA to open the existing option date picker (no inline date pills). */
     openOptionPicker: 'Option',
+    /** Swipe discover — skip model for this session (records rejected interaction). */
+    passLabel: 'Pass',
     /** Local-only gallery favorite toggle (accessibility label). */
     toggleFavoriteA11y: 'Mark as favorite',
     toggleUnfavoriteA11y: 'Remove favorite',

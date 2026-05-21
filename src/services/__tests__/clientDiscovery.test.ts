@@ -73,6 +73,8 @@ import {
   buildDiscoveryFilterSignature,
   shouldResetDiscoverySessionSeen,
   filterDiscoveryModelsExcludingSeen,
+  shouldTriggerDiscoveryLoadMore,
+  isDiscoveryActiveOptionOrCastingRequest,
   applyDiversityShuffle,
   DISCOVERY_WEIGHTS,
   DISCOVERY_PAGE_SIZE,
@@ -480,6 +482,104 @@ describe('session seen persistence — re-enter sends p_exclude_ids', () => {
     expect(mockRpc.mock.calls[0][1].p_exclude_ids).toEqual(
       expect.arrayContaining(['seen-1', 'seen-2']),
     );
+  });
+});
+
+describe('shouldTriggerDiscoveryLoadMore', () => {
+  it('returns true when queue is empty but cursor remains', () => {
+    expect(shouldTriggerDiscoveryLoadMore(0, 0, 10, true)).toBe(true);
+  });
+
+  it('returns false when queue is empty and no cursor', () => {
+    expect(shouldTriggerDiscoveryLoadMore(0, 0, 10, false)).toBe(false);
+  });
+
+  it('returns true when approaching end of non-empty queue', () => {
+    expect(shouldTriggerDiscoveryLoadMore(12, 1, 10, true)).toBe(true);
+  });
+
+  it('returns false when plenty of models remain', () => {
+    expect(shouldTriggerDiscoveryLoadMore(50, 0, 10, true)).toBe(false);
+  });
+});
+
+describe('isDiscoveryActiveOptionOrCastingRequest', () => {
+  const ORG = 'org-abc';
+  const MODEL = 'model-1';
+
+  it('excludes active option for same client org', () => {
+    expect(
+      isDiscoveryActiveOptionOrCastingRequest(
+        {
+          model_id: MODEL,
+          client_organization_id: ORG,
+          request_type: 'option',
+          status: 'in_negotiation',
+          final_status: 'option_pending',
+        },
+        ORG,
+      ),
+    ).toBe(true);
+  });
+
+  it('excludes active casting via organization_id fallback', () => {
+    expect(
+      isDiscoveryActiveOptionOrCastingRequest(
+        {
+          model_id: MODEL,
+          organization_id: ORG,
+          request_type: 'casting',
+          status: 'confirmed',
+          final_status: 'option_confirmed',
+        },
+        ORG,
+      ),
+    ).toBe(true);
+  });
+
+  it('does not exclude rejected requests', () => {
+    expect(
+      isDiscoveryActiveOptionOrCastingRequest(
+        {
+          model_id: MODEL,
+          client_organization_id: ORG,
+          request_type: 'option',
+          status: 'rejected',
+          final_status: 'option_pending',
+        },
+        ORG,
+      ),
+    ).toBe(false);
+  });
+
+  it('does not exclude job_confirmed (terminal job)', () => {
+    expect(
+      isDiscoveryActiveOptionOrCastingRequest(
+        {
+          model_id: MODEL,
+          client_organization_id: ORG,
+          request_type: 'option',
+          status: 'confirmed',
+          final_status: 'job_confirmed',
+        },
+        ORG,
+      ),
+    ).toBe(false);
+  });
+
+  it('does not exclude other client orgs', () => {
+    expect(
+      isDiscoveryActiveOptionOrCastingRequest(
+        {
+          model_id: MODEL,
+          client_organization_id: 'other-org',
+          request_type: 'option',
+          status: 'in_negotiation',
+          final_status: 'option_pending',
+        },
+        ORG,
+      ),
+    ).toBe(false);
   });
 });
 
