@@ -7721,81 +7721,45 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     confirmationSummaryLine={negotiationConfirmationSummaryLine}
                     isAgencyOnly={request.isAgencyOnly}
                   />
-                  <NegotiationThreadFooter
-                    request={request}
-                    isAgency
-                    status={status}
-                    finalStatus={finalStatus}
-                    clientPriceStatus={clientPriceStatus}
-                    currency={currency}
-                    agencyCounterPrice={agencyCounterPrice}
-                    negotiationCounterExpanded={negotiationCounterExpanded}
-                    setNegotiationCounterExpanded={setNegotiationCounterExpanded}
-                    agencyCounterInput={agencyCounterInput}
-                    setAgencyCounterInput={setAgencyCounterInput}
-                    actionBusy={processingRequestId === request.threadId}
-                    assignmentByClientOrgId={assignmentByClientOrgId}
-                    assignableMembers={[]}
-                    editingAssignmentThreadId={editingAssignmentThreadId}
-                    setEditingAssignmentThreadId={setEditingAssignmentThreadId}
-                    openOrgChatBusy={openOrgChatBusy}
-                    openOrgChatFromRequest={openOrgChatFromRequest}
-                    onAgencyConfirmAvailability={runAgencyConfirmAvailability}
-                    onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
-                    onAgencyRejectClientPrice={runAgencyRejectClientPrice}
-                    onAgencyCounterOffer={runAgencyCounterOffer}
-                    onAgencyProposeInitialFee={runAgencyCounterOffer}
-                    onRejectNegotiation={openRejectNegotiationModal}
-                    onClientAcceptCounter={async () => {}}
-                    onClientConfirmJob={async () => {}}
-                    onAgencyConfirmJobAgencyOnly={runAgencyConfirmJobAgencyOnly}
-                    showAgencyExtras
-                    assignmentMode="readonly"
-                    contextThreadLabel={uiCopy.b2bChat.contextNegotiationThread}
-                    requireAgencyIdForOrgChat={false}
-                    suppressDuplicateMeta
-                  />
                 </ScrollView>
               ) : null
             }
             bottomInset={insets.bottom}
             footerTop={
-              showDesktopNegotiationRail ? null : (
-                <NegotiationThreadFooter
-                  request={request}
-                  isAgency
-                  status={status}
-                  finalStatus={finalStatus}
-                  clientPriceStatus={clientPriceStatus}
-                  currency={currency}
-                  agencyCounterPrice={agencyCounterPrice}
-                  negotiationCounterExpanded={negotiationCounterExpanded}
-                  setNegotiationCounterExpanded={setNegotiationCounterExpanded}
-                  agencyCounterInput={agencyCounterInput}
-                  setAgencyCounterInput={setAgencyCounterInput}
-                  actionBusy={processingRequestId === request.threadId}
-                  assignmentByClientOrgId={assignmentByClientOrgId}
-                  assignableMembers={[]}
-                  editingAssignmentThreadId={editingAssignmentThreadId}
-                  setEditingAssignmentThreadId={setEditingAssignmentThreadId}
-                  openOrgChatBusy={openOrgChatBusy}
-                  openOrgChatFromRequest={openOrgChatFromRequest}
-                  onAgencyConfirmAvailability={runAgencyConfirmAvailability}
-                  onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
-                  onAgencyRejectClientPrice={runAgencyRejectClientPrice}
-                  onAgencyCounterOffer={runAgencyCounterOffer}
-                  onAgencyProposeInitialFee={runAgencyCounterOffer}
-                  onRejectNegotiation={openRejectNegotiationModal}
-                  onClientAcceptCounter={async () => {}}
-                  onClientConfirmJob={async () => {}}
-                  onAgencyConfirmJobAgencyOnly={runAgencyConfirmJobAgencyOnly}
-                  showAgencyExtras
-                  assignmentMode="readonly"
-                  contextThreadLabel={uiCopy.b2bChat.contextNegotiationThread}
-                  requireAgencyIdForOrgChat={false}
-                  suppressDuplicateMeta
-                />
-              )
+              <NegotiationThreadFooter
+                request={request}
+                isAgency
+                status={status}
+                finalStatus={finalStatus}
+                clientPriceStatus={clientPriceStatus}
+                currency={currency}
+                agencyCounterPrice={agencyCounterPrice}
+                negotiationCounterExpanded={negotiationCounterExpanded}
+                setNegotiationCounterExpanded={setNegotiationCounterExpanded}
+                agencyCounterInput={agencyCounterInput}
+                setAgencyCounterInput={setAgencyCounterInput}
+                actionBusy={processingRequestId === request.threadId}
+                assignmentByClientOrgId={assignmentByClientOrgId}
+                assignableMembers={[]}
+                editingAssignmentThreadId={editingAssignmentThreadId}
+                setEditingAssignmentThreadId={setEditingAssignmentThreadId}
+                openOrgChatBusy={openOrgChatBusy}
+                openOrgChatFromRequest={openOrgChatFromRequest}
+                onAgencyConfirmAvailability={runAgencyConfirmAvailability}
+                onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
+                onAgencyRejectClientPrice={runAgencyRejectClientPrice}
+                onAgencyCounterOffer={runAgencyCounterOffer}
+                onAgencyProposeInitialFee={runAgencyCounterOffer}
+                onRejectNegotiation={openRejectNegotiationModal}
+                onClientAcceptCounter={async () => {}}
+                onClientConfirmJob={async () => {}}
+                onAgencyConfirmJobAgencyOnly={runAgencyConfirmJobAgencyOnly}
+                showAgencyExtras
+                assignmentMode="readonly"
+                contextThreadLabel={uiCopy.b2bChat.contextNegotiationThread}
+                requireAgencyIdForOrgChat={false}
+                suppressDuplicateMeta
+              />
             }
             composerTopBanner={
               calendarHint ? (

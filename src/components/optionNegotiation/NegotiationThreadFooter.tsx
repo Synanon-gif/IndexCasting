@@ -5,9 +5,14 @@ import { uiCopy } from '../../constants/uiCopy';
 import {
   attentionSignalsFromOptionRequestLike,
   clientMayConfirmJobFromSignals,
-  priceCommerciallySettledForUi,
 } from '../../utils/optionRequestAttention';
 import { shouldShowClientAcceptCounterAction } from '../../utils/negotiationClientCounterActions';
+import {
+  isAgencyAwaitingClientOnCounter,
+  shouldShowAgencyAcceptDeclineProposedFee,
+  shouldShowAgencyProposeInitialFee,
+  shouldShowAgencySendCounterOffer,
+} from '../../utils/negotiationAgencyPriceActions';
 import { optionConfirmedBannerLabel } from '../../utils/modelAccountNegotiationCopy';
 import type { OptionRequest, ChatStatus } from '../../store/optionRequests';
 import type {
@@ -82,7 +87,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   clientPriceStatus,
   currency,
   agencyCounterPrice,
-  negotiationCounterExpanded,
+  negotiationCounterExpanded: _negotiationCounterExpanded,
   setNegotiationCounterExpanded,
   agencyCounterInput,
   setAgencyCounterInput,
@@ -125,14 +130,8 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
     isAgencyOnly: request.isAgencyOnly ?? false,
     requestType: request.requestType ?? null,
   });
-  const isAgencyOnlyRequest = request.isAgencyOnly === true;
-  const priceLocked = isAgencyOnlyRequest || priceCommerciallySettledForUi(signals);
   const isMobileNative = Platform.OS !== 'web';
-  // Agency price CTAs: DB RPC `agency_set_counter_offer` requires status='in_negotiation'.
-  // Once model approves, status may become 'confirmed' — agency must not counter again.
-  // Client accept counter uses D1 (shouldShowClientAcceptCounterAction), not negotiationOpen.
-  const negotiationOpen = status === 'in_negotiation';
-  const showClientAcceptCounter = shouldShowClientAcceptCounterAction({
+  const priceActionInput = {
     isAgency,
     status: status ?? request.status,
     finalStatus: finalStatus ?? request.finalStatus ?? null,
@@ -143,19 +142,14 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
     modelAccountLinked: request.modelAccountLinked,
     isAgencyOnly: request.isAgencyOnly ?? false,
     requestType: request.requestType ?? null,
-  });
-  const agencyAwaitingClientOnCounter =
-    isAgency &&
-    !isAgencyOnlyRequest &&
-    !priceLocked &&
-    // negotiationOpen already implies status === 'in_negotiation', so the
-    // historic `status !== 'rejected'` guard is redundant (TS even flags it
-    // as unintentional). The other negotiationOpen guards on this view rely
-    // on the same narrowing — keep them aligned.
-    negotiationOpen &&
-    agencyCounterPrice != null &&
-    clientPriceStatus === 'pending' &&
-    finalStatus !== 'job_confirmed';
+  };
+  const showClientAcceptCounter = shouldShowClientAcceptCounterAction(priceActionInput);
+  const agencyAwaitingClientOnCounter = isAgencyAwaitingClientOnCounter(priceActionInput);
+  const showAgencyAcceptDeclineProposed =
+    shouldShowAgencyAcceptDeclineProposedFee(priceActionInput);
+  const showAgencySendCounter = shouldShowAgencySendCounterOffer(priceActionInput);
+  const showAgencyProposeInitialFee = shouldShowAgencyProposeInitialFee(priceActionInput);
+  const agencyCounterAfterClientDecline = clientPriceStatus === 'rejected';
 
   const isTerminal = finalStatus === 'job_confirmed' || status === 'rejected';
   const availabilityNotYetConfirmed =
@@ -398,135 +392,65 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         </>
       )}
 
-      {/* ── Axis 1: Price actions (Accept + inline counter) ── */}
-      {isAgency &&
-        !priceLocked &&
-        !agencyAwaitingClientOnCounter &&
-        !isTerminal &&
-        negotiationOpen && (
-          <>
-            {request.proposedPrice != null &&
-            clientPriceStatus === 'pending' &&
-            agencyCounterPrice == null ? (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  gap: spacing.sm,
-                  marginBottom: spacing.sm,
-                }}
-              >
-                <TouchableOpacity
-                  style={[
-                    styles.filterPill,
-                    { backgroundColor: colors.accentBrown },
-                    busy && { opacity: 0.5 },
-                  ]}
-                  disabled={busy}
-                  onPress={() => {
-                    void onAgencyAcceptClientPrice();
-                  }}
-                >
-                  <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
-                    {uiCopy.optionNegotiationChat.acceptProposedFee}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.filterPill,
-                    { borderWidth: 1, borderColor: colors.buttonSkipRed },
-                    busy && { opacity: 0.5 },
-                  ]}
-                  disabled={busy}
-                  onPress={() => {
-                    void onAgencyRejectClientPrice();
-                  }}
-                >
-                  <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>
-                    {uiCopy.optionNegotiationChat.declineProposedFee}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-          </>
-        )}
-
-      {/* ── Counter-offer input (pending proposed — always visible when price is pending) ── */}
-      {isAgency &&
-        !priceLocked &&
-        negotiationOpen &&
-        clientPriceStatus === 'pending' &&
-        request.proposedPrice != null &&
-        agencyCounterPrice == null &&
-        !isTerminal && (
-          <View style={styles.counterBox}>
-            <Text
-              style={{
-                ...typography.label,
-                fontSize: 11,
-                color: colors.textPrimary,
-                marginBottom: spacing.xs,
-              }}
-            >
-              {uiCopy.optionNegotiationChat.counterOfferPendingHint}
+      {/* ── Axis 1: Accept / decline client proposed fee ── */}
+      {isAgency && showAgencyAcceptDeclineProposed && (
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: spacing.sm,
+            marginBottom: spacing.sm,
+          }}
+        >
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              { backgroundColor: colors.accentBrown },
+              busy && { opacity: 0.5 },
+            ]}
+            disabled={busy}
+            onPress={() => {
+              void onAgencyAcceptClientPrice();
+            }}
+          >
+            <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
+              {uiCopy.optionNegotiationChat.acceptProposedFee}
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-              <TextInput
-                value={agencyCounterInput}
-                onChangeText={setAgencyCounterInput}
-                placeholder={uiCopy.optionNegotiationChat.counterPlaceholder}
-                placeholderTextColor={colors.textSecondary}
-                keyboardType="numeric"
-                style={[styles.chatInput, { flex: 1, minWidth: 120 }]}
-              />
-              <TouchableOpacity
-                style={[
-                  styles.filterPill,
-                  { paddingHorizontal: spacing.sm, backgroundColor: colors.textPrimary },
-                  busy && { opacity: 0.5 },
-                ]}
-                disabled={busy}
-                onPress={() => {
-                  const num = parseFloat(agencyCounterInput.trim());
-                  if (isNaN(num)) return;
-                  void onAgencyCounterOffer(num);
-                }}
-              >
-                <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
-                  {uiCopy.optionNegotiationChat.sendCounter}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.filterPill}
-                onPress={() => {
-                  setAgencyCounterInput('');
-                  setNegotiationCounterExpanded(false);
-                }}
-              >
-                <Text style={styles.filterPillLabel}>{uiCopy.common.cancel}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-      {/* ── Counter-offer input (after client decline) ── */}
-      {isAgency &&
-        negotiationCounterExpanded &&
-        !priceLocked &&
-        negotiationOpen &&
-        clientPriceStatus === 'rejected' &&
-        !isTerminal && (
-          <View style={styles.counterBox}>
-            <Text
-              style={{
-                ...typography.label,
-                fontSize: 11,
-                color: colors.textPrimary,
-                marginBottom: spacing.xs,
-              }}
-            >
-              {uiCopy.optionNegotiationChat.agencyNegotiationAfterClientDecline}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              { borderWidth: 1, borderColor: colors.buttonSkipRed },
+              busy && { opacity: 0.5 },
+            ]}
+            disabled={busy}
+            onPress={() => {
+              void onAgencyRejectClientPrice();
+            }}
+          >
+            <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>
+              {uiCopy.optionNegotiationChat.declineProposedFee}
             </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* ── Counter-offer input (first counter or after client declined) ── */}
+      {isAgency && showAgencySendCounter && (
+        <View style={styles.counterBox}>
+          <Text
+            style={{
+              ...typography.label,
+              fontSize: 11,
+              color: colors.textPrimary,
+              marginBottom: spacing.xs,
+            }}
+          >
+            {agencyCounterAfterClientDecline
+              ? uiCopy.optionNegotiationChat.agencyNegotiationAfterClientDecline
+              : uiCopy.optionNegotiationChat.counterOfferPendingHint}
+          </Text>
+          {agencyCounterAfterClientDecline ? (
             <Text
               style={{
                 ...typography.label,
@@ -537,81 +461,83 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
             >
               {uiCopy.optionNegotiationChat.clientPriceDeclinedCounterHint}
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-              <TextInput
-                value={agencyCounterInput}
-                onChangeText={setAgencyCounterInput}
-                placeholder={uiCopy.optionNegotiationChat.counterPlaceholder}
-                placeholderTextColor={colors.textSecondary}
-                keyboardType="numeric"
-                style={[styles.chatInput, { flex: 1, minWidth: 120 }]}
-              />
-              <TouchableOpacity
-                style={[
-                  styles.filterPill,
-                  { paddingHorizontal: spacing.sm, backgroundColor: colors.textPrimary },
-                  busy && { opacity: 0.5 },
-                ]}
-                disabled={busy}
-                onPress={() => {
-                  const num = parseFloat(agencyCounterInput.trim());
-                  if (isNaN(num)) return;
-                  void onAgencyCounterOffer(num);
-                }}
-              >
-                <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
-                  {uiCopy.optionNegotiationChat.sendCounter}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-      {/* ── Propose initial fee (no price yet) ── */}
-      {isAgency &&
-        negotiationCounterExpanded &&
-        !priceLocked &&
-        negotiationOpen &&
-        clientPriceStatus === 'pending' &&
-        !isTerminal &&
-        request.proposedPrice == null && (
-          <View
-            style={{
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              gap: spacing.sm,
-              marginBottom: spacing.sm,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>
-              {uiCopy.optionNegotiationChat.proposeFeeHint}
-            </Text>
+          ) : null}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
             <TextInput
               value={agencyCounterInput}
               onChangeText={setAgencyCounterInput}
               placeholder={uiCopy.optionNegotiationChat.counterPlaceholder}
               placeholderTextColor={colors.textSecondary}
               keyboardType="numeric"
-              style={[styles.chatInput, { width: 100 }]}
+              style={[styles.chatInput, { flex: 1, minWidth: 120 }]}
             />
             <TouchableOpacity
               style={[
                 styles.filterPill,
-                { paddingHorizontal: spacing.sm },
+                { paddingHorizontal: spacing.sm, backgroundColor: colors.textPrimary },
                 busy && { opacity: 0.5 },
               ]}
               disabled={busy}
               onPress={() => {
                 const num = parseFloat(agencyCounterInput.trim());
                 if (isNaN(num)) return;
-                void onAgencyProposeInitialFee(num);
+                void onAgencyCounterOffer(num);
               }}
             >
-              <Text style={styles.filterPillLabel}>{uiCopy.optionNegotiationChat.sendOffer}</Text>
+              <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
+                {uiCopy.optionNegotiationChat.sendCounter}
+              </Text>
             </TouchableOpacity>
+            {!agencyCounterAfterClientDecline ? (
+              <TouchableOpacity
+                style={styles.filterPill}
+                onPress={() => {
+                  setAgencyCounterInput('');
+                  setNegotiationCounterExpanded(false);
+                }}
+              >
+                <Text style={styles.filterPillLabel}>{uiCopy.common.cancel}</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
-        )}
+        </View>
+      )}
+
+      {/* ── Propose initial fee (no client proposed price yet) ── */}
+      {isAgency && showAgencyProposeInitialFee && (
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: spacing.sm,
+            marginBottom: spacing.sm,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>
+            {uiCopy.optionNegotiationChat.proposeFeeHint}
+          </Text>
+          <TextInput
+            value={agencyCounterInput}
+            onChangeText={setAgencyCounterInput}
+            placeholder={uiCopy.optionNegotiationChat.counterPlaceholder}
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="numeric"
+            style={[styles.chatInput, { width: 100 }]}
+          />
+          <TouchableOpacity
+            style={[styles.filterPill, { paddingHorizontal: spacing.sm }, busy && { opacity: 0.5 }]}
+            disabled={busy}
+            onPress={() => {
+              const num = parseFloat(agencyCounterInput.trim());
+              if (isNaN(num)) return;
+              void onAgencyProposeInitialFee(num);
+            }}
+          >
+            <Text style={styles.filterPillLabel}>{uiCopy.optionNegotiationChat.sendOffer}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </>
   );
 

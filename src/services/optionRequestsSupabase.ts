@@ -656,10 +656,8 @@ export async function modelUpdateOptionSchedule(
 
 /**
  * Agency sets a counter-offer price.
- * Uses atomic RPC agency_set_counter_offer which acquires an advisory lock AND
- * performs the update within a single DB transaction — prevents concurrent
- * bookers from racing (the old two-roundtrip pattern was unsafe).
- * Guard: only allowed while still in_negotiation.
+ * Uses atomic RPC agency_set_counter_offer (Axis 1 — allowed while status is
+ * in_negotiation or confirmed, per migration 20261328).
  */
 export async function setAgencyCounterOffer(id: string, counterPrice: number): Promise<boolean> {
   try {
@@ -778,7 +776,7 @@ export async function agencyRejectClientPrice(id: string): Promise<boolean> {
       .from('option_requests')
       .update({ client_price_status: 'rejected' })
       .eq('id', id)
-      .eq('status', 'in_negotiation')
+      .in('status', ['in_negotiation', 'confirmed'])
       .eq('client_price_status', 'pending')
       .select('id, agency_id, agency_organization_id')
       .maybeSingle();
@@ -788,7 +786,7 @@ export async function agencyRejectClientPrice(id: string): Promise<boolean> {
     }
     if (!data?.id) {
       console.warn(
-        'agencyRejectClientPrice: no row updated — offer not pending or request not in_negotiation',
+        'agencyRejectClientPrice: no row updated — offer not pending or request not in active negotiation',
         id,
       );
       return false;
