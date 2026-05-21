@@ -1,0 +1,37 @@
+# Negotiation Axis-1 (Price) — Confirmed-Status Regression Guard
+
+## Invariant (CRITICAL)
+
+When `option_requests.status = 'confirmed'` because the model approved availability, **Axis-1 price negotiation must continue unchanged**:
+
+- Agency: accept proposed fee, decline fee, send counter (including after client `counter_rejected`)
+- Client: accept counter, decline counter, confirm job (when both axes settled)
+
+**Forbidden:** gating price CTAs or price RPCs on `status === 'in_negotiation'` alone.
+
+Axis-2 (availability) handlers (`agencyAcceptRequest`, model inbox) **may** keep `in_negotiation` guards — that is intentional.
+
+## Canonical implementation (do not regress)
+
+| Layer | Source |
+|-------|--------|
+| Agency D1 CTA logic | `src/utils/negotiationAgencyPriceActions.ts` |
+| Client D1 CTA logic | `src/utils/negotiationClientCounterActions.ts` |
+| Footer wiring | `NegotiationThreadFooter.tsx` — use helpers above, not `negotiationOpen` |
+| Desktop footer | `footerTop` always renders `NegotiationThreadFooter` (ClientWeb + Agency) |
+| DB RPCs | `20261328_agency_price_rpcs_post_availability_confirmed.sql` — `status IN ('in_negotiation','confirmed')` |
+| Service reject fee | `agencyRejectClientPrice` — `.in('status', ['in_negotiation','confirmed'])` |
+
+## Tests (release blocker if removed)
+
+- `src/utils/__tests__/negotiationPriceFlowParity.test.ts`
+- `src/utils/__tests__/negotiationPriceFlowRegressionGuard.test.ts`
+- `src/utils/__tests__/negotiationAgencyPriceActions.test.ts`
+- `src/utils/__tests__/negotiationClientCounterActions.test.ts`
+
+## Review checklist (any touch to negotiation UI/services/migrations)
+
+1. Does new code check `status === 'in_negotiation'` for a **price** action? → STOP — use D1 helpers or allow `confirmed`.
+2. Does a new migration redefine `agency_set_counter_offer` / `agency_confirm_client_price` without `confirmed`? → STOP.
+3. Is `NegotiationThreadFooter` duplicated on desktop (right rail + composer)? → STOP — one footer at `footerTop`.
+4. Run: `npm test -- negotiationPriceFlow`

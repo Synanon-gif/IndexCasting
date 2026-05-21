@@ -153,4 +153,34 @@ describe('negotiation price flow parity — status=confirmed lifecycles', () => 
       ).toBe(true);
     });
   });
+
+  describe('full multi-round matrix — status=confirmed must never hide CTAs', () => {
+    it('agency + client CTA visibility stays aligned across decline → re-counter → accept → job', () => {
+      const afterDecline = {
+        ...baseConfirmedAvailability,
+        clientPriceStatus: 'rejected' as const,
+        agencyCounterPrice: 2,
+      };
+      expect(shouldShowAgencySendCounterOffer({ isAgency: true, ...afterDecline })).toBe(true);
+      expect(shouldShowClientAcceptCounterAction({ isAgency: false, ...afterDecline })).toBe(false);
+
+      const clientDeciding = {
+        ...baseConfirmedAvailability,
+        clientPriceStatus: 'pending' as const,
+        agencyCounterPrice: 3,
+      };
+      expect(shouldShowClientAcceptCounterAction({ isAgency: false, ...clientDeciding })).toBe(
+        true,
+      );
+      expect(isAgencyAwaitingClientOnCounter({ isAgency: true, ...clientDeciding })).toBe(true);
+
+      const afterAccept = {
+        ...clientDeciding,
+        clientPriceStatus: 'accepted' as const,
+      };
+      expect(clientMayConfirmJobFromSignals(signalsFrom(afterAccept))).toBe(true);
+      expect(shouldShowAgencySendCounterOffer({ isAgency: true, ...afterAccept })).toBe(false);
+      expect(shouldShowClientAcceptCounterAction({ isAgency: false, ...afterAccept })).toBe(false);
+    });
+  });
 });
