@@ -54,6 +54,11 @@ import type {
   InvoiceType,
   InvoiceWithLines,
 } from '../types/billingTypes';
+import {
+  fetchInvoiceRecipientOrganizationName,
+  recipientNameFromBillingSnapshot,
+  resolveInvoiceRecipientDisplayLabel,
+} from '../utils/invoiceRecipientDisplay';
 
 type Props = {
   organizationId: string;
@@ -169,7 +174,19 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
         }
         setData(row);
         setRecipientId(row.recipient_organization_id);
-        setRecipientName('');
+        const snapshotName = recipientNameFromBillingSnapshot(row.recipient_billing_snapshot);
+        if (snapshotName) {
+          setRecipientName(snapshotName);
+        } else if (row.recipient_organization_id) {
+          const orgName = await fetchInvoiceRecipientOrganizationName(
+            organizationId,
+            row.recipient_organization_id,
+            row.invoice_type,
+          );
+          setRecipientName(orgName ?? '');
+        } else {
+          setRecipientName('');
+        }
         setInvoiceType(row.invoice_type);
         setCurrency(row.currency || 'EUR');
         setNotes(row.notes ?? '');
@@ -181,7 +198,17 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
         setLoading(false);
       }
     },
-    [inv.loadFailed, onClose],
+    [inv.loadFailed, onClose, organizationId],
+  );
+
+  const recipientDisplayLabel = useMemo(
+    () =>
+      resolveInvoiceRecipientDisplayLabel({
+        recipientOrganizationId: recipientId,
+        recipientBillingSnapshot: data?.recipient_billing_snapshot ?? null,
+        resolvedOrganizationName: recipientName,
+      }),
+    [recipientId, recipientName, data?.recipient_billing_snapshot],
   );
 
   useEffect(() => {
@@ -772,7 +799,7 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
         </View>
       ) : (
         <View style={styles.recipientRow}>
-          <Text style={styles.recipientText}>{recipientName || recipientId || '—'}</Text>
+          <Text style={styles.recipientText}>{recipientDisplayLabel}</Text>
           {canEdit && (
             <TouchableOpacity onPress={() => setPickerOpen(true)}>
               <Text style={styles.linkAction}>{inv.fieldRecipientPickAgain}</Text>

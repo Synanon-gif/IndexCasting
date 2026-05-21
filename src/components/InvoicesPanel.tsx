@@ -152,12 +152,10 @@ function typeLabel(t: InvoiceType): string {
 }
 
 function recipientHaystack(r: InvoiceRow): string {
-  // Recipient profile snapshot is jsonb — pull common fields safely.
-  const snap = (r as unknown as { recipient_profile_snapshot?: Record<string, unknown> })
-    .recipient_profile_snapshot;
+  const snap = r.recipient_billing_snapshot;
   if (!snap || typeof snap !== 'object') return '';
   const parts: string[] = [];
-  for (const key of ['legal_name', 'display_name', 'company_name', 'name']) {
+  for (const key of ['billing_name', 'legal_name', 'display_name', 'company_name', 'name']) {
     const v = snap[key];
     if (typeof v === 'string') parts.push(v);
   }
