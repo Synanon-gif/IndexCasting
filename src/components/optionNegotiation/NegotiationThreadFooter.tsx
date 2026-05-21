@@ -7,6 +7,7 @@ import {
   clientMayConfirmJobFromSignals,
   priceCommerciallySettledForUi,
 } from '../../utils/optionRequestAttention';
+import { shouldShowClientAcceptCounterAction } from '../../utils/negotiationClientCounterActions';
 import { optionConfirmedBannerLabel } from '../../utils/modelAccountNegotiationCopy';
 import type { OptionRequest, ChatStatus } from '../../store/optionRequests';
 import type {
@@ -127,14 +128,22 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   const isAgencyOnlyRequest = request.isAgencyOnly === true;
   const priceLocked = isAgencyOnlyRequest || priceCommerciallySettledForUi(signals);
   const isMobileNative = Platform.OS !== 'web';
-  // The DB RPC `agency_set_counter_offer` (and other negotiation RPCs) requires
-  // status='in_negotiation'. Once the model approves availability the row is flipped
-  // to status='confirmed' (not yet job_confirmed), and any further price negotiation
-  // RPCs would fail with `not_in_negotiation`. We therefore hide all price-negotiation
-  // CTAs (counter offer, accept/reject proposed price) once status leaves
-  // 'in_negotiation'. The job-confirmation CTA must still be reachable, so we keep
-  // `isTerminal` strictly limited to the historical terminal states.
+  // Agency price CTAs: DB RPC `agency_set_counter_offer` requires status='in_negotiation'.
+  // Once model approves, status may become 'confirmed' — agency must not counter again.
+  // Client accept counter uses D1 (shouldShowClientAcceptCounterAction), not negotiationOpen.
   const negotiationOpen = status === 'in_negotiation';
+  const showClientAcceptCounter = shouldShowClientAcceptCounterAction({
+    isAgency,
+    status: status ?? request.status,
+    finalStatus: finalStatus ?? request.finalStatus ?? null,
+    clientPriceStatus: clientPriceStatus ?? request.clientPriceStatus ?? null,
+    agencyCounterPrice: agencyCounterPrice ?? null,
+    proposedPrice: request.proposedPrice ?? null,
+    modelApproval: request.modelApproval,
+    modelAccountLinked: request.modelAccountLinked,
+    isAgencyOnly: request.isAgencyOnly ?? false,
+    requestType: request.requestType ?? null,
+  });
   const agencyAwaitingClientOnCounter =
     isAgency &&
     !isAgencyOnlyRequest &&
@@ -788,46 +797,41 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         </View>
       )}
 
-      {/* ── Client: accept agency counter (price only) ── */}
-      {!isAgency &&
-        !priceLocked &&
-        negotiationOpen &&
-        agencyCounterPrice != null &&
-        clientPriceStatus === 'pending' &&
-        !isTerminal && (
-          <View style={{ marginBottom: spacing.sm, gap: spacing.xs }}>
+      {/* ── Client: accept agency counter (Axis 1 — D1, not negotiationOpen) ── */}
+      {showClientAcceptCounter && (
+        <View style={{ marginBottom: spacing.sm, gap: spacing.xs }}>
+          <TouchableOpacity
+            style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen }]}
+            onPress={() => {
+              void onClientAcceptCounter();
+            }}
+          >
+            <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
+              {uiCopy.optionNegotiationChat.acceptAgencyProposal} (
+              {currency === 'USD'
+                ? '$'
+                : currency === 'GBP'
+                  ? '£'
+                  : currency === 'CHF'
+                    ? 'CHF '
+                    : '€'}
+              {agencyCounterPrice})
+            </Text>
+          </TouchableOpacity>
+          {onClientRejectCounter ? (
             <TouchableOpacity
-              style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen }]}
+              style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]}
               onPress={() => {
-                void onClientAcceptCounter();
+                void onClientRejectCounter();
               }}
             >
-              <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
-                {uiCopy.optionNegotiationChat.acceptAgencyProposal} (
-                {currency === 'USD'
-                  ? '$'
-                  : currency === 'GBP'
-                    ? '£'
-                    : currency === 'CHF'
-                      ? 'CHF '
-                      : '€'}
-                {agencyCounterPrice})
+              <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>
+                {uiCopy.optionNegotiationChat.rejectCounterOffer}
               </Text>
             </TouchableOpacity>
-            {onClientRejectCounter ? (
-              <TouchableOpacity
-                style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]}
-                onPress={() => {
-                  void onClientRejectCounter();
-                }}
-              >
-                <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>
-                  {uiCopy.optionNegotiationChat.rejectCounterOffer}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        )}
+          ) : null}
+        </View>
+      )}
 
       {/* ── Client: confirm job (requires BOTH axes settled) ── */}
       {!isAgency &&

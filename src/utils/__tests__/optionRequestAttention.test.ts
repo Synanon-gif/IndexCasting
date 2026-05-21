@@ -14,7 +14,10 @@ import { attentionHeaderLabelFromSignals } from '../negotiationAttentionLabels';
 describe('optionRequestNeedsMessagesTabAttention', () => {
   it('is true for in_negotiation without terminal final_status', () => {
     expect(
-      optionRequestNeedsMessagesTabAttention({ status: 'in_negotiation', finalStatus: 'option_pending' }),
+      optionRequestNeedsMessagesTabAttention({
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+      }),
     ).toBe(true);
   });
 
@@ -33,7 +36,10 @@ describe('optionRequestNeedsMessagesTabAttention', () => {
 
   it('is true when option_confirmed (Option confirmed is an active state requiring finalization)', () => {
     expect(
-      optionRequestNeedsMessagesTabAttention({ status: 'in_negotiation', finalStatus: 'option_confirmed' }),
+      optionRequestNeedsMessagesTabAttention({
+        status: 'in_negotiation',
+        finalStatus: 'option_confirmed',
+      }),
     ).toBe(true);
   });
 
@@ -44,7 +50,9 @@ describe('optionRequestNeedsMessagesTabAttention', () => {
   });
 
   it('is false for rejected', () => {
-    expect(optionRequestNeedsMessagesTabAttention({ status: 'rejected', finalStatus: null })).toBe(false);
+    expect(optionRequestNeedsMessagesTabAttention({ status: 'rejected', finalStatus: null })).toBe(
+      false,
+    );
   });
 
   it('is false for job_confirmed', () => {
@@ -54,7 +62,9 @@ describe('optionRequestNeedsMessagesTabAttention', () => {
   });
 
   it('is true for Draft display (unknown status)', () => {
-    expect(optionRequestNeedsMessagesTabAttention({ status: 'weird', finalStatus: null })).toBe(true);
+    expect(optionRequestNeedsMessagesTabAttention({ status: 'weird', finalStatus: null })).toBe(
+      true,
+    );
   });
 });
 
@@ -397,7 +407,12 @@ describe('attentionHeaderLabelFromSignals — action-priority across all roles',
       jobReady,
       { status: 'rejected', finalStatus: null },
       { status: 'confirmed', finalStatus: 'job_confirmed' },
-      { status: 'in_negotiation', finalStatus: 'option_pending', clientPriceStatus: 'pending', proposedPrice: 100 },
+      {
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'pending',
+        proposedPrice: 100,
+      },
     ];
     for (const s of states) {
       const headerNonNull = attentionHeaderLabelFromSignals(s, 'client') !== null;
@@ -554,7 +569,7 @@ describe('comprehensive 16-state matrix — all heikle Mischzustände', () => {
       expect(deriveNegotiationAttention(input)).toBe('counter_rejected');
     });
 
-    it('D2 = approval_inactive (agency hasn\'t confirmed)', () => {
+    it("D2 = approval_inactive (agency hasn't confirmed)", () => {
       expect(deriveApprovalAttention(input)).toBe('approval_inactive');
     });
 
@@ -611,7 +626,7 @@ describe('comprehensive 16-state matrix — all heikle Mischzustände', () => {
       modelAccountLinked: true,
     };
 
-    it('D2 = approval_inactive (agency hasn\'t confirmed yet, price not settled)', () => {
+    it("D2 = approval_inactive (agency hasn't confirmed yet, price not settled)", () => {
       expect(deriveApprovalAttention(input)).toBe('approval_inactive');
     });
 
@@ -852,7 +867,6 @@ describe('comprehensive 16-state matrix — all heikle Mischzustände', () => {
  * derivable. Changing one axis must never alter the other's output.
  * ═══════════════════════════════════════════════════════════════════════════ */
 describe('axis independence invariant — D1 and D2 are orthogonal', () => {
-
   it('changing D1 fields does NOT affect D2 output', () => {
     const base: AttentionSignalInput = {
       status: 'in_negotiation',
@@ -947,7 +961,6 @@ describe('axis independence invariant — D1 and D2 are orthogonal', () => {
  * all agree — no silent active-badge on a null-header.
  * ═══════════════════════════════════════════════════════════════════════════ */
 describe('state 5/6 drift audit — agency null-header consistency', () => {
-
   const state5_jobReady: AttentionSignalInput = {
     status: 'confirmed',
     finalStatus: 'option_confirmed',
@@ -1090,22 +1103,104 @@ describe('state 5/6 drift audit — agency null-header consistency', () => {
 
   it('complete tab-dot ↔ header parity across ALL 16 states', () => {
     const allStates: AttentionSignalInput[] = [
-      { status: 'in_negotiation', finalStatus: 'option_confirmed', clientPriceStatus: 'pending', proposedPrice: 100, modelApproval: 'rejected', modelAccountLinked: true },
-      { status: 'in_negotiation', finalStatus: 'option_confirmed', clientPriceStatus: 'accepted', proposedPrice: 100, modelApproval: 'rejected', modelAccountLinked: true },
-      { status: 'rejected', finalStatus: 'option_pending', clientPriceStatus: 'pending', proposedPrice: 100 },
-      { status: 'rejected', finalStatus: 'option_confirmed', clientPriceStatus: 'accepted', proposedPrice: 100, modelApproval: 'approved', modelAccountLinked: true },
-      { status: 'in_negotiation', finalStatus: 'option_pending', clientPriceStatus: 'rejected', agencyCounterPrice: 500, proposedPrice: 400 },
-      { status: 'in_negotiation', finalStatus: 'option_pending', clientPriceStatus: 'accepted', agencyCounterPrice: 500, proposedPrice: 400, modelApproval: 'pending', modelAccountLinked: true },
-      { status: 'in_negotiation', finalStatus: 'option_pending', clientPriceStatus: 'pending', proposedPrice: 100, modelApproval: 'approved', modelAccountLinked: true },
-      { status: 'in_negotiation', finalStatus: 'option_confirmed', clientPriceStatus: 'accepted', proposedPrice: 100, modelApproval: 'pending', modelAccountLinked: true },
-      { status: 'in_negotiation', finalStatus: 'option_pending', clientPriceStatus: 'pending', proposedPrice: 100, modelAccountLinked: false },
-      { status: 'in_negotiation', finalStatus: 'option_pending', clientPriceStatus: 'accepted', proposedPrice: 100, modelAccountLinked: false },
+      {
+        status: 'in_negotiation',
+        finalStatus: 'option_confirmed',
+        clientPriceStatus: 'pending',
+        proposedPrice: 100,
+        modelApproval: 'rejected',
+        modelAccountLinked: true,
+      },
+      {
+        status: 'in_negotiation',
+        finalStatus: 'option_confirmed',
+        clientPriceStatus: 'accepted',
+        proposedPrice: 100,
+        modelApproval: 'rejected',
+        modelAccountLinked: true,
+      },
+      {
+        status: 'rejected',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'pending',
+        proposedPrice: 100,
+      },
+      {
+        status: 'rejected',
+        finalStatus: 'option_confirmed',
+        clientPriceStatus: 'accepted',
+        proposedPrice: 100,
+        modelApproval: 'approved',
+        modelAccountLinked: true,
+      },
+      {
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'rejected',
+        agencyCounterPrice: 500,
+        proposedPrice: 400,
+      },
+      {
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'accepted',
+        agencyCounterPrice: 500,
+        proposedPrice: 400,
+        modelApproval: 'pending',
+        modelAccountLinked: true,
+      },
+      {
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'pending',
+        proposedPrice: 100,
+        modelApproval: 'approved',
+        modelAccountLinked: true,
+      },
+      {
+        status: 'in_negotiation',
+        finalStatus: 'option_confirmed',
+        clientPriceStatus: 'accepted',
+        proposedPrice: 100,
+        modelApproval: 'pending',
+        modelAccountLinked: true,
+      },
+      {
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'pending',
+        proposedPrice: 100,
+        modelAccountLinked: false,
+      },
+      {
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'accepted',
+        proposedPrice: 100,
+        modelAccountLinked: false,
+      },
       state5_jobReady,
-      { status: 'in_negotiation', finalStatus: 'option_pending', clientPriceStatus: 'pending', proposedPrice: 100 },
+      {
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'pending',
+        proposedPrice: 100,
+      },
       { status: 'rejected', finalStatus: 'option_pending' },
-      { status: 'in_negotiation', finalStatus: 'option_pending', clientPriceStatus: 'pending', proposedPrice: 100, hasConflictWarning: true },
+      {
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'pending',
+        proposedPrice: 100,
+        hasConflictWarning: true,
+      },
       { status: 'confirmed', finalStatus: 'job_confirmed' },
-      { status: 'in_negotiation', finalStatus: 'option_pending', clientPriceStatus: 'pending', proposedPrice: 100 },
+      {
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'pending',
+        proposedPrice: 100,
+      },
     ];
 
     for (const s of allStates) {
@@ -1210,9 +1305,45 @@ describe('adversarial: counter-offer after availability confirmed (with model ac
   });
 
   it('step 3: client can now confirm job', () => {
+    expect(deriveApprovalAttention(afterClientAcceptsCounter)).toBe(
+      'waiting_for_client_to_finalize_job',
+    );
+  });
+});
+
+describe('adversarial: counter pending after model approval sets status=confirmed', () => {
+  const afterModelApprovedWithPendingCounter = {
+    status: 'confirmed',
+    finalStatus: 'option_confirmed',
+    clientPriceStatus: 'pending' as const,
+    proposedPrice: 1,
+    agencyCounterPrice: 2,
+    modelApproval: 'approved' as const,
+    modelAccountLinked: true,
+  };
+
+  it('D1 still waiting_for_client_response (price axis open)', () => {
+    expect(deriveNegotiationAttention(afterModelApprovedWithPendingCounter)).toBe(
+      'waiting_for_client_response',
+    );
+  });
+
+  it('D2 fully_cleared until price accepted (not job finalize yet)', () => {
+    expect(deriveApprovalAttention(afterModelApprovedWithPendingCounter)).toBe('fully_cleared');
+  });
+
+  it('client header shows action while price pending', () => {
     expect(
-      deriveApprovalAttention(afterClientAcceptsCounter),
-    ).toBe('waiting_for_client_to_finalize_job');
+      attentionHeaderLabelFromSignals(afterModelApprovedWithPendingCounter, 'client'),
+    ).not.toBeNull();
+  });
+
+  it('after client accepts counter with status=confirmed, job finalize is available', () => {
+    const afterAccept = {
+      ...afterModelApprovedWithPendingCounter,
+      clientPriceStatus: 'accepted' as const,
+    };
+    expect(deriveApprovalAttention(afterAccept)).toBe('waiting_for_client_to_finalize_job');
   });
 });
 
@@ -1391,7 +1522,8 @@ describe('adversarial: cross-role attention consistency', () => {
   });
 
   it('tab-dot matches header for counter-after-availability state', () => {
-    const headerNonNull = attentionHeaderLabelFromSignals(counterPendingAfterAvailability, 'client') !== null;
+    const headerNonNull =
+      attentionHeaderLabelFromSignals(counterPendingAfterAvailability, 'client') !== null;
     const tabDot = optionRequestNeedsMessagesTabAttention(counterPendingAfterAvailability);
     expect(tabDot).toBe(headerNonNull);
   });
