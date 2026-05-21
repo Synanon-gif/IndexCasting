@@ -41,7 +41,10 @@ export type BuildUnifiedAgencyCalendarRowsOptions = {
   viewerRole?: B2BCalendarChipViewerRole;
 };
 
-/** Prefer `calendar_entries.title` so blocks match DB lifecycle copy (e.g. agency Job title) and legend. */
+/**
+ * Canonical DB-backed title for legacy callers/tests and projection-adjacent paths.
+ * B2B month/week/day chips use `resolveOptionRowChipTitle` when `viewerRole` is set — display only.
+ */
 function unifiedOptionRowDisplayTitle(item: AgencyCalendarItem): string {
   const ce = item.calendar_entry?.title?.trim();
   if (ce) return ce;
