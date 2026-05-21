@@ -755,6 +755,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const sessionSeenIds = useRef<Set<string>>(new Set());
   /** Ticks when sessionSeenIds grows so discover queue useMemo re-evaluates. */
   const [sessionSeenCount, setSessionSeenCount] = useState(0);
+  /** Keeps the on-screen card visible after view-mark; cleared on Next/Pass/refresh. */
+  const [pinnedDiscoverModelId, setPinnedDiscoverModelId] = useState<string | null>(null);
   const discoveryFilterSignatureRef = useRef<string | null>(null);
 
   /** Prevents concurrent paginated load-more fetches. */
@@ -1180,12 +1182,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       clearSessionIds(clientOrgId);
       sessionSeenIds.current = new Set();
       setSessionSeenCount(0);
+      setPinnedDiscoverModelId(null);
     } else if (clientOrgId) {
       sessionSeenIds.current = loadSessionIds(clientOrgId);
       setSessionSeenCount(sessionSeenIds.current.size);
     } else {
       sessionSeenIds.current = new Set();
       setSessionSeenCount(0);
+      setPinnedDiscoverModelId(null);
     }
     discoveryFilterSignatureRef.current = filterSignature;
 
@@ -1571,7 +1575,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         );
       }
     }
-    return filterDiscoveryModelsExcludingSeen(baseModels, sessionSeenIds.current);
+    return filterDiscoveryModelsExcludingSeen(
+      baseModels,
+      sessionSeenIds.current,
+      pinnedDiscoverModelId,
+    );
     // sessionSeenCount ensures re-eval when the seen-set grows (Next / viewed card).
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sessionSeenIds is a ref; sessionSeenCount is the reactive trigger
   }, [
@@ -1584,6 +1592,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     isPackageMode,
     isSharedMode,
     sessionSeenCount,
+    pinnedDiscoverModelId,
   ]);
 
   // Load next page of ranked discovery results when the user approaches the end of the list.
@@ -2148,6 +2157,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     if (!currentModelForEffect || !clientOrgId) return;
     sessionSeenIds.current.add(currentModelForEffect.id);
     setSessionSeenCount(sessionSeenIds.current.size);
+    setPinnedDiscoverModelId(currentModelForEffect.id);
     saveSessionId(clientOrgId, currentModelForEffect.id);
     void recordInteraction(currentModelForEffect.id, 'viewed');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2255,7 +2265,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     // "Next" = browse to next card (neutral skip, not a rejection).
     // The "viewed" interaction is already recorded by the currentModelForEffect effect.
     // An explicit "Pass/Reject" action is required to fire recordInteraction 'rejected'.
-    setCurrentIndex((prev) => (prev < filteredModels.length - 1 ? prev + 1 : 0));
+    setPinnedDiscoverModelId(null);
+    setCurrentIndex(0);
     // Release mutex after a brief frame to debounce rapid taps.
     setTimeout(() => {
       isNavigatingRef.current = false;
@@ -2269,7 +2280,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     if (current && clientOrgId) {
       void recordInteraction(current.id, 'rejected');
     }
-    setCurrentIndex((prev) => (prev < filteredModels.length - 1 ? prev + 1 : 0));
+    setPinnedDiscoverModelId(null);
+    setCurrentIndex(0);
     setTimeout(() => {
       isNavigatingRef.current = false;
     }, 300);
@@ -2280,6 +2292,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     clearSessionIds(clientOrgId);
     sessionSeenIds.current = new Set();
     setSessionSeenCount(0);
+    setPinnedDiscoverModelId(null);
     setCurrentIndex(0);
     setDiscoveryCursor(null);
     setDiscoveryRefreshNonce((n) => n + 1);

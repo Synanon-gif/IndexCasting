@@ -274,13 +274,20 @@ export function shouldResetDiscoverySessionSeen(
   return previousSignature !== null && previousSignature !== nextSignature;
 }
 
-/** Removes session-seen model IDs from a discover queue (does not mutate seen storage). */
+/**
+ * Removes session-seen model IDs from the visible discover queue.
+ * `keepVisibleId` pins the card the user is currently viewing so auto-mark-on-view
+ * does not cascade through the whole page (seen + filter + index-0 would otherwise
+ * consume every model without a Next tap).
+ */
 export function filterDiscoveryModelsExcludingSeen<T extends { id: string }>(
   models: T[],
   sessionSeenIds: Set<string>,
+  keepVisibleId?: string | null,
 ): T[] {
   if (sessionSeenIds.size === 0) return models;
-  return models.filter((m) => !sessionSeenIds.has(m.id));
+  const pin = keepVisibleId?.trim() || null;
+  return models.filter((m) => m.id === pin || !sessionSeenIds.has(m.id));
 }
 
 /**

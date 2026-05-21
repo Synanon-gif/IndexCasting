@@ -512,6 +512,16 @@ describe('filterDiscoveryModelsExcludingSeen', () => {
     const models = [{ id: 'a' }, { id: 'b' }];
     expect(filterDiscoveryModelsExcludingSeen(models, new Set())).toEqual(models);
   });
+
+  it('keeps the pinned on-screen model visible even when marked seen (prevents auto-cascade)', () => {
+    const models = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+    const seen = new Set(['a', 'b']);
+    expect(filterDiscoveryModelsExcludingSeen(models, seen, 'a').map((m) => m.id)).toEqual([
+      'a',
+      'c',
+    ]);
+    expect(filterDiscoveryModelsExcludingSeen(models, seen, null).map((m) => m.id)).toEqual(['c']);
+  });
 });
 
 describe('session seen persistence — re-enter sends p_exclude_ids', () => {
