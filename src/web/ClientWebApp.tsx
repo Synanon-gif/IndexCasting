@@ -4777,6 +4777,7 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
           manualEvents,
           assignmentByClientOrgId,
           itemByOptionId,
+          { viewerRole: 'client' },
         ),
       ),
     [items, bookingEventEntries, manualEvents, assignmentByClientOrgId, itemByOptionId],

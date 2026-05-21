@@ -2629,6 +2629,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
           manualEvents,
           assignmentByClientOrgId,
           itemByOptionId,
+          { viewerRole: 'agency' },
         ),
       ),
     [items, bookingEventEntries, manualEvents, assignmentByClientOrgId, itemByOptionId],

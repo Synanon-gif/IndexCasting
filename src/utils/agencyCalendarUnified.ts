@@ -30,12 +30,70 @@ import {
 import { attentionSignalsFromOptionRequestLike } from './optionRequestAttention';
 import { attentionHeaderLabelFromSignals } from './negotiationAttentionLabels';
 import { uiCopy } from '../constants/uiCopy';
+import {
+  resolveB2BCalendarChipTitle,
+  type B2BCalendarChipKind,
+  type B2BCalendarChipViewerRole,
+} from './calendarEventDisplayTitle';
+
+export type BuildUnifiedAgencyCalendarRowsOptions = {
+  /** When set, chip titles use role-aware display labels; projection/dedupe still use DB fields. */
+  viewerRole?: B2BCalendarChipViewerRole;
+};
 
 /** Prefer `calendar_entries.title` so blocks match DB lifecycle copy (e.g. agency Job title) and legend. */
 function unifiedOptionRowDisplayTitle(item: AgencyCalendarItem): string {
   const ce = item.calendar_entry?.title?.trim();
   if (ce) return ce;
   return item.option.model_name ?? uiCopy.common.unknownModel;
+}
+
+function categoryToChipKind(category: AgencyCalendarCategory): B2BCalendarChipKind {
+  if (category === 'casting') return 'casting';
+  if (category === 'booking') return 'booking';
+  return 'option';
+}
+
+function resolveOptionRowChipTitle(
+  item: AgencyCalendarItem,
+  category: AgencyCalendarCategory,
+  viewerRole?: B2BCalendarChipViewerRole,
+): string {
+  if (!viewerRole) return unifiedOptionRowDisplayTitle(item);
+  const opt = item.option;
+  return resolveB2BCalendarChipTitle({
+    viewerRole,
+    modelName: opt.model_name,
+    agencyOrganizationName: opt.agency_organization_name,
+    clientOrganizationName: opt.client_organization_name,
+    clientName: opt.client_name,
+    fallbackTitle: item.calendar_entry?.title ?? opt.model_name,
+    isAgencyOnly: opt.is_agency_only,
+    kind: categoryToChipKind(category),
+  });
+}
+
+function resolveBookingRowChipTitle(
+  entry: CalendarEntry,
+  linked: AgencyCalendarItem | undefined,
+  category: AgencyCalendarCategory,
+  viewerRole?: B2BCalendarChipViewerRole,
+): string {
+  if (!viewerRole) return entry.title ?? 'Booking';
+  if (linked) {
+    const opt = linked.option;
+    return resolveB2BCalendarChipTitle({
+      viewerRole,
+      modelName: opt.model_name,
+      agencyOrganizationName: opt.agency_organization_name,
+      clientOrganizationName: opt.client_organization_name,
+      clientName: opt.client_name,
+      fallbackTitle: entry.title,
+      isAgencyOnly: opt.is_agency_only,
+      kind: categoryToChipKind(category),
+    });
+  }
+  return entry.title ?? 'Booking';
 }
 
 /** Same numeric ordering as SQL `calendar_export_events_json` / ICS `sourcePriority` (lower = wins). */
@@ -162,7 +220,9 @@ export function buildUnifiedAgencyCalendarRows(
   manualEvents: UserCalendarEvent[],
   assignmentByClientOrgId: Record<string, ClientAssignmentFlag>,
   itemByOptionId: Map<string, AgencyCalendarItem>,
+  options?: BuildUnifiedAgencyCalendarRowsOptions,
 ): UnifiedAgencyCalendarRow[] {
+  const viewerRole = options?.viewerRole;
   const coveredOptionIds = new Set<string>([
     ...(items.map((i) => i.calendar_entry?.option_request_id).filter(Boolean) as string[]),
     ...(items.map((i) => i.option?.id).filter(Boolean) as string[]),
@@ -173,7 +233,7 @@ export function buildUnifiedAgencyCalendarRows(
     const category = normalizeOptionCategory(item);
     const effectiveAssigneeUserId = effectiveAssigneeForOption(item, assignmentByClientOrgId);
     const needsAgencyAction = needsAgencyActionForOption(item);
-    const title = unifiedOptionRowDisplayTitle(item);
+    const title = resolveOptionRowChipTitle(item, category, viewerRole);
     return {
       kind: 'option',
       sortKey: `${date}\0${title}\0${item.option.id}`,
@@ -276,12 +336,15 @@ export function buildUnifiedAgencyCalendarRows(
       }
     }
     const needsAgencyAction = be.status === 'tentative';
+    const linked =
+      be.option_request_id != null ? itemByOptionId.get(be.option_request_id) : undefined;
+    const bookingTitle = resolveBookingRowChipTitle(be, linked, category, viewerRole);
     bookingRows.push({
       kind: 'booking',
       sortKey: `${date}\0${be.title ?? 'Booking'}\0${be.id}`,
       id: be.id,
       date,
-      title: be.title ?? 'Booking',
+      title: bookingTitle,
       entry: be,
       category,
       effectiveAssigneeUserId,
