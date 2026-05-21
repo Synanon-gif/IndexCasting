@@ -74,6 +74,9 @@ import {
   loadSessionIds,
   saveSessionId,
   clearSessionIds,
+  buildDiscoveryFilterSignature,
+  shouldResetDiscoverySessionSeen,
+  filterDiscoveryModelsExcludingSeen,
   type DiscoveryModel,
   type DiscoveryCursor,
 } from '../services/clientDiscoverySupabase';
@@ -746,6 +749,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
    * Stored in a ref to avoid triggering re-renders on every swipe.
    */
   const sessionSeenIds = useRef<Set<string>>(new Set());
+  /** Ticks when sessionSeenIds grows so discover queue useMemo re-evaluates. */
+  const [sessionSeenCount, setSessionSeenCount] = useState(0);
+  const discoveryFilterSignatureRef = useRef<string | null>(null);
 
   /** Prevents concurrent paginated load-more fetches. */
   const isLoadingMoreRef = useRef(false);
@@ -1136,11 +1142,45 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   }, [tab, realClientId, clientOrgId]);
 
   useEffect(() => {
-    // Reset session dedup on every new filter-driven query (new discovery context).
-    if (clientOrgId) {
+    const filterSignature = buildDiscoveryFilterSignature({
+      countryCode: filters.countryCode,
+      city: filters.city,
+      sex: filters.sex,
+      heightMin: filters.heightMin,
+      heightMax: filters.heightMax,
+      ethnicities: filters.ethnicities,
+      category: filters.category,
+      sportsWinter: filters.sportsWinter,
+      sportsSummer: filters.sportsSummer,
+      hairColor: filters.hairColor,
+      hipsMin: filters.hipsMin,
+      hipsMax: filters.hipsMax,
+      waistMin: filters.waistMin,
+      waistMax: filters.waistMax,
+      chestMin: filters.chestMin,
+      chestMax: filters.chestMax,
+      legsInseamMin: filters.legsInseamMin,
+      legsInseamMax: filters.legsInseamMax,
+      nearby: filters.nearby,
+    });
+    const filtersChanged = shouldResetDiscoverySessionSeen(
+      discoveryFilterSignatureRef.current,
+      filterSignature,
+    );
+
+    if (filtersChanged && clientOrgId) {
       clearSessionIds(clientOrgId);
+      sessionSeenIds.current = new Set();
+      setSessionSeenCount(0);
+    } else if (clientOrgId) {
+      sessionSeenIds.current = loadSessionIds(clientOrgId);
+      setSessionSeenCount(sessionSeenIds.current.size);
+    } else {
+      sessionSeenIds.current = new Set();
+      setSessionSeenCount(0);
     }
-    sessionSeenIds.current = new Set();
+    discoveryFilterSignatureRef.current = filterSignature;
+
     setCurrentIndex(0);
     setDiscoveryCursor(null);
     setDiscoveryLoadMoreFailed(false);
@@ -1212,18 +1252,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         );
 
         if (ranked.length === 0 && sessionSeenIds.current.size > 0) {
-          // Empty-state recovery: session had IDs that excluded everything.
-          // Clear session and try one more time without exclusion.
-          clearSessionIds(clientOrgId);
-          sessionSeenIds.current = new Set();
-          const { models: recovered, nextCursor: recoveredCursor } = await getDiscoveryModels(
-            clientOrgId,
-            discoveryFilters,
-            null,
-            new Set(),
-          );
-          setModels(recovered.map(mapDiscoveryModelToSummary));
-          setDiscoveryCursor(recoveredCursor);
+          // Session exhausted: keep seen IDs; show empty discover state (no blind reset).
+          setModels([]);
+          setDiscoveryCursor(null);
           return;
         }
 
@@ -1302,6 +1333,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     filters.chestMax,
     filters.legsInseamMin,
     filters.legsInseamMax,
+    filters.nearby,
     userCity,
   ]);
 
@@ -1637,7 +1669,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     if (isPackageMode || isSharedMode) return baseModels;
     // When "Near me" is active and we have radius-based results → use nearbyModels (sorted by distance).
     // Fallback: if geolocation was denied but city is known → city-substring filter on baseModels.
-    // Otherwise → use baseModels as-is (all server-side filters already applied).
+    // Otherwise → ranked discovery queue with session-seen models removed from the visible stack.
     if (filters.nearby) {
       if (userLat != null && userLng != null) {
         return nearbyModels; // radius RPC results, already sorted by distance
@@ -1649,7 +1681,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         );
       }
     }
-    return baseModels;
+    return filterDiscoveryModelsExcludingSeen(baseModels, sessionSeenIds.current);
+    // sessionSeenCount ensures re-eval when the seen-set grows (Next / viewed card).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     baseModels,
     nearbyModels,
@@ -1659,6 +1693,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     userCity,
     isPackageMode,
     isSharedMode,
+    sessionSeenCount,
   ]);
 
   const discoverFilterMessages = useMemo(() => {
@@ -1802,7 +1837,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   }, [detailId, packageViewState, packageDisplayMode, sharedProject]);
 
   const currentModel = useMemo(
-    () => (filteredModels.length ? filteredModels[currentIndex % filteredModels.length] : null),
+    () => (filteredModels.length ? (filteredModels[currentIndex] ?? null) : null),
     [filteredModels, currentIndex],
   );
 
@@ -2084,7 +2119,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const currentModelForEffect = useMemo(
     () =>
       filteredModels.length && !packageViewState && !sharedProjectId
-        ? filteredModels[currentIndex % filteredModels.length]
+        ? (filteredModels[currentIndex] ?? null)
         : null,
 
     [filteredModels, currentIndex, packageViewState, sharedProjectId],
@@ -2093,6 +2128,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   useEffect(() => {
     if (!currentModelForEffect || !clientOrgId) return;
     sessionSeenIds.current.add(currentModelForEffect.id);
+    setSessionSeenCount(sessionSeenIds.current.size);
     saveSessionId(clientOrgId, currentModelForEffect.id);
     void recordInteraction(currentModelForEffect.id, 'viewed');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2200,7 +2236,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     // "Next" = browse to next card (neutral skip, not a rejection).
     // The "viewed" interaction is already recorded by the currentModelForEffect effect.
     // An explicit "Pass/Reject" action is required to fire recordInteraction 'rejected'.
-    setCurrentIndex((prev) => (prev + 1) % filteredModels.length);
+    setCurrentIndex((prev) => (prev < filteredModels.length - 1 ? prev + 1 : 0));
     // Release mutex after a brief frame to debounce rapid taps.
     setTimeout(() => {
       isNavigatingRef.current = false;
@@ -2210,11 +2246,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const _onReject = () => {
     if (!filteredModels.length || isNavigatingRef.current) return;
     isNavigatingRef.current = true;
-    const current = filteredModels[currentIndex % filteredModels.length];
+    const current = filteredModels[currentIndex] ?? null;
     if (current && clientOrgId) {
       void recordInteraction(current.id, 'rejected');
     }
-    setCurrentIndex((prev) => (prev + 1) % filteredModels.length);
+    setCurrentIndex((prev) => (prev < filteredModels.length - 1 ? prev + 1 : 0));
     setTimeout(() => {
       isNavigatingRef.current = false;
     }, 300);
@@ -2486,8 +2522,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     setPendingModel(null);
     setOptionDatePickerOpen(false);
     setOptionDateModel(null);
+    if (clientOrgId) {
+      sessionSeenIds.current = loadSessionIds(clientOrgId);
+      setSessionSeenCount(sessionSeenIds.current.size);
+    }
     setCurrentIndex(0);
-  }, []);
+  }, [clientOrgId]);
 
   const resetProjectsTabRoot = useCallback(() => {}, []);
 

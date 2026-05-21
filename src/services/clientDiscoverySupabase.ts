@@ -156,6 +156,70 @@ export function clearSessionIds(clientOrgId: string): void {
   }
 }
 
+/** Stable signature for discovery filter changes — excludes clientCity/userCity (scoring only). */
+export type DiscoveryFilterSignatureInput = {
+  countryCode: string;
+  city: string;
+  sex: string;
+  heightMin: string;
+  heightMax: string;
+  ethnicities: string[];
+  category: string;
+  sportsWinter: boolean;
+  sportsSummer: boolean;
+  hairColor: string;
+  hipsMin: string;
+  hipsMax: string;
+  waistMin: string;
+  waistMax: string;
+  chestMin: string;
+  chestMax: string;
+  legsInseamMin: string;
+  legsInseamMax: string;
+  nearby: boolean;
+};
+
+export function buildDiscoveryFilterSignature(input: DiscoveryFilterSignatureInput): string {
+  return JSON.stringify({
+    countryCode: input.countryCode.trim().toUpperCase(),
+    city: input.city.trim().toLowerCase(),
+    sex: input.sex,
+    heightMin: input.heightMin,
+    heightMax: input.heightMax,
+    ethnicities: [...input.ethnicities].sort(),
+    category: input.category,
+    sportsWinter: input.sportsWinter,
+    sportsSummer: input.sportsSummer,
+    hairColor: input.hairColor.trim().toLowerCase(),
+    hipsMin: input.hipsMin,
+    hipsMax: input.hipsMax,
+    waistMin: input.waistMin,
+    waistMax: input.waistMax,
+    chestMin: input.chestMin,
+    chestMax: input.chestMax,
+    legsInseamMin: input.legsInseamMin,
+    legsInseamMax: input.legsInseamMax,
+    nearby: input.nearby,
+  });
+}
+
+/** Returns whether a filter signature change should reset the session seen-set. */
+export function shouldResetDiscoverySessionSeen(
+  previousSignature: string | null,
+  nextSignature: string,
+): boolean {
+  return previousSignature !== null && previousSignature !== nextSignature;
+}
+
+/** Removes session-seen model IDs from a discover queue (does not mutate seen storage). */
+export function filterDiscoveryModelsExcludingSeen<T extends { id: string }>(
+  models: T[],
+  sessionSeenIds: Set<string>,
+): T[] {
+  if (sessionSeenIds.size === 0) return models;
+  return models.filter((m) => !sessionSeenIds.has(m.id));
+}
+
 // ─── Diversity shuffle ────────────────────────────────────────────────────────
 
 /**

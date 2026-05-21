@@ -70,6 +70,9 @@ import {
   loadSessionIds,
   saveSessionId,
   clearSessionIds,
+  buildDiscoveryFilterSignature,
+  shouldResetDiscoverySessionSeen,
+  filterDiscoveryModelsExcludingSeen,
   applyDiversityShuffle,
   DISCOVERY_WEIGHTS,
   DISCOVERY_PAGE_SIZE,
@@ -405,6 +408,78 @@ describe('loadSessionIds / saveSessionId / clearSessionIds', () => {
     saveSessionId('org-1', 'model-a');
     const idsOrg2 = loadSessionIds('org-2');
     expect(idsOrg2.size).toBe(0);
+  });
+});
+
+// ─── Test 16: Session seen helpers (regression — seen-skip) ─────────────────
+
+describe('buildDiscoveryFilterSignature / shouldResetDiscoverySessionSeen', () => {
+  const baseSigInput = {
+    countryCode: 'DE',
+    city: '',
+    sex: 'all',
+    heightMin: '',
+    heightMax: '',
+    ethnicities: [] as string[],
+    category: '',
+    sportsWinter: false,
+    sportsSummer: false,
+    hairColor: '',
+    hipsMin: '',
+    hipsMax: '',
+    waistMin: '',
+    waistMax: '',
+    chestMin: '',
+    chestMax: '',
+    legsInseamMin: '',
+    legsInseamMax: '',
+    nearby: false,
+  };
+
+  it('does not reset session on first mount (null previous signature)', () => {
+    const sig = buildDiscoveryFilterSignature(baseSigInput);
+    expect(shouldResetDiscoverySessionSeen(null, sig)).toBe(false);
+  });
+
+  it('resets session when filter signature changes', () => {
+    const sigA = buildDiscoveryFilterSignature(baseSigInput);
+    const sigB = buildDiscoveryFilterSignature({ ...baseSigInput, city: 'Berlin' });
+    expect(shouldResetDiscoverySessionSeen(sigA, sigB)).toBe(true);
+  });
+
+  it('does not reset session when only clientCity/userCity would differ (not in signature)', () => {
+    const sigA = buildDiscoveryFilterSignature(baseSigInput);
+    const sigB = buildDiscoveryFilterSignature(baseSigInput);
+    expect(shouldResetDiscoverySessionSeen(sigA, sigB)).toBe(false);
+  });
+});
+
+describe('filterDiscoveryModelsExcludingSeen', () => {
+  it('removes session-seen model IDs from the visible queue', () => {
+    const models = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+    const seen = new Set(['a', 'c']);
+    expect(filterDiscoveryModelsExcludingSeen(models, seen).map((m) => m.id)).toEqual(['b']);
+  });
+
+  it('returns all models when seen set is empty', () => {
+    const models = [{ id: 'a' }, { id: 'b' }];
+    expect(filterDiscoveryModelsExcludingSeen(models, new Set())).toEqual(models);
+  });
+});
+
+describe('session seen persistence — re-enter sends p_exclude_ids', () => {
+  it('loadSessionIds after saveSessionId yields IDs for p_exclude_ids on refetch', async () => {
+    saveSessionId(ORG_ID, 'seen-1');
+    saveSessionId(ORG_ID, 'seen-2');
+    const reloaded = loadSessionIds(ORG_ID);
+    expect(reloaded.has('seen-1')).toBe(true);
+    expect(reloaded.has('seen-2')).toBe(true);
+
+    mockRpc.mockResolvedValueOnce({ data: [], error: null });
+    await getDiscoveryModels(ORG_ID, BASE_FILTERS, null, reloaded);
+    expect(mockRpc.mock.calls[0][1].p_exclude_ids).toEqual(
+      expect.arrayContaining(['seen-1', 'seen-2']),
+    );
   });
 });
 

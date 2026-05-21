@@ -354,6 +354,7 @@ export function addOptionRequest(
 
       let agencyId: string | null = null;
       let countryCodeUsedForBooking: string | null = null;
+      let countryCodeUsed: string | null = null;
       try {
         const model = await getModelByIdFromSupabase(modelId);
         const fallbackAgency = model?.agency_id ?? null;
@@ -362,7 +363,7 @@ export function addOptionRequest(
         const modelHasAccount = !!(model as { user_id?: string | null } | null)?.user_id;
         req.modelAccountLinked = modelHasAccount;
 
-        const countryCodeUsed = extra?.countryCode?.trim()
+        countryCodeUsed = extra?.countryCode?.trim()
           ? extra?.countryCode
           : (model?.country_code ?? model?.country ?? null);
 
@@ -520,7 +521,11 @@ export function addOptionRequest(
         void addOptionMessage(result.id, 'client', autoText);
 
         // Booking must be visible in B2B chat as a typed message.
-        const bookingCountryCode = (countryCodeUsedForBooking ?? '').trim().toUpperCase();
+        // MAT fallback sets countryCodeUsedForBooking=null for RPC validation, but B2B cards
+        // still need a territory label — use the client/filter country hint when present.
+        const bookingCountryCode = (countryCodeUsedForBooking ?? countryCodeUsed ?? '')
+          .trim()
+          .toUpperCase();
         if (user?.id && organizationId && bookingCountryCode) {
           void createBookingMessageInClientAgencyChat({
             agencyId: result.agency_id,
