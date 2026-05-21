@@ -6853,44 +6853,46 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                       confirmationSummaryLine={negotiationConfirmationSummaryLine}
                       isAgencyOnly={request.isAgencyOnly}
                     />
-                    <NegotiationThreadFooter
-                      request={request}
-                      isAgency={isAgency}
-                      status={status}
-                      finalStatus={finalStatus}
-                      clientPriceStatus={clientPriceStatus}
-                      currency={currency}
-                      agencyCounterPrice={agencyCounterPrice}
-                      negotiationCounterExpanded={negotiationCounterExpanded}
-                      setNegotiationCounterExpanded={setNegotiationCounterExpanded}
-                      agencyCounterInput={agencyCounterInput}
-                      setAgencyCounterInput={setAgencyCounterInput}
-                      assignmentByClientOrgId={assignmentByClientOrgId}
-                      assignableMembers={assignableMembers}
-                      onSaveClientAssignment={onSaveClientAssignment}
-                      editingAssignmentThreadId={editingAssignmentThreadId}
-                      setEditingAssignmentThreadId={setEditingAssignmentThreadId}
-                      openOrgChatBusy={openOrgChatBusy}
-                      openOrgChatFromRequest={openOrgChatFromRequest}
-                      onAgencyConfirmAvailability={runAgencyConfirmAvailability}
-                      onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
-                      onAgencyRejectClientPrice={runAgencyRejectClientPrice}
-                      onAgencyCounterOffer={runAgencyCounterOffer}
-                      onAgencyProposeInitialFee={runAgencyCounterOffer}
-                      onRejectNegotiation={handleRejectOptionNegotiation}
-                      onClientAcceptCounter={runClientAcceptCounter}
-                      onClientRejectCounter={openRejectCounterModal}
-                      onClientConfirmJob={runClientConfirmJob}
-                      onAgencyConfirmJobAgencyOnly={runAgencyConfirmJobAgencyOnly}
-                      showAgencyExtras={false}
-                      suppressDuplicateMeta
-                    />
+                    {isAgency ? (
+                      <NegotiationThreadFooter
+                        request={request}
+                        isAgency={isAgency}
+                        status={status}
+                        finalStatus={finalStatus}
+                        clientPriceStatus={clientPriceStatus}
+                        currency={currency}
+                        agencyCounterPrice={agencyCounterPrice}
+                        negotiationCounterExpanded={negotiationCounterExpanded}
+                        setNegotiationCounterExpanded={setNegotiationCounterExpanded}
+                        agencyCounterInput={agencyCounterInput}
+                        setAgencyCounterInput={setAgencyCounterInput}
+                        assignmentByClientOrgId={assignmentByClientOrgId}
+                        assignableMembers={assignableMembers}
+                        onSaveClientAssignment={onSaveClientAssignment}
+                        editingAssignmentThreadId={editingAssignmentThreadId}
+                        setEditingAssignmentThreadId={setEditingAssignmentThreadId}
+                        openOrgChatBusy={openOrgChatBusy}
+                        openOrgChatFromRequest={openOrgChatFromRequest}
+                        onAgencyConfirmAvailability={runAgencyConfirmAvailability}
+                        onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
+                        onAgencyRejectClientPrice={runAgencyRejectClientPrice}
+                        onAgencyCounterOffer={runAgencyCounterOffer}
+                        onAgencyProposeInitialFee={runAgencyCounterOffer}
+                        onRejectNegotiation={handleRejectOptionNegotiation}
+                        onClientAcceptCounter={runClientAcceptCounter}
+                        onClientRejectCounter={openRejectCounterModal}
+                        onClientConfirmJob={runClientConfirmJob}
+                        onAgencyConfirmJobAgencyOnly={runAgencyConfirmJobAgencyOnly}
+                        showAgencyExtras={false}
+                        suppressDuplicateMeta
+                      />
+                    ) : null}
                   </ScrollView>
                 ) : null
               }
               bottomInset={insets.bottom}
               footerTop={
-                showDesktopNegotiationRail ? null : (
+                showDesktopNegotiationRail && isAgency ? null : (
                   <NegotiationThreadFooter
                     request={request}
                     isAgency={isAgency}

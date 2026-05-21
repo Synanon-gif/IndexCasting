@@ -1,5 +1,14 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, type ViewStyle } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  type ViewStyle,
+} from 'react-native';
 import { colors, spacing, typography } from '../../theme/theme';
 import { uiCopy } from '../../constants/uiCopy';
 import type { DeviceType } from '../../theme/breakpoints';
@@ -72,9 +81,15 @@ export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProp
   const innerContent = (
     <View style={styles.mainColumn}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={onBack}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          style={styles.backBtn}
+        >
           <Text style={styles.backArrow}>←</Text>
-          <Text style={styles.backText} numberOfLines={1}>{backLabel}</Text>
+          <Text style={styles.backText} numberOfLines={1}>
+            {backLabel}
+          </Text>
         </TouchableOpacity>
         {onTitlePress ? (
           <TouchableOpacity
@@ -188,10 +203,12 @@ const styles = StyleSheet.create({
   rightRail: {
     width: 280,
     maxWidth: '32%',
+    minHeight: 0,
+    flexShrink: 0,
+    alignSelf: 'stretch',
     borderLeftWidth: StyleSheet.hairlineWidth,
     borderLeftColor: colors.border,
     backgroundColor: colors.surface,
-    flexShrink: 0,
   },
   header: {
     flexDirection: 'row',
