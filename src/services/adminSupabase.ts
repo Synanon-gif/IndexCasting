@@ -813,7 +813,7 @@ export async function adminResetAgencySwipeCount(organizationId: string): Promis
 export interface AdminStorageOverride {
   organization_id: string;
   used_bytes: number;
-  /** null = default 5 GB applies */
+  /** null = plan default applies (Agency Basic: 10 GB) */
   storage_limit_bytes: number | null;
   is_unlimited: boolean;
   /** Resolved effective cap in bytes; null when is_unlimited = true */
@@ -898,7 +898,7 @@ export async function adminSetUnlimitedStorage(organizationId: string): Promise<
 }
 
 /**
- * Resets an organization's storage limit back to the platform default (5 GB).
+ * Resets an organization's storage limit back to the platform default (Agency Basic: 10 GB).
  * Clears both the custom limit and the unlimited flag.
  */
 export async function adminResetToDefaultStorageLimit(organizationId: string): Promise<boolean> {

@@ -19,6 +19,7 @@
  */
 
 import {
+  AGENCY_STORAGE_LIMIT_BYTES,
   getMyAgencyStorageUsage,
   checkAndIncrementStorage,
   decrementStorage,
@@ -54,8 +55,8 @@ describe('[regression] getMyAgencyStorageUsage — new agency initial state (use
       data: {
         organization_id: ORG_A,
         used_bytes: 0,
-        limit_bytes: 5_368_709_120,
-        effective_limit_bytes: 5_368_709_120,
+        limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
+        effective_limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
         is_unlimited: false,
       },
       error: null,
@@ -75,7 +76,7 @@ describe('[regression] getMyAgencyStorageUsage — new agency initial state (use
       data: {
         organization_id: ORG_A,
         used_bytes: 0,
-        limit_bytes: 5_368_709_120,
+        limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
         effective_limit_bytes: null,
         is_unlimited: false,
       },
@@ -83,7 +84,7 @@ describe('[regression] getMyAgencyStorageUsage — new agency initial state (use
     });
 
     const result = await getMyAgencyStorageUsage();
-    // Widget must show "0 B / 5 GB" — not "load error"
+    // Widget must show "0 B / 10 GB" — not "load error"
     expect(result).not.toBeNull();
     expect(result!.used_bytes).toBe(0);
   });
@@ -117,7 +118,7 @@ describe('[regression] upload increases storage counter', () => {
       data: {
         allowed: true,
         used_bytes: FILE_SIZE,
-        limit_bytes: 5_368_709_120,
+        limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
         is_unlimited: false,
       },
       error: null,
@@ -136,8 +137,8 @@ describe('[regression] upload increases storage counter', () => {
       data: {
         organization_id: ORG_A,
         used_bytes: USED,
-        limit_bytes: 5_368_709_120,
-        effective_limit_bytes: 5_368_709_120,
+        limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
+        effective_limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
         is_unlimited: false,
       },
       error: null,
@@ -191,7 +192,7 @@ describe('[regression] replace/overwrite updates counter correctly', () => {
     rpcMock.mockResolvedValueOnce({ data: 2_000_000, error: null });
     // increment new file
     rpcMock.mockResolvedValueOnce({
-      data: { allowed: true, used_bytes: 7_000_000, limit_bytes: 5_368_709_120 },
+      data: { allowed: true, used_bytes: 7_000_000, limit_bytes: AGENCY_STORAGE_LIMIT_BYTES },
       error: null,
     });
 
@@ -214,7 +215,11 @@ describe('[regression] other agency is not affected', () => {
   it('each RPC call is isolated by auth.uid() in the DB — no cross-org arg', async () => {
     // The RPC takes no org_id argument — isolation is DB-side via auth.uid()
     rpcMock.mockResolvedValueOnce({
-      data: { organization_id: ORG_A, used_bytes: 100_000, limit_bytes: 5_368_709_120 },
+      data: {
+        organization_id: ORG_A,
+        used_bytes: 100_000,
+        limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
+      },
       error: null,
     });
 
@@ -239,8 +244,8 @@ describe('[regression] storage usage persists after reload', () => {
         data: {
           organization_id: ORG_A,
           used_bytes: BYTES,
-          limit_bytes: 5_368_709_120,
-          effective_limit_bytes: 5_368_709_120,
+          limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
+          effective_limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
           is_unlimited: false,
         },
         error: null,
@@ -249,8 +254,8 @@ describe('[regression] storage usage persists after reload', () => {
         data: {
           organization_id: ORG_A,
           used_bytes: BYTES,
-          limit_bytes: 5_368_709_120,
-          effective_limit_bytes: 5_368_709_120,
+          limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
+          effective_limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
           is_unlimited: false,
         },
         error: null,
@@ -275,15 +280,15 @@ describe('[regression] multiple uploads aggregate correctly', () => {
 
     rpcMock
       .mockResolvedValueOnce({
-        data: { allowed: true, used_bytes: f1, limit_bytes: 5_368_709_120 },
+        data: { allowed: true, used_bytes: f1, limit_bytes: AGENCY_STORAGE_LIMIT_BYTES },
         error: null,
       })
       .mockResolvedValueOnce({
-        data: { allowed: true, used_bytes: f1 + f2, limit_bytes: 5_368_709_120 },
+        data: { allowed: true, used_bytes: f1 + f2, limit_bytes: AGENCY_STORAGE_LIMIT_BYTES },
         error: null,
       })
       .mockResolvedValueOnce({
-        data: { allowed: true, used_bytes: f1 + f2 + f3, limit_bytes: 5_368_709_120 },
+        data: { allowed: true, used_bytes: f1 + f2 + f3, limit_bytes: AGENCY_STORAGE_LIMIT_BYTES },
         error: null,
       });
 
@@ -317,8 +322,8 @@ describe('[regression] large file formatting', () => {
     expect(formatStorageBytes(53_089_513)).toBe('50.6 MB');
   });
 
-  it('formats 5 GB limit correctly', () => {
-    expect(formatStorageBytes(5_368_709_120)).toBe('5.0 GB');
+  it('formats 10 GB Basic limit correctly', () => {
+    expect(formatStorageBytes(AGENCY_STORAGE_LIMIT_BYTES)).toBe('10.0 GB');
   });
 
   it('formats 0 correctly — new agency shows "0 B"', () => {
@@ -330,19 +335,25 @@ describe('[regression] large file formatting', () => {
 
 describe('[regression] usage percentage calculation', () => {
   it('0% for new agency with 0 bytes', () => {
-    expect(getStorageUsagePercent(0, 5_368_709_120)).toBe(0);
+    expect(getStorageUsagePercent(0, AGENCY_STORAGE_LIMIT_BYTES)).toBe(0);
   });
 
   it('50% at half limit', () => {
-    expect(getStorageUsagePercent(2_684_354_560, 5_368_709_120)).toBe(50);
+    expect(getStorageUsagePercent(AGENCY_STORAGE_LIMIT_BYTES / 2, AGENCY_STORAGE_LIMIT_BYTES)).toBe(
+      50,
+    );
   });
 
   it('100% at full limit', () => {
-    expect(getStorageUsagePercent(5_368_709_120, 5_368_709_120)).toBe(100);
+    expect(getStorageUsagePercent(AGENCY_STORAGE_LIMIT_BYTES, AGENCY_STORAGE_LIMIT_BYTES)).toBe(
+      100,
+    );
   });
 
   it('capped at 100% even when over limit', () => {
-    expect(getStorageUsagePercent(6_000_000_000, 5_368_709_120)).toBe(100);
+    expect(
+      getStorageUsagePercent(AGENCY_STORAGE_LIMIT_BYTES + 1_000_000, AGENCY_STORAGE_LIMIT_BYTES),
+    ).toBe(100);
   });
 
   it('0% when limit is 0 (division by zero guard)', () => {
@@ -358,8 +369,8 @@ describe('[regression] empty agency shows 0 correctly', () => {
       data: {
         organization_id: ORG_A,
         used_bytes: 0,
-        limit_bytes: 5_368_709_120,
-        effective_limit_bytes: 5_368_709_120,
+        limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
+        effective_limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
         is_unlimited: false,
       },
       error: null,
