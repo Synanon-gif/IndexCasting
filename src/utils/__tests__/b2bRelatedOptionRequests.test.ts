@@ -93,6 +93,33 @@ describe('filterRelatedOptionRequestsForB2BConversation', () => {
     expect(rows[0]?.id).toBe('req-a');
   });
 
+  it('sorts by date desc then id for stable mobile/desktop strip order', () => {
+    const rows = filterRelatedOptionRequestsForB2BConversation(
+      [
+        {
+          id: 'req-older',
+          modelName: 'Model A',
+          date: '2026-08-01',
+          status: 'in_negotiation',
+          clientOrganizationId: CLIENT_ORG,
+          agencyOrganizationId: AGENCY_ORG,
+        },
+        {
+          id: 'req-newer',
+          modelName: 'Model B',
+          date: '2026-08-15',
+          status: 'confirmed',
+          finalStatus: 'job_confirmed',
+          clientOrganizationId: CLIENT_ORG,
+          agencyOrganizationId: AGENCY_ORG,
+        },
+      ],
+      CLIENT_ORG,
+      AGENCY_ORG,
+    );
+    expect(rows.map((r) => r.id)).toEqual(['req-newer', 'req-older']);
+  });
+
   it('excludes cross-org and rejected requests', () => {
     const rows = filterRelatedOptionRequestsForB2BConversation(
       [

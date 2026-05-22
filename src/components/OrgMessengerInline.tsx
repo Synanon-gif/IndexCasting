@@ -1045,9 +1045,11 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           <Text style={styles.relatedRequestsTitle}>{uiCopy.b2bChat.relatedRequestsTitle}</Text>
           <ScrollView
             horizontal
-            showsHorizontalScrollIndicator={false}
+            showsHorizontalScrollIndicator={Platform.OS !== 'web'}
+            style={styles.relatedRequestsScrollView}
             contentContainerStyle={styles.relatedRequestsScroll}
             keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
           >
             {relatedOptionRequests.map((req) => {
               const kind = relatedRequestCardTitle(req.requestType, req.finalStatus);
@@ -1710,11 +1712,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   relatedRequestsStrip: {
+    alignSelf: 'stretch',
+    width: '100%',
+    minWidth: 0,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
     gap: spacing.xs,
+  },
+  relatedRequestsScrollView: {
+    width: '100%',
+    minWidth: 0,
+    flexGrow: 0,
   },
   relatedRequestsTitle: {
     ...typography.label,
