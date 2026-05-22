@@ -134,6 +134,37 @@ describe('addOptionRequest — multi-model B2B booking cards', () => {
     );
   });
 
+  it('creates B2B card for second model when MAT fallback clears country (no extra.countryCode)', async () => {
+    mockResolveMat.mockImplementation(async (modelId: string) =>
+      modelId === MODEL_A ? AGENCY_ID : null,
+    );
+    mockGetModel.mockImplementation(async (id: string) => ({
+      id,
+      agency_id: AGENCY_ID,
+      country_code: id === MODEL_A ? 'DE' : null,
+      user_id: 'model-user',
+    }));
+
+    addOptionRequest('Client Co', 'Model A', MODEL_A, '2026-08-01', undefined, {
+      countryCode: 'DE',
+      clientOrganizationName: 'Client Co',
+    });
+    addOptionRequest('Client Co', 'Model B', MODEL_B, '2026-08-01', undefined, {
+      clientOrganizationName: 'Client Co',
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockCreateBookingMessage).toHaveBeenCalledTimes(2);
+    expect(mockCreateBookingMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelId: MODEL_B,
+        optionRequestId: REQ_B,
+        countryCode: '',
+      }),
+    );
+  });
+
   it('duplicate guard blocks same model+slot but not a second model', async () => {
     mockResolveMat.mockResolvedValue(AGENCY_ID);
 

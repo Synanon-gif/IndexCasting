@@ -87,6 +87,7 @@ import {
 } from '../services/messengerSupabase';
 import { getApplicationById, refreshApplications } from '../store/applicationsStore';
 import { OrgMessengerInline, type ThreadContext } from '../components/OrgMessengerInline';
+import { filterRelatedOptionRequestsForB2BConversation } from '../utils/b2bRelatedOptionRequests';
 import { AgencySettingsTab } from '../components/AgencySettingsTab';
 import { AiAssistantButton } from '../components/help/AiAssistantButton';
 // Recruiting chats (BookingChatView) live under Messages → Recruiting chats.
@@ -7564,6 +7565,17 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     };
   }, [activeConnectionChatId, modelDirectConvs, b2bConversations, agencyModels]);
 
+  const relatedOptionRequestsForActiveB2bChat = useMemo(() => {
+    if (!activeConnectionChatId) return [];
+    const conv = b2bConversations.find((c) => c.id === activeConnectionChatId);
+    if (!conv?.client_organization_id || !conv.agency_organization_id) return [];
+    return filterRelatedOptionRequestsForB2BConversation(
+      requests,
+      conv.client_organization_id,
+      conv.agency_organization_id,
+    );
+  }, [activeConnectionChatId, b2bConversations, requests]);
+
   const optionFullscreenActive =
     messagesSection === 'optionRequests' && !!selectedThreadId && !!request;
 
@@ -7599,6 +7611,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               setMessagesSection('optionRequests');
               setSelectedThreadId(optionRequestId);
             }}
+            relatedOptionRequests={relatedOptionRequestsForActiveB2bChat}
             onBookingCardPress={onBookingCardPress}
             viewerRole="agency"
             onBookingStatusUpdated={() => onBookingCardPress?.()}
@@ -8275,6 +8288,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                                 setMessagesSection('optionRequests');
                                 setSelectedThreadId(optionRequestId);
                               }}
+                              relatedOptionRequests={relatedOptionRequestsForActiveB2bChat}
                               onBookingCardPress={onBookingCardPress}
                               viewerRole="agency"
                               onBookingStatusUpdated={() => onBookingCardPress?.()}
@@ -8312,6 +8326,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                             setMessagesSection('optionRequests');
                             setSelectedThreadId(optionRequestId);
                           }}
+                          relatedOptionRequests={relatedOptionRequestsForActiveB2bChat}
                           onBookingCardPress={onBookingCardPress}
                           viewerRole="agency"
                           onBookingStatusUpdated={() => onBookingCardPress?.()}

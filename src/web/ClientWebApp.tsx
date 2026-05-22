@@ -224,6 +224,8 @@ import { attentionHeaderLabelFromSignals } from '../utils/negotiationAttentionLa
 import { extractCounterparties } from '../utils/threadFilters';
 import { toDisplayStatus } from '../utils/statusHelpers';
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
+import { filterRelatedOptionRequestsForB2BConversation } from '../utils/b2bRelatedOptionRequests';
+import type { OptionRequest } from '../store/optionRequests';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
 import { BillingHubView } from '../components/billing/BillingHubView';
@@ -5706,6 +5708,7 @@ const ClientB2BChatsPanel: React.FC<{
   onBookingCardPress?: (meta: Record<string, unknown>) => void;
   onPackagePress?: (meta: Record<string, unknown>) => void;
   onOpenRelatedRequest?: (optionRequestId: string) => void;
+  optionRequests?: OptionRequest[];
   searchQuery?: string;
   /** Called with true when a chat is actively open on mobile (non-split), false otherwise. */
   onChatActiveChange?: (active: boolean) => void;
@@ -5717,6 +5720,7 @@ const ClientB2BChatsPanel: React.FC<{
   onBookingCardPress,
   onPackagePress,
   onOpenRelatedRequest,
+  optionRequests = [],
   searchQuery = '',
   onChatActiveChange,
   onDashboardSummaryBump,
@@ -5878,6 +5882,18 @@ const ClientB2BChatsPanel: React.FC<{
     };
   }, [conversationIdsKey, clientUserId]);
 
+  const selectedRowForRelated = selectedId ? rows.find((r) => r.id === selectedId) : undefined;
+  const targetAgencyOrgIdForRelated = selectedRowForRelated?.agency_organization_id ?? null;
+  const relatedOptionRequestsForChat = useMemo(
+    () =>
+      filterRelatedOptionRequestsForB2BConversation(
+        optionRequests,
+        clientOrgId,
+        targetAgencyOrgIdForRelated,
+      ),
+    [optionRequests, clientOrgId, targetAgencyOrgIdForRelated],
+  );
+
   if (orgLoading) {
     return <Text style={styles.metaText}>{uiCopy.b2bChat.clientWorkspaceLoading}</Text>;
   }
@@ -5935,8 +5951,6 @@ const ClientB2BChatsPanel: React.FC<{
       <Text style={styles.metaText}>{uiCopy.messages.searchNoResults}</Text>
     ) : null;
 
-  const targetAgencyOrgId = selectedRow?.agency_organization_id ?? null;
-
   const messengerEl = activeConversationId ? (
     <OrgMessengerInline
       conversationId={activeConversationId}
@@ -5954,14 +5968,15 @@ const ClientB2BChatsPanel: React.FC<{
       onBookingCardPress={onBookingCardPress}
       onPackagePress={onPackagePress}
       onOpenRelatedRequest={onOpenRelatedRequest}
+      relatedOptionRequests={relatedOptionRequestsForChat}
       onMarkedAllRead={onDashboardSummaryBump}
       onOrgPress={
-        targetAgencyOrgId
+        targetAgencyOrgIdForRelated
           ? () => {
               void (async () => {
-                const agencyId = await getAgencyIdForOrganization(targetAgencyOrgId);
+                const agencyId = await getAgencyIdForOrganization(targetAgencyOrgIdForRelated);
                 setViewingAgencyProfileState({
-                  orgId: targetAgencyOrgId,
+                  orgId: targetAgencyOrgIdForRelated,
                   agencyId,
                   orgName: messengerTitle,
                 });
@@ -6630,6 +6645,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
             setSelectedThreadId(optionRequestId);
             setClientMsgTab('optionRequests');
           }}
+          optionRequests={requests}
           onBookingCardPress={onBookingCardPress}
           onPackagePress={onPackagePress}
           searchQuery={clientMsgSearch}

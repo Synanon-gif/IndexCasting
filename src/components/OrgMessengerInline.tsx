@@ -27,6 +27,10 @@ import {
 } from './orgMessengerMessageLayout';
 import { uiCopy } from '../constants/uiCopy';
 import {
+  relatedRequestCardTitle,
+  type B2bRelatedOptionRequestSummary,
+} from '../utils/b2bRelatedOptionRequests';
+import {
   getMessagesWithSenderInfo,
   sendMessage as sendMessengerMessage,
   subscribeToConversation,
@@ -137,6 +141,11 @@ export type OrgMessengerInlineProps = {
   b2bViewerRole?: 'client' | 'agency' | 'model';
   /** After server-side mark-all-read on thread open; use to refresh dashboard unread. */
   onMarkedAllRead?: () => void;
+  /**
+   * Option/casting/job requests for this Client↔Agency org pair (deduped by request id).
+   * Shown in the composer strip so multiple related requests stay reachable.
+   */
+  relatedOptionRequests?: B2bRelatedOptionRequestSummary[];
 };
 
 function payloadType(m: MessageWithSender): MessagePayloadType {
@@ -177,6 +186,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   backLabel,
   b2bViewerRole,
   onMarkedAllRead,
+  relatedOptionRequests = [],
 }) => {
   const [msgs, setMsgs] = useState<MessageWithSender[]>([]);
   const [input, setInput] = useState('');
@@ -1030,6 +1040,43 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 
   const messengerComposer = (
     <>
+      {relatedOptionRequests.length > 0 && onOpenRelatedRequest ? (
+        <View style={styles.relatedRequestsStrip}>
+          <Text style={styles.relatedRequestsTitle}>{uiCopy.b2bChat.relatedRequestsTitle}</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.relatedRequestsScroll}
+            keyboardShouldPersistTaps="handled"
+          >
+            {relatedOptionRequests.map((req) => {
+              const kind = relatedRequestCardTitle(req.requestType, req.finalStatus);
+              const title =
+                kind === 'job'
+                  ? uiCopy.b2bChat.bookingCardTitle
+                  : kind === 'casting'
+                    ? uiCopy.b2bChat.castingCardTitle
+                    : uiCopy.b2bChat.optionCardTitle;
+              return (
+                <View key={req.id} style={styles.relatedRequestCard}>
+                  <Text style={styles.relatedRequestCardTitle} numberOfLines={1}>
+                    {title}
+                  </Text>
+                  <Text style={styles.relatedRequestCardMeta} numberOfLines={1}>
+                    {req.modelName} · {req.date}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.cardBtn}
+                    onPress={() => onOpenRelatedRequest(req.id)}
+                  >
+                    <Text style={styles.cardBtnLabel}>{uiCopy.b2bChat.openRelatedRequest}</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
       {sendError ? <Text style={styles.uploadError}>{sendError}</Text> : null}
       {uploadError ? <Text style={styles.uploadError}>{uploadError}</Text> : null}
       {Platform.OS === 'web' && showConsentRow ? (
@@ -1661,5 +1708,43 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textSecondary,
     fontSize: 13,
+  },
+  relatedRequestsStrip: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+    gap: spacing.xs,
+  },
+  relatedRequestsTitle: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  relatedRequestsScroll: {
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  relatedRequestCard: {
+    minWidth: 168,
+    maxWidth: 220,
+    padding: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    gap: 4,
+  },
+  relatedRequestCardTitle: {
+    ...typography.label,
+    fontSize: 12,
+    color: colors.textPrimary,
+  },
+  relatedRequestCardMeta: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
   },
 });

@@ -1032,6 +1032,7 @@ export const uiCopy = {
     contextNegotiationThread: 'Negotiation thread',
     openOrgChat: 'Open org chat',
     openRelatedRequest: 'Open related request',
+    relatedRequestsTitle: 'Related requests',
     relatedRequestUnavailable: 'No related request linked yet.',
     messagePlaceholder: 'Message…',
     /** B2B + option threads: fetch earlier history when the initial page is full */
@@ -2759,6 +2760,8 @@ export const uiCopy = {
     // Detail link
     openDetailsCta: 'Open details',
     openDetailsHint: 'Open the full invoice in its existing screen.',
+    openSystemDraft: 'Open draft',
+    manualDraftHint: 'Manual invoice drafts are listed under Manual invoices.',
   },
 
   /**
@@ -2788,8 +2791,8 @@ export const uiCopy = {
     tileInvoicesSubtitle:
       'See drafts you started and invoices you generated. Re-open, re-export, or delete drafts.',
     countLabelProfiles: (n: number) => `${n} profile${n === 1 ? '' : 's'}`,
-    countLabelInvoices: (n: number) => `${n} invoice${n === 1 ? '' : 's'}`,
-    countLabelDrafts: (n: number) => `${n} draft${n === 1 ? '' : 's'}`,
+    countLabelInvoices: (n: number) => `${n} generated manual invoice${n === 1 ? '' : 's'}`,
+    countLabelDrafts: (n: number) => `${n} manual invoice draft${n === 1 ? '' : 's'}`,
 
     // Profiles section
     profilesScreenTitle: 'Billing profiles',

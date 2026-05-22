@@ -35,6 +35,8 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../../theme/theme';
 import { uiCopy } from '../../constants/uiCopy';
+import { useAuth } from '../../context/AuthContext';
+import { isOrganizationOperationalMember } from '../../services/orgRoleTypes';
 import {
   listInvoiceOverview,
   updateInvoiceTrackingNote,
@@ -48,6 +50,8 @@ import type {
   InvoiceOverviewTrackingStatus,
 } from '../../types/invoiceOverviewTypes';
 import { isSafeInvoiceOverviewExternalUrl } from '../../utils/invoiceOverviewExternalUrl';
+import { isSystemInvoiceDraftEditableByAgency } from '../../utils/invoiceOverviewDraftActions';
+import { InvoiceDraftEditor } from '../InvoiceDraftEditor';
 
 const PAGE_SIZE = 100;
 
@@ -58,6 +62,8 @@ type Props = {
 
 export const InvoiceOverviewPanel: React.FC<Props> = ({ organizationId, variant }) => {
   const c = uiCopy.invoiceOverview;
+  const { profile } = useAuth();
+  const isOperationalMember = isOrganizationOperationalMember(profile?.org_member_role);
 
   const [rows, setRows] = useState<InvoiceOverviewRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -77,6 +83,13 @@ export const InvoiceOverviewPanel: React.FC<Props> = ({ organizationId, variant 
   const [searchActive, setSearchActive] = useState('');
 
   const [openRow, setOpenRow] = useState<InvoiceOverviewRow | null>(null);
+  const [openDraftId, setOpenDraftId] = useState<string | null>(null);
+
+  const canEditSystemDraft = useCallback(
+    (row: InvoiceOverviewRow) =>
+      isSystemInvoiceDraftEditableByAgency(row, variant, isOperationalMember),
+    [variant, isOperationalMember],
+  );
 
   const filtersForRpc: InvoiceOverviewFilters = useMemo(
     () => ({
@@ -214,6 +227,19 @@ export const InvoiceOverviewPanel: React.FC<Props> = ({ organizationId, variant 
 
   if (!organizationId) return null;
 
+  if (openDraftId) {
+    return (
+      <InvoiceDraftEditor
+        organizationId={organizationId}
+        invoiceId={openDraftId}
+        onClose={() => {
+          setOpenDraftId(null);
+          void load();
+        }}
+      />
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -326,6 +352,10 @@ export const InvoiceOverviewPanel: React.FC<Props> = ({ organizationId, variant 
                   variant={variant}
                   onPress={() => setOpenRow(row)}
                   onTrackingChange={(next) => void onTrackingChange(row, next)}
+                  onOpenDraft={
+                    canEditSystemDraft(row) ? () => setOpenDraftId(row.sourceId) : undefined
+                  }
+                  openDraftLabel={c.openSystemDraft}
                 />
               ))}
             </View>
@@ -350,6 +380,13 @@ export const InvoiceOverviewPanel: React.FC<Props> = ({ organizationId, variant 
         onClose={() => setOpenRow(null)}
         onTrackingChange={onTrackingChange}
         onNoteSave={onNoteSave}
+        onOpenDraft={
+          openRow && canEditSystemDraft(openRow)
+            ? () => setOpenDraftId(openRow.sourceId)
+            : undefined
+        }
+        openDraftLabel={c.openSystemDraft}
+        manualDraftHint={c.manualDraftHint}
       />
     </View>
   );
@@ -363,7 +400,9 @@ const InvoiceOverviewRowView: React.FC<{
   copy: typeof uiCopy.invoiceOverview;
   onPress: () => void;
   onTrackingChange: (next: InvoiceOverviewTrackingStatus) => void;
-}> = ({ row, variant, copy, onPress, onTrackingChange }) => {
+  onOpenDraft?: () => void;
+  openDraftLabel?: string;
+}> = ({ row, variant, copy, onPress, onTrackingChange, onOpenDraft, openDraftLabel }) => {
   return (
     <View style={styles.rowCard}>
       <Pressable style={styles.rowMain} onPress={onPress} accessibilityRole="button">
@@ -403,6 +442,11 @@ const InvoiceOverviewRowView: React.FC<{
           ) : null}
         </View>
       </Pressable>
+      {onOpenDraft && openDraftLabel ? (
+        <TouchableOpacity style={styles.openDraftBtn} onPress={onOpenDraft}>
+          <Text style={styles.openDraftBtnText}>{openDraftLabel}</Text>
+        </TouchableOpacity>
+      ) : null}
       {variant === 'agency' ? (
         <View style={styles.rowTrackingArea}>
           <TrackingStatusControl
@@ -508,7 +552,20 @@ const InvoiceDetailsModal: React.FC<{
   onClose: () => void;
   onTrackingChange: (row: InvoiceOverviewRow, next: InvoiceOverviewTrackingStatus) => void;
   onNoteSave: (row: InvoiceOverviewRow, note: string | null) => Promise<boolean>;
-}> = ({ row, variant, copy, onClose, onTrackingChange, onNoteSave }) => {
+  onOpenDraft?: () => void;
+  openDraftLabel?: string;
+  manualDraftHint?: string;
+}> = ({
+  row,
+  variant,
+  copy,
+  onClose,
+  onTrackingChange,
+  onNoteSave,
+  onOpenDraft,
+  openDraftLabel,
+  manualDraftHint,
+}) => {
   const [noteDraft, setNoteDraft] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   useEffect(() => {
@@ -559,9 +616,21 @@ const InvoiceDetailsModal: React.FC<{
 
             <InvoicePdfActions row={row} copy={copy} />
 
-            {(row.sourceStatus === 'draft' || invoiceOverviewPdfUrlsAbsent(row)) && (
+            {onOpenDraft && openDraftLabel ? (
+              <TouchableOpacity style={styles.openDraftBtnModal} onPress={onOpenDraft}>
+                <Text style={styles.openDraftBtnText}>{openDraftLabel}</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {row.sourceType === 'manual' && row.sourceStatus === 'draft' && manualDraftHint ? (
+              <Text style={styles.modalFootnote}>{manualDraftHint}</Text>
+            ) : null}
+
+            {(row.sourceStatus === 'draft' || invoiceOverviewPdfUrlsAbsent(row)) &&
+            row.sourceType === 'system' &&
+            !onOpenDraft ? (
               <Text style={styles.modalFootnote}>{copy.trackingInternalNoPdfHint}</Text>
-            )}
+            ) : null}
 
             <Text style={[styles.modalSectionTitle, { marginTop: spacing.md }]}>
               {copy.filterTrackingLabel}
@@ -1180,6 +1249,28 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
     fontWeight: '600' as const,
+  },
+  openDraftBtn: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
+    marginLeft: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: colors.buttonOptionGreen,
+  },
+  openDraftBtnModal: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: 6,
+    backgroundColor: colors.buttonOptionGreen,
+  },
+  openDraftBtnText: {
+    ...typography.label,
+    fontSize: 12,
+    color: '#fff',
   },
 });
 

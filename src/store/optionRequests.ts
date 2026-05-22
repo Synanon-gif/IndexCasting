@@ -526,7 +526,9 @@ export function addOptionRequest(
         const bookingCountryCode = (countryCodeUsedForBooking ?? countryCodeUsed ?? '')
           .trim()
           .toUpperCase();
-        if (user?.id && organizationId && bookingCountryCode) {
+        // B2B booking card must be created per option_request even when MAT fallback left
+        // countryCodeUsedForBooking null (empty country_code in metadata is acceptable).
+        if (user?.id && organizationId && result.agency_id) {
           void createBookingMessageInClientAgencyChat({
             agencyId: result.agency_id,
             actingUserId: user.id,
