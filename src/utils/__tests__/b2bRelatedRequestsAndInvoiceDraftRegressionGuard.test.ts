@@ -42,14 +42,15 @@ describe('B2B related requests — store regression guard', () => {
 });
 
 describe('B2B related requests — mobile + desktop UI regression guard', () => {
-  it('OrgMessengerInline renders horizontal related-request strip above composer', () => {
+  it('OrgMessengerInline merges orphan related requests into the message timeline', () => {
     const src = readSrc('src/components/OrgMessengerInline.tsx');
     expect(src).toMatch(/relatedOptionRequests\?:\s*B2bRelatedOptionRequestSummary\[\]/);
-    expect(src).toMatch(/horizontal/);
-    expect(src).toMatch(/keyboardShouldPersistTaps="handled"/);
-    expect(src).toMatch(/relatedRequestsScrollView/);
-    expect(src).toMatch(/minWidth:\s*0/);
+    expect(src).toMatch(/buildB2bOrgChatTimeline/);
+    expect(src).toMatch(/chatTimeline\.map/);
+    expect(src).toMatch(/kind === 'related_request'/);
     expect(src).toMatch(/onOpenRelatedRequest\(req\.id\)/);
+    expect(src).not.toMatch(/relatedRequestsStrip/);
+    expect(src).not.toMatch(/relatedRequestsScrollView/);
   });
 
   it('ClientWebApp wires related requests for B2B org chat (web split + mobile fullscreen)', () => {
@@ -77,6 +78,7 @@ describe('B2B related requests — filter regression guard', () => {
     expect(src).toMatch(/seen\.has\(r\.id\)/);
     expect(src).toMatch(/clientOrganizationId !== clientOrg/);
     expect(src).toMatch(/agencyOrganizationId !== agencyOrg/);
+    expect(src).toMatch(/buildB2bOrgChatTimeline/);
     expect(src).not.toMatch(/conversation_id/);
     expect(src).not.toMatch(/seen\.has\([^)]*conversation/);
   });

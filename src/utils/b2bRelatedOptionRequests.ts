@@ -70,3 +70,68 @@ export function relatedRequestCardTitle(
   if (requestType === 'casting') return 'casting';
   return 'option';
 }
+
+export type B2bOrgChatMessageTimelineSource = {
+  id: string;
+  created_at: string;
+  message_type?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type B2bOrgChatTimelineEntry<T extends B2bOrgChatMessageTimelineSource> =
+  | { kind: 'message'; message: T }
+  | { kind: 'related_request'; request: B2bRelatedOptionRequestSummary };
+
+function timelineSortKeyForRelatedRequest(date: string): number {
+  const trimmed = date.trim();
+  if (!trimmed) return 0;
+  const parsed = Date.parse(`${trimmed}T12:00:00.000Z`);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Merges B2B chat messages with related option requests that have no booking card
+ * message yet. Result is chronological (ascending) for inline thread rendering.
+ */
+export function buildB2bOrgChatTimeline<T extends B2bOrgChatMessageTimelineSource>(
+  messages: ReadonlyArray<T>,
+  relatedRequests: ReadonlyArray<B2bRelatedOptionRequestSummary>,
+): Array<B2bOrgChatTimelineEntry<T>> {
+  const coveredOptionRequestIds = new Set<string>();
+  for (const m of messages) {
+    if (m.message_type !== 'booking') continue;
+    const optionRequestId = m.metadata?.option_request_id;
+    if (typeof optionRequestId === 'string' && optionRequestId.trim()) {
+      coveredOptionRequestIds.add(optionRequestId.trim());
+    }
+  }
+
+  const orphans = relatedRequests.filter((r) => !coveredOptionRequestIds.has(r.id));
+
+  type Sortable = { sortKey: number; tieBreaker: string; entry: B2bOrgChatTimelineEntry<T> };
+  const sortable: Sortable[] = [];
+
+  for (const m of messages) {
+    const sortKey = Date.parse(m.created_at);
+    sortable.push({
+      sortKey: Number.isFinite(sortKey) ? sortKey : 0,
+      tieBreaker: m.id,
+      entry: { kind: 'message', message: m },
+    });
+  }
+
+  for (const r of orphans) {
+    sortable.push({
+      sortKey: timelineSortKeyForRelatedRequest(r.date),
+      tieBreaker: r.id,
+      entry: { kind: 'related_request', request: r },
+    });
+  }
+
+  sortable.sort((a, b) => {
+    if (a.sortKey !== b.sortKey) return a.sortKey - b.sortKey;
+    return a.tieBreaker.localeCompare(b.tieBreaker);
+  });
+
+  return sortable.map((s) => s.entry);
+}

@@ -1,4 +1,5 @@
 import {
+  buildB2bOrgChatTimeline,
   filterRelatedOptionRequestsForB2BConversation,
   relatedRequestCardTitle,
 } from '../b2bRelatedOptionRequests';
@@ -153,6 +154,71 @@ describe('filterRelatedOptionRequestsForB2BConversation', () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.id).toBe('req-ok');
+  });
+});
+
+describe('buildB2bOrgChatTimeline', () => {
+  it('merges orphan related requests chronologically with messages', () => {
+    const timeline = buildB2bOrgChatTimeline(
+      [
+        {
+          id: 'msg-1',
+          created_at: '2026-05-21T10:00:00.000Z',
+          message_type: 'package',
+        },
+        {
+          id: 'msg-2',
+          created_at: '2026-05-23T09:00:00.000Z',
+          message_type: 'text',
+        },
+      ],
+      [
+        {
+          id: 'req-a',
+          modelName: 'Rémi Lovisolo',
+          date: '2026-05-22',
+          status: 'in_negotiation',
+        },
+      ],
+    );
+    expect(timeline.map((e) => (e.kind === 'message' ? e.message.id : e.request.id))).toEqual([
+      'msg-1',
+      'req-a',
+      'msg-2',
+    ]);
+  });
+
+  it('skips related requests that already have a booking card message', () => {
+    const timeline = buildB2bOrgChatTimeline(
+      [
+        {
+          id: 'msg-booking',
+          created_at: '2026-05-21T10:00:00.000Z',
+          message_type: 'booking',
+          metadata: { option_request_id: 'req-a' },
+        },
+      ],
+      [
+        {
+          id: 'req-a',
+          modelName: 'Ruben E',
+          date: '2026-05-21',
+          status: 'in_negotiation',
+        },
+        {
+          id: 'req-b',
+          modelName: 'Rémi Lovisolo',
+          date: '2026-05-22',
+          status: 'in_negotiation',
+        },
+      ],
+    );
+    expect(timeline).toHaveLength(2);
+    expect(timeline[0]?.kind).toBe('message');
+    expect(timeline[1]?.kind).toBe('related_request');
+    if (timeline[1]?.kind === 'related_request') {
+      expect(timeline[1].request.id).toBe('req-b');
+    }
   });
 });
 

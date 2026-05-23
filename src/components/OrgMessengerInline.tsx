@@ -27,6 +27,7 @@ import {
 } from './orgMessengerMessageLayout';
 import { uiCopy } from '../constants/uiCopy';
 import {
+  buildB2bOrgChatTimeline,
   relatedRequestCardTitle,
   type B2bRelatedOptionRequestSummary,
 } from '../utils/b2bRelatedOptionRequests';
@@ -143,7 +144,7 @@ export type OrgMessengerInlineProps = {
   onMarkedAllRead?: () => void;
   /**
    * Option/casting/job requests for this Client↔Agency org pair (deduped by request id).
-   * Shown in the composer strip so multiple related requests stay reachable.
+   * Orphans without a booking card message are merged into the message timeline chronologically.
    */
   relatedOptionRequests?: B2bRelatedOptionRequestSummary[];
 };
@@ -682,7 +683,61 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 
   const incomingOrgTextBubble = bubbleColorsForSender('client');
 
-  const messageNodes = msgs.map((m) => {
+  const chatTimeline = useMemo(
+    () => buildB2bOrgChatTimeline(msgs, onOpenRelatedRequest ? relatedOptionRequests : []),
+    [msgs, relatedOptionRequests, onOpenRelatedRequest],
+  );
+
+  const messageNodes = chatTimeline.map((entry) => {
+    if (entry.kind === 'related_request') {
+      const req = entry.request;
+      const kind = relatedRequestCardTitle(req.requestType, req.finalStatus);
+      const cardTitle =
+        kind === 'job'
+          ? uiCopy.b2bChat.bookingCardTitle
+          : kind === 'casting'
+            ? uiCopy.b2bChat.castingCardTitle
+            : uiCopy.b2bChat.optionCardTitle;
+      const statusLabel =
+        req.finalStatus === 'job_confirmed' || req.status === 'confirmed'
+          ? bookingStatusLabel('model_confirmed')
+          : bookingStatusLabel('pending');
+      const isConfirmed = req.finalStatus === 'job_confirmed' || req.status === 'confirmed';
+
+      return (
+        <View key={`related-${req.id}`} style={styles.msgBlock}>
+          <View style={getOrgMessengerMessageColumnStyle(false)}>
+            <Text style={[styles.senderLine, getOrgMessengerSenderLineExtraStyle(false)]}>
+              {cardTitle}
+            </Text>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>{cardTitle}</Text>
+              <Text style={styles.chatBubbleText} numberOfLines={2}>
+                {uiCopy.b2bChat.bookingModelLabel}: {req.modelName}
+              </Text>
+              <Text style={styles.metaHint}>
+                {uiCopy.b2bChat.bookingDateLabel}: {req.date || '—'}
+              </Text>
+              <View style={[styles.statusBadge, isConfirmed && styles.statusBadgeConfirmed]}>
+                <Text style={styles.statusBadgeLabel}>{statusLabel}</Text>
+              </View>
+              {onOpenRelatedRequest ? (
+                <View style={styles.cardActions}>
+                  <TouchableOpacity
+                    style={styles.cardBtn}
+                    onPress={() => onOpenRelatedRequest(req.id)}
+                  >
+                    <Text style={styles.cardBtnLabel}>{uiCopy.b2bChat.openRelatedRequest}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    const m = entry.message;
     const pt = payloadType(m);
     const rawFileUrl = (m as { file_url?: string | null }).file_url ?? null;
     const fileType = (m as { file_type?: string | null }).file_type ?? null;
@@ -1040,45 +1095,6 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 
   const messengerComposer = (
     <>
-      {relatedOptionRequests.length > 0 && onOpenRelatedRequest ? (
-        <View style={styles.relatedRequestsStrip}>
-          <Text style={styles.relatedRequestsTitle}>{uiCopy.b2bChat.relatedRequestsTitle}</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={Platform.OS !== 'web'}
-            style={styles.relatedRequestsScrollView}
-            contentContainerStyle={styles.relatedRequestsScroll}
-            keyboardShouldPersistTaps="handled"
-            nestedScrollEnabled
-          >
-            {relatedOptionRequests.map((req) => {
-              const kind = relatedRequestCardTitle(req.requestType, req.finalStatus);
-              const title =
-                kind === 'job'
-                  ? uiCopy.b2bChat.bookingCardTitle
-                  : kind === 'casting'
-                    ? uiCopy.b2bChat.castingCardTitle
-                    : uiCopy.b2bChat.optionCardTitle;
-              return (
-                <View key={req.id} style={styles.relatedRequestCard}>
-                  <Text style={styles.relatedRequestCardTitle} numberOfLines={1}>
-                    {title}
-                  </Text>
-                  <Text style={styles.relatedRequestCardMeta} numberOfLines={1}>
-                    {req.modelName} · {req.date}
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.cardBtn}
-                    onPress={() => onOpenRelatedRequest(req.id)}
-                  >
-                    <Text style={styles.cardBtnLabel}>{uiCopy.b2bChat.openRelatedRequest}</Text>
-                  </TouchableOpacity>
-                </View>
-              );
-            })}
-          </ScrollView>
-        </View>
-      ) : null}
       {sendError ? <Text style={styles.uploadError}>{sendError}</Text> : null}
       {uploadError ? <Text style={styles.uploadError}>{uploadError}</Text> : null}
       {Platform.OS === 'web' && showConsentRow ? (
@@ -1710,51 +1726,5 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textSecondary,
     fontSize: 13,
-  },
-  relatedRequestsStrip: {
-    alignSelf: 'stretch',
-    width: '100%',
-    minWidth: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
-    gap: spacing.xs,
-  },
-  relatedRequestsScrollView: {
-    width: '100%',
-    minWidth: 0,
-    flexGrow: 0,
-  },
-  relatedRequestsTitle: {
-    ...typography.label,
-    fontSize: 11,
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  relatedRequestsScroll: {
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  relatedRequestCard: {
-    minWidth: 168,
-    maxWidth: 220,
-    padding: spacing.sm,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    gap: 4,
-  },
-  relatedRequestCardTitle: {
-    ...typography.label,
-    fontSize: 12,
-    color: colors.textPrimary,
-  },
-  relatedRequestCardMeta: {
-    ...typography.body,
-    fontSize: 11,
-    color: colors.textSecondary,
   },
 });
