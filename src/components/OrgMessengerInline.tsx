@@ -28,6 +28,7 @@ import {
 import { uiCopy } from '../constants/uiCopy';
 import {
   buildB2bOrgChatTimeline,
+  relatedOptionRequestWorkflowBadge,
   relatedRequestCardTitle,
   type B2bRelatedOptionRequestSummary,
 } from '../utils/b2bRelatedOptionRequests';
@@ -698,11 +699,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           : kind === 'casting'
             ? uiCopy.b2bChat.castingCardTitle
             : uiCopy.b2bChat.optionCardTitle;
-      const statusLabel =
-        req.finalStatus === 'job_confirmed' || req.status === 'confirmed'
-          ? bookingStatusLabel('model_confirmed')
-          : bookingStatusLabel('pending');
-      const isConfirmed = req.finalStatus === 'job_confirmed' || req.status === 'confirmed';
+      const workflowBadge = relatedOptionRequestWorkflowBadge(req);
 
       return (
         <View key={`related-${req.id}`} style={styles.msgBlock}>
@@ -718,8 +715,19 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
               <Text style={styles.metaHint}>
                 {uiCopy.b2bChat.bookingDateLabel}: {req.date || '—'}
               </Text>
-              <View style={[styles.statusBadge, isConfirmed && styles.statusBadgeConfirmed]}>
-                <Text style={styles.statusBadgeLabel}>{statusLabel}</Text>
+              <View
+                style={[
+                  styles.statusBadge,
+                  {
+                    backgroundColor: workflowBadge.backgroundColor,
+                    borderColor: workflowBadge.color,
+                    borderWidth: 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.statusBadgeLabel, { color: workflowBadge.color }]}>
+                  {workflowBadge.label}
+                </Text>
               </View>
               {onOpenRelatedRequest ? (
                 <View style={styles.cardActions}>

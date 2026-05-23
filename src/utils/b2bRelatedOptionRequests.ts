@@ -3,6 +3,11 @@
  * Dedupes by option_request id only — never by conversation or model slot.
  */
 
+import {
+  optionRequestWorkflowBadge,
+  type OptionRequestWorkflowBadge,
+} from './negotiationWorkflowLabel';
+
 export type B2bRelatedOptionRequestSummary = {
   id: string;
   modelName: string;
@@ -10,6 +15,9 @@ export type B2bRelatedOptionRequestSummary = {
   requestType?: 'option' | 'casting';
   finalStatus?: string;
   status: string;
+  proposedPrice?: number;
+  agencyCounterPrice?: number;
+  clientPriceStatus?: 'pending' | 'accepted' | 'rejected';
 };
 
 type RelatedOptionRequestSource = {
@@ -19,6 +27,9 @@ type RelatedOptionRequestSource = {
   requestType?: 'option' | 'casting';
   finalStatus?: string;
   status: string;
+  proposedPrice?: number;
+  agencyCounterPrice?: number;
+  clientPriceStatus?: 'pending' | 'accepted' | 'rejected';
   clientOrganizationId?: string;
   agencyOrganizationId?: string;
   isAgencyOnly?: boolean;
@@ -50,6 +61,9 @@ export function filterRelatedOptionRequestsForB2BConversation(
       requestType: r.requestType,
       finalStatus: r.finalStatus,
       status: r.status,
+      proposedPrice: r.proposedPrice,
+      agencyCounterPrice: r.agencyCounterPrice,
+      clientPriceStatus: r.clientPriceStatus,
     });
   }
 
@@ -60,6 +74,20 @@ export function filterRelatedOptionRequestsForB2BConversation(
   });
 
   return matched;
+}
+
+/** Workflow badge for inline B2B org-chat related-request cards — same source as negotiation UI. */
+export function relatedOptionRequestWorkflowBadge(
+  req: Pick<
+    B2bRelatedOptionRequestSummary,
+    'status' | 'finalStatus' | 'proposedPrice' | 'agencyCounterPrice' | 'clientPriceStatus'
+  >,
+): OptionRequestWorkflowBadge {
+  return optionRequestWorkflowBadge(req.status, req.finalStatus ?? null, {
+    clientPriceStatus: req.clientPriceStatus ?? null,
+    agencyCounterPrice: req.agencyCounterPrice ?? null,
+    proposedPrice: req.proposedPrice ?? null,
+  });
 }
 
 export function relatedRequestCardTitle(

@@ -14,6 +14,7 @@ describe('option/casting status copy', () => {
 
   it('keeps final status and context labels consistent', () => {
     expect(uiCopy.dashboard.optionRequestStatusConfirmed).toBe('Confirmed');
+    expect(uiCopy.dashboard.optionRequestStatusOptionConfirmed).toBe('Option confirmed');
     expect(uiCopy.dashboard.optionRequestStatusJobConfirmed).toBe('Job confirmed');
     expect(uiCopy.dashboard.optionRequestStatusPending).toBe('Pending');
     expect(uiCopy.dashboard.threadContextOption).toBe('Option');

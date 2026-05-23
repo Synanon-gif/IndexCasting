@@ -48,6 +48,8 @@ describe('B2B related requests — mobile + desktop UI regression guard', () => 
     expect(src).toMatch(/buildB2bOrgChatTimeline/);
     expect(src).toMatch(/chatTimeline\.map/);
     expect(src).toMatch(/kind === 'related_request'/);
+    expect(src).toMatch(/relatedOptionRequestWorkflowBadge/);
+    expect(src).toMatch(/workflowBadge\.label/);
     expect(src).toMatch(/onOpenRelatedRequest\(req\.id\)/);
     expect(src).toMatch(/onOpenRelatedRequest \? relatedOptionRequests : \[\]/);
     expect(src).toMatch(/uiCopy\.b2bChat\.openRelatedRequest/);
@@ -85,9 +87,18 @@ describe('B2B related requests — mobile + desktop UI regression guard', () => 
   it('b2bRelatedOptionRequests exports timeline builder used by OrgMessengerInline', () => {
     const util = readSrc('src/utils/b2bRelatedOptionRequests.ts');
     expect(util).toMatch(/export function buildB2bOrgChatTimeline/);
+    expect(util).toMatch(/export function relatedOptionRequestWorkflowBadge/);
+    expect(util).toMatch(/optionRequestWorkflowBadge/);
     expect(util).toMatch(/message_type !== 'booking'/);
     expect(util).toMatch(/metadata\?\.option_request_id/);
     expect(util).toMatch(/sortKey - b\.sortKey/);
+  });
+
+  it('negotiationWorkflowLabel is the canonical option-request badge source', () => {
+    const src = readSrc('src/utils/negotiationWorkflowLabel.ts');
+    expect(src).toMatch(/export function optionRequestWorkflowBadge/);
+    expect(src).toMatch(/case 'Option confirmed':/);
+    expect(src).toMatch(/optionRequestStatusOptionConfirmed/);
   });
 });
 

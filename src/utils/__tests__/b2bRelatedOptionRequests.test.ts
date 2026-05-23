@@ -1,8 +1,10 @@
 import {
   buildB2bOrgChatTimeline,
   filterRelatedOptionRequestsForB2BConversation,
+  relatedOptionRequestWorkflowBadge,
   relatedRequestCardTitle,
 } from '../b2bRelatedOptionRequests';
+import { uiCopy } from '../../constants/uiCopy';
 
 const CLIENT_ORG = 'client-org-1';
 const AGENCY_ORG = 'agency-org-1';
@@ -359,5 +361,26 @@ describe('buildB2bOrgChatTimeline', () => {
 describe('relatedRequestCardTitle', () => {
   it('labels job_confirmed as job', () => {
     expect(relatedRequestCardTitle('option', 'job_confirmed')).toBe('job');
+  });
+});
+
+describe('relatedOptionRequestWorkflowBadge', () => {
+  it('does not map option_confirmed to Pending', () => {
+    const badge = relatedOptionRequestWorkflowBadge({
+      status: 'in_negotiation',
+      finalStatus: 'option_confirmed',
+    });
+    expect(badge.label).toBe(uiCopy.dashboard.optionRequestStatusOptionConfirmed);
+    expect(badge.label).not.toBe(uiCopy.dashboard.optionRequestStatusPending);
+  });
+
+  it('passes price signals through for Price agreed', () => {
+    const badge = relatedOptionRequestWorkflowBadge({
+      status: 'in_negotiation',
+      finalStatus: 'option_pending',
+      clientPriceStatus: 'accepted',
+      proposedPrice: 1200,
+    });
+    expect(badge.label).toBe(uiCopy.dashboard.optionRequestStatusPriceAgreed);
   });
 });

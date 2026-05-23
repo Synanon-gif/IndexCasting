@@ -3328,6 +3328,8 @@ export const uiCopy = {
     /** After client_price_status accepted + commercial anchor; before option_confirmed / job. */
     optionRequestStatusPriceAgreed: 'Price agreed',
     optionRequestStatusConfirmed: 'Confirmed',
+    /** Workflow badge when toDisplayStatus === Option confirmed (availability cleared, job not final). */
+    optionRequestStatusOptionConfirmed: 'Option confirmed',
     /** Agency confirmed availability (option_confirmed) but linked model has not confirmed yet — not fully closed. */
     optionRequestStatusAvailabilityConfirmedAwaitingModel:
       'Availability confirmed · awaiting model',
