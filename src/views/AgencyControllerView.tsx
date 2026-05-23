@@ -318,8 +318,10 @@ import { formatOptionMoneyAmount } from '../utils/optionMoneyFormat';
 import { attentionHeaderLabelFromSignals } from '../utils/negotiationAttentionLabels';
 import {
   filterOptionRequestThreads,
-  type OptionRequestTimeFilter,
-  type OptionRequestTypeFilter,
+  toggleOptionRequestTimeFilter,
+  toggleOptionRequestTypeFilter,
+  type OptionRequestTimeChip,
+  type OptionRequestTypeChip,
 } from '../utils/optionRequestThreadFilters';
 import { isPriceNegotiationRequest } from '../utils/priceNegotiationRequest';
 import { toDisplayStatus } from '../utils/statusHelpers';
@@ -6900,8 +6902,12 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [editingAssignmentThreadId, setEditingAssignmentThreadId] = useState<string | null>(null);
   const [msgFilter, setMsgFilter] = useState<'current' | 'archived' | 'applications'>('current');
   const [attentionFilter, setAttentionFilter] = useState<'all' | 'action_required'>('all');
-  const [requestTypeFilter, setRequestTypeFilter] = useState<OptionRequestTypeFilter>('all');
-  const [requestTimeFilter, setRequestTimeFilter] = useState<OptionRequestTimeFilter>('all');
+  const [requestTypeFilters, setRequestTypeFilters] = useState<Set<OptionRequestTypeChip>>(
+    () => new Set(),
+  );
+  const [requestTimeFilters, setRequestTimeFilters] = useState<Set<OptionRequestTimeChip>>(
+    () => new Set(),
+  );
   const [unifiedOrgFilter, setUnifiedOrgFilter] = useState<string | null>(null);
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set();
@@ -7184,8 +7190,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         assignmentByClientOrgId,
         currentUserId,
         attentionFilter,
-        requestTypeFilter,
-        requestTimeFilter,
+        typeFilters: requestTypeFilters,
+        timeFilters: requestTimeFilters,
         role: 'agency',
       }),
     [
@@ -7196,8 +7202,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       assignmentByClientOrgId,
       currentUserId,
       attentionFilter,
-      requestTypeFilter,
-      requestTimeFilter,
+      requestTypeFilters,
+      requestTimeFilters,
     ],
   );
 
@@ -8661,7 +8667,6 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 >
                   {(
                     [
-                      ['all', uiCopy.messages.optionRequestTypeFilterAll],
                       ['options', uiCopy.messages.optionRequestTypeFilterOptions],
                       ['castings', uiCopy.messages.optionRequestTypeFilterCastings],
                       ['jobs', uiCopy.messages.optionRequestTypeFilterJobs],
@@ -8669,13 +8674,15 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   ).map(([key, label]) => (
                     <TouchableOpacity
                       key={key}
-                      style={[s.filterPill, requestTypeFilter === key && s.filterPillActive]}
-                      onPress={() => setRequestTypeFilter(key)}
+                      style={[s.filterPill, requestTypeFilters.has(key) && s.filterPillActive]}
+                      onPress={() =>
+                        setRequestTypeFilters((prev) => toggleOptionRequestTypeFilter(prev, key))
+                      }
                     >
                       <Text
                         style={[
                           s.filterPillLabel,
-                          requestTypeFilter === key && s.filterPillLabelActive,
+                          requestTypeFilters.has(key) && s.filterPillLabelActive,
                         ]}
                       >
                         {label}
@@ -8696,20 +8703,21 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 >
                   {(
                     [
-                      ['all', uiCopy.messages.optionRequestTimeFilterAll],
                       ['future', uiCopy.messages.optionRequestTimeFilterFuture],
                       ['past', uiCopy.messages.optionRequestTimeFilterPast],
                     ] as const
                   ).map(([key, label]) => (
                     <TouchableOpacity
                       key={key}
-                      style={[s.filterPill, requestTimeFilter === key && s.filterPillActive]}
-                      onPress={() => setRequestTimeFilter(key)}
+                      style={[s.filterPill, requestTimeFilters.has(key) && s.filterPillActive]}
+                      onPress={() =>
+                        setRequestTimeFilters((prev) => toggleOptionRequestTimeFilter(prev, key))
+                      }
                     >
                       <Text
                         style={[
                           s.filterPillLabel,
-                          requestTimeFilter === key && s.filterPillLabelActive,
+                          requestTimeFilters.has(key) && s.filterPillLabelActive,
                         ]}
                       >
                         {label}

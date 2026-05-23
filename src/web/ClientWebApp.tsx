@@ -223,6 +223,13 @@ import { attentionHeaderLabelFromSignals } from '../utils/negotiationAttentionLa
 import { attentionSignalsFromOptionRequestLike } from '../utils/optionRequestAttention';
 import { isPriceNegotiationRequest } from '../utils/priceNegotiationRequest';
 import { extractCounterparties } from '../utils/threadFilters';
+import {
+  filterOptionRequestThreads,
+  toggleOptionRequestTimeFilter,
+  toggleOptionRequestTypeFilter,
+  type OptionRequestTimeChip,
+  type OptionRequestTypeChip,
+} from '../utils/optionRequestThreadFilters';
 import { toDisplayStatus } from '../utils/statusHelpers';
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
 import { filterRelatedOptionRequestsForB2BConversation } from '../utils/b2bRelatedOptionRequests';
@@ -6104,6 +6111,12 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     assignedMemberUserId: 'all',
   });
   const [attentionFilter, setAttentionFilter] = useState<'all' | 'action_required'>('all');
+  const [requestTypeFilters, setRequestTypeFilters] = useState<Set<OptionRequestTypeChip>>(
+    () => new Set(),
+  );
+  const [requestTimeFilters, setRequestTimeFilters] = useState<Set<OptionRequestTimeChip>>(
+    () => new Set(),
+  );
   const [counterpartyFilter, setCounterpartyFilter] = useState<string | null>(null);
   const [deletingOptionId, setDeletingOptionId] = useState<string | null>(null);
   const [deleteOptionModalVisible, setDeleteOptionModalVisible] = useState(false);
@@ -6216,53 +6229,38 @@ const MessagesView: React.FC<MessagesViewProps> = ({
 
   const clientCounterparties = useMemo(() => extractCounterparties(requests, 'client'), [requests]);
 
-  const visibleRequests = requests.filter((r) => {
-    if (msgFilter === 'archived' ? !archivedIds.has(r.threadId) : archivedIds.has(r.threadId))
-      return false;
-    if (counterpartyFilter) {
-      const agencyKey = r.agencyOrganizationId ?? r.agencyId ?? '';
-      if (agencyKey !== counterpartyFilter) return false;
-    }
-    if (clientMsgSearch.trim()) {
-      const q = clientMsgSearch.trim().toLowerCase();
-      return (
-        (r.modelName ?? '').toLowerCase().includes(q) ||
-        (r.clientName ?? '').toLowerCase().includes(q)
-      );
-    }
-    const assignment = r.clientOrganizationId
-      ? assignmentByClientOrgId[r.clientOrganizationId]
-      : undefined;
-    if (assignmentFilters.scope === 'mine' && assignment?.assignedMemberUserId !== currentUserId)
-      return false;
-    if (assignmentFilters.scope === 'unassigned' && !!assignment?.assignedMemberUserId)
-      return false;
-    if (
-      assignmentFilters.flagLabel !== 'all' &&
-      (assignment?.label ?? '').toLowerCase() !== assignmentFilters.flagLabel.toLowerCase()
-    )
-      return false;
-    if (
-      assignmentFilters.assignedMemberUserId !== 'all' &&
-      assignment?.assignedMemberUserId !== assignmentFilters.assignedMemberUserId
-    )
-      return false;
-    if (attentionFilter === 'action_required') {
-      const sig = attentionSignalsFromOptionRequestLike({
-        status: r.status,
-        finalStatus: r.finalStatus ?? null,
-        clientPriceStatus: r.clientPriceStatus ?? null,
-        modelApproval: r.modelApproval,
-        modelAccountLinked: r.modelAccountLinked ?? false,
-        agencyCounterPrice: r.agencyCounterPrice ?? null,
-        proposedPrice: r.proposedPrice ?? null,
-        isAgencyOnly: r.isAgencyOnly ?? false,
-        requestType: r.requestType ?? null,
-      });
-      if (!attentionHeaderLabelFromSignals(sig, 'client')) return false;
-    }
-    return true;
-  });
+  const visibleRequests = useMemo(
+    () =>
+      filterOptionRequestThreads({
+        requests,
+        msgFilter: msgFilter === 'archived' ? 'archived' : 'current',
+        archivedIds,
+        assignmentByClientOrgId,
+        currentUserId,
+        attentionFilter,
+        typeFilters: requestTypeFilters,
+        timeFilters: requestTimeFilters,
+        role: 'client',
+        counterpartyFilter,
+        assignmentFilters,
+        searchQuery: clientMsgSearch,
+        clientOrganizationId: clientOrgId,
+      }),
+    [
+      requests,
+      msgFilter,
+      archivedIds,
+      assignmentByClientOrgId,
+      currentUserId,
+      attentionFilter,
+      requestTypeFilters,
+      requestTimeFilters,
+      counterpartyFilter,
+      assignmentFilters,
+      clientMsgSearch,
+      clientOrgId,
+    ],
+  );
 
   const request = selectedThreadId ? getRequestByThreadId(selectedThreadId) : null;
   const messages = selectedThreadId ? getMessages(selectedThreadId) : [];
@@ -6710,6 +6708,83 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   </Text>
                 </TouchableOpacity>
               </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                style={{ marginBottom: spacing.sm, maxWidth: '100%' }}
+                contentContainerStyle={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: spacing.xs,
+                }}
+              >
+                {(
+                  [
+                    ['options', uiCopy.messages.optionRequestTypeFilterOptions],
+                    ['castings', uiCopy.messages.optionRequestTypeFilterCastings],
+                    ['jobs', uiCopy.messages.optionRequestTypeFilterJobs],
+                  ] as const
+                ).map(([key, label]) => (
+                  <TouchableOpacity
+                    key={key}
+                    style={[
+                      styles.filterPill,
+                      requestTypeFilters.has(key) && styles.filterPillActive,
+                    ]}
+                    onPress={() =>
+                      setRequestTypeFilters((prev) => toggleOptionRequestTypeFilter(prev, key))
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.filterPillLabel,
+                        requestTypeFilters.has(key) && styles.filterPillLabelActive,
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                style={{ marginBottom: spacing.sm, maxWidth: '100%' }}
+                contentContainerStyle={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: spacing.xs,
+                }}
+              >
+                {(
+                  [
+                    ['future', uiCopy.messages.optionRequestTimeFilterFuture],
+                    ['past', uiCopy.messages.optionRequestTimeFilterPast],
+                  ] as const
+                ).map(([key, label]) => (
+                  <TouchableOpacity
+                    key={key}
+                    style={[
+                      styles.filterPill,
+                      requestTimeFilters.has(key) && styles.filterPillActive,
+                    ]}
+                    onPress={() =>
+                      setRequestTimeFilters((prev) => toggleOptionRequestTimeFilter(prev, key))
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.filterPillLabel,
+                        requestTimeFilters.has(key) && styles.filterPillLabelActive,
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
               {Object.keys(assignmentByClientOrgId).length > 0 && (
                 <View
                   style={{
