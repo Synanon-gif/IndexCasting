@@ -55,7 +55,6 @@ import {
   agencyRejectClientPriceStore,
   agencyConfirmJobAgencyOnlyStore,
   createAgencyOnlyOptionRequest,
-  type ChatStatus,
 } from '../store/optionRequests';
 import { subscribeToOptionMessages } from '../services/optionRequestsSupabase';
 import { AgencyRecruitingView } from './AgencyRecruitingView';
@@ -280,7 +279,6 @@ import {
   mergeModelForCompleteness,
   type CompletenessContext,
 } from '../utils/modelCompleteness';
-import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
 import { getCalendarDetailNextStepText } from '../utils/calendarDetailNextStep';
 import {
   buildUnifiedAgencyCalendarRows,
@@ -325,6 +323,8 @@ import {
 } from '../utils/optionRequestThreadFilters';
 import { isPriceNegotiationRequest } from '../utils/priceNegotiationRequest';
 import { toDisplayStatus } from '../utils/statusHelpers';
+import { optionRequestWorkflowBadge } from '../utils/negotiationWorkflowLabel';
+import { negotiationSystemMessageDisplayText } from '../utils/negotiationSystemMessageDisplayText';
 import {
   resolveCanonicalOptionRequestIdForCalendarItem,
   resolveCanonicalOptionRequestIdFromBookingCalendarEntry,
@@ -333,14 +333,6 @@ import {
   agencyNegotiationThreadSummaryHint,
   optionConfirmedBannerLabel,
 } from '../utils/modelAccountNegotiationCopy';
-
-const STATUS_LABELS: Record<ChatStatus, string> = {
-  in_negotiation: _uiCopy.dashboard.optionRequestStatusInNegotiation,
-  confirmed: _uiCopy.dashboard.optionRequestStatusConfirmed,
-  rejected: _uiCopy.dashboard.optionRequestStatusRejected,
-};
-
-const STATUS_COLORS: Record<ChatStatus, string> = OPTION_REQUEST_CHAT_STATUS_COLORS;
 
 // ISO country names for the territories multi-select.
 // Keep names in English for UI consistency.
@@ -7231,8 +7223,17 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         clientPriceStatus: request.clientPriceStatus ?? null,
         agencyCounterPrice: request.agencyCounterPrice ?? null,
         proposedPrice: request.proposedPrice ?? null,
+        requestType: request.requestType ?? null,
       })
     : 'Draft';
+  const workflowBadge = request
+    ? optionRequestWorkflowBadge(request.status, request.finalStatus ?? null, {
+        clientPriceStatus: request.clientPriceStatus ?? null,
+        agencyCounterPrice: request.agencyCounterPrice ?? null,
+        proposedPrice: request.proposedPrice ?? null,
+        requestType: request.requestType ?? null,
+      })
+    : null;
   const headerAttentionLabel = request
     ? attentionHeaderLabelFromSignals(
         attentionSignalsFromOptionRequestLike({
@@ -7254,13 +7255,19 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     : '';
   const negotiationFinalStatusLine =
     request && request.finalStatus
-      ? `${request.requestType === 'casting' ? _uiCopy.dashboard.threadContextCasting : _uiCopy.dashboard.threadContextOption} — ${optionConfirmedBannerLabel(
-          {
+      ? request.requestType === 'casting'
+        ? optionConfirmedBannerLabel({
             finalStatus: request.finalStatus,
             modelAccountLinked: request.modelAccountLinked,
             modelApproval: request.modelApproval,
-          },
-        )}`
+            requestType: request.requestType ?? null,
+          })
+        : `${_uiCopy.dashboard.threadContextOption} — ${optionConfirmedBannerLabel({
+            finalStatus: request.finalStatus,
+            modelAccountLinked: request.modelAccountLinked,
+            modelApproval: request.modelApproval,
+            requestType: request.requestType ?? null,
+          })}`
       : null;
   const negotiationRequestTypeLabel =
     request?.requestType === 'casting'
@@ -7272,6 +7279,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         modelApproval: request.modelApproval,
         finalStatus: request.finalStatus ?? null,
         status: request.status,
+        requestType: request.requestType ?? null,
       })
     : null;
   const showDesktopNegotiationRail = deviceType === 'desktop';
@@ -7690,8 +7698,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   }
                 : undefined
             }
-            statusLabel={status ? STATUS_LABELS[status] : '—'}
-            statusBackgroundColor={status ? STATUS_COLORS[status] : colors.border}
+            statusLabel={workflowBadge?.label ?? '—'}
+            statusBackgroundColor={workflowBadge?.backgroundColor ?? colors.border}
             headerBelowTitle={
               <NegotiationChipsRow
                 displayStatus={displayStatus}
@@ -7873,7 +7881,10 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     key={msg.id}
                     id={msg.id}
                     from={msg.from}
-                    text={msg.text}
+                    text={negotiationSystemMessageDisplayText(
+                      msg.text,
+                      request?.requestType ?? null,
+                    )}
                     viewerRole="agency"
                     compactTop={compact}
                     timeLabel={timeLabel}
@@ -8736,7 +8747,6 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     <Text style={s.metaText}>No messages.</Text>
                   ) : (
                     visible.map((r) => {
-                      const reqStatus = getRequestStatus(r.threadId) ?? r.status;
                       const assignment = r.clientOrganizationId
                         ? assignmentByClientOrgId[r.clientOrganizationId]
                         : undefined;
@@ -8767,6 +8777,16 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                           client_price_status: r.clientPriceStatus ?? null,
                           final_status: r.finalStatus ?? null,
                         });
+                      const listWorkflowBadge = optionRequestWorkflowBadge(
+                        r.status,
+                        r.finalStatus ?? null,
+                        {
+                          clientPriceStatus: r.clientPriceStatus ?? null,
+                          agencyCounterPrice: r.agencyCounterPrice ?? null,
+                          proposedPrice: r.proposedPrice ?? null,
+                          requestType: r.requestType ?? null,
+                        },
+                      );
                       return (
                         <View
                           key={r.threadId}
@@ -8870,10 +8890,13 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                               </Text>
                             </View>
                             <View
-                              style={[s.statusPill, { backgroundColor: STATUS_COLORS[reqStatus] }]}
+                              style={[
+                                s.statusPill,
+                                { backgroundColor: listWorkflowBadge.backgroundColor },
+                              ]}
                             >
                               <Text style={s.statusPillLabel} numberOfLines={1}>
-                                {STATUS_LABELS[reqStatus]}
+                                {listWorkflowBadge.label}
                               </Text>
                             </View>
                           </ScrollView>

@@ -80,13 +80,19 @@ export function filterRelatedOptionRequestsForB2BConversation(
 export function relatedOptionRequestWorkflowBadge(
   req: Pick<
     B2bRelatedOptionRequestSummary,
-    'status' | 'finalStatus' | 'proposedPrice' | 'agencyCounterPrice' | 'clientPriceStatus'
+    | 'status'
+    | 'finalStatus'
+    | 'proposedPrice'
+    | 'agencyCounterPrice'
+    | 'clientPriceStatus'
+    | 'requestType'
   >,
 ): OptionRequestWorkflowBadge {
   return optionRequestWorkflowBadge(req.status, req.finalStatus ?? null, {
     clientPriceStatus: req.clientPriceStatus ?? null,
     agencyCounterPrice: req.agencyCounterPrice ?? null,
     proposedPrice: req.proposedPrice ?? null,
+    requestType: req.requestType ?? null,
   });
 }
 

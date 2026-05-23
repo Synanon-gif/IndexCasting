@@ -10,9 +10,11 @@ import { priceCommerciallySettled } from './priceSettlement';
 
 export type DisplayStatus =
   | 'Draft'
+  | 'Pending'
   | 'In negotiation'
   | 'Price agreed'
   | 'Option confirmed'
+  | 'Casting confirmed'
   | 'Confirmed'
   | 'Rejected';
 
@@ -21,6 +23,7 @@ export type OptionPriceDisplaySignals = {
   clientPriceStatus?: 'pending' | 'accepted' | 'rejected' | null;
   agencyCounterPrice?: number | null;
   proposedPrice?: number | null;
+  requestType?: string | null;
 };
 
 /**
@@ -34,12 +37,16 @@ export function toDisplayStatus(
   finalStatus: string | null,
   priceSignals?: OptionPriceDisplaySignals | null,
 ): DisplayStatus {
+  const isCasting = priceSignals?.requestType === 'casting';
   if (finalStatus === 'job_confirmed') return 'Confirmed';
   if (status === 'confirmed' && finalStatus === 'option_confirmed') return 'Confirmed';
-  if (finalStatus === 'option_confirmed') return 'Option confirmed';
+  if (finalStatus === 'option_confirmed') {
+    return isCasting ? 'Casting confirmed' : 'Option confirmed';
+  }
   if (status === 'confirmed') return 'Confirmed';
   if (status === 'rejected') return 'Rejected';
   if (status === 'in_negotiation') {
+    if (isCasting) return 'Pending';
     if (
       priceSignals &&
       priceCommerciallySettled({
@@ -60,25 +67,41 @@ export function toDisplayStatus(
 /** Returns a color token for a given display status (Tailwind / RN compatible). */
 export function statusColor(displayStatus: DisplayStatus): string {
   switch (displayStatus) {
-    case 'Confirmed': return '#16a34a'; // green-600
-    case 'Option confirmed': return '#0d9488'; // teal-600
-    case 'Rejected':  return '#dc2626'; // red-600
-    case 'In negotiation': return '#d97706'; // amber-600
-    case 'Price agreed': return '#2563eb'; // blue-600
+    case 'Confirmed':
+      return '#16a34a'; // green-600
+    case 'Option confirmed':
+    case 'Casting confirmed':
+      return '#0d9488'; // teal-600
+    case 'Rejected':
+      return '#dc2626'; // red-600
+    case 'In negotiation':
+      return '#d97706'; // amber-600
+    case 'Price agreed':
+      return '#2563eb'; // blue-600
+    case 'Pending':
     case 'Draft':
-    default:          return '#6b7280'; // gray-500
+    default:
+      return '#6b7280'; // gray-500
   }
 }
 
 /** Returns the background color token for a status badge. */
 export function statusBgColor(displayStatus: DisplayStatus): string {
   switch (displayStatus) {
-    case 'Confirmed': return '#dcfce7'; // green-100
-    case 'Option confirmed': return '#ccfbf1'; // teal-100
-    case 'Rejected':  return '#fee2e2'; // red-100
-    case 'In negotiation': return '#fef3c7'; // amber-100
-    case 'Price agreed': return '#dbeafe'; // blue-100
+    case 'Confirmed':
+      return '#dcfce7'; // green-100
+    case 'Option confirmed':
+    case 'Casting confirmed':
+      return '#ccfbf1'; // teal-100
+    case 'Rejected':
+      return '#fee2e2'; // red-100
+    case 'In negotiation':
+      return '#fef3c7'; // amber-100
+    case 'Price agreed':
+      return '#dbeafe'; // blue-100
+    case 'Pending':
     case 'Draft':
-    default:          return '#f3f4f6'; // gray-100
+    default:
+      return '#f3f4f6'; // gray-100
   }
 }

@@ -18,6 +18,9 @@ describe('workflowLabelFromDisplayStatus', () => {
     expect(workflowLabelFromDisplayStatus('Option confirmed')).toBe(
       uiCopy.dashboard.optionRequestStatusOptionConfirmed,
     );
+    expect(workflowLabelFromDisplayStatus('Casting confirmed')).toBe(
+      uiCopy.dashboard.optionRequestStatusCastingConfirmed,
+    );
     expect(workflowLabelFromDisplayStatus('Confirmed')).toBe(
       uiCopy.dashboard.optionRequestStatusConfirmed,
     );
@@ -33,6 +36,22 @@ describe('optionRequestWorkflowBadge', () => {
     expect(badge.displayStatus).toBe('Option confirmed');
     expect(badge.label).toBe('Option confirmed');
     expect(badge.label).not.toBe(uiCopy.dashboard.optionRequestStatusPending);
+  });
+
+  it('uses casting confirmed label for casting + option_confirmed', () => {
+    const badge = optionRequestWorkflowBadge('in_negotiation', 'option_confirmed', {
+      requestType: 'casting',
+    });
+    expect(badge.displayStatus).toBe('Casting confirmed');
+    expect(badge.label).toBe(uiCopy.dashboard.optionRequestStatusCastingConfirmed);
+  });
+
+  it('uses Pending for casting before availability (not In negotiation)', () => {
+    const badge = optionRequestWorkflowBadge('in_negotiation', 'option_pending', {
+      requestType: 'casting',
+    });
+    expect(badge.displayStatus).toBe('Pending');
+    expect(badge.label).toBe(uiCopy.dashboard.optionRequestStatusPending);
   });
 
   it('shows Price agreed when commercial settlement is met before availability', () => {

@@ -16,6 +16,18 @@ describe('agencyNegotiationThreadSummaryHint', () => {
     ).toBe(uiCopy.optionNegotiationChat.noModelAppNegotiationHint);
   });
 
+  it('casting + no linked model → casting no-app hint', () => {
+    expect(
+      agencyNegotiationThreadSummaryHint({
+        modelAccountLinked: false,
+        modelApproval: 'approved',
+        finalStatus: 'option_confirmed',
+        status: 'in_negotiation',
+        requestType: 'casting',
+      }),
+    ).toBe(uiCopy.optionNegotiationChat.noModelAppNegotiationHintCasting);
+  });
+
   it('linked + model approved → availability confirmed hint', () => {
     expect(
       agencyNegotiationThreadSummaryHint({
@@ -61,6 +73,17 @@ describe('optionConfirmedBannerLabel', () => {
     ).toBe(uiCopy.dashboard.optionRequestStatusAvailabilityConfirmedAwaitingModel);
   });
 
+  it('casting option_confirmed + linked + model pending → casting awaiting model banner', () => {
+    expect(
+      optionConfirmedBannerLabel({
+        finalStatus: 'option_confirmed',
+        modelAccountLinked: true,
+        modelApproval: 'pending',
+        requestType: 'casting',
+      }),
+    ).toBe(uiCopy.dashboard.optionRequestStatusCastingConfirmedAwaitingModel);
+  });
+
   it('option_confirmed + no pending model → short confirmed', () => {
     expect(
       optionConfirmedBannerLabel({
@@ -69,5 +92,16 @@ describe('optionConfirmedBannerLabel', () => {
         modelApproval: 'approved',
       }),
     ).toBe(uiCopy.dashboard.optionRequestStatusConfirmed);
+  });
+
+  it('casting option_confirmed + no pending model → casting confirmed', () => {
+    expect(
+      optionConfirmedBannerLabel({
+        finalStatus: 'option_confirmed',
+        modelAccountLinked: false,
+        modelApproval: 'approved',
+        requestType: 'casting',
+      }),
+    ).toBe(uiCopy.dashboard.optionRequestStatusCastingConfirmed);
   });
 });

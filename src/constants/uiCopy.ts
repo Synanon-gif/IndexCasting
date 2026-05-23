@@ -1860,6 +1860,7 @@ export const uiCopy = {
     /** Centered workflow lines (`from_role = system`); not a participant chat message. */
     systemMessageLabel: 'System',
     agencyConfirmedAvailability: 'Agency confirmed availability for this option.',
+    agencyConfirmedAvailabilityCasting: 'Agency confirmed availability for this casting.',
     agencyAcceptedPrice: 'Agency accepted the proposed fee.',
     agencyDeclinedPrice: 'Agency declined the proposed fee. A counter offer can be sent below.',
     agencyCounterOffer: (price: number, currency: string) =>
@@ -1872,6 +1873,8 @@ export const uiCopy = {
     /** Agency-facing kind `no_model_account` in SQL RPC — persisted as from_role=system only. */
     noModelAccount:
       'No model app account on file — you can negotiate and confirm with the client without waiting for model approval. The booking will appear in client and agency calendars when confirmed.',
+    noModelAccountCasting:
+      'No model app account on file — you can confirm availability with the client without waiting for model approval. The booking will appear in client and agency calendars when confirmed.',
     /** Kind `no_model_account_client_notice`: `insert_option_request_system_message` → from_role=system (not a client chat line). */
     noModelAccountClientNotice:
       'No model app account on file. The agency can negotiate and confirm with you without waiting for model approval. When confirmed, the booking appears in both calendars.',
@@ -1934,6 +1937,8 @@ export const uiCopy = {
     /** Agency: no linked model account — client/agency negotiation does not wait on model app approval. */
     noModelAppNegotiationHint:
       'No model app account on file — negotiate and confirm with the client; calendars sync when the option is confirmed.',
+    noModelAppNegotiationHintCasting:
+      'No model app account on file — confirm availability with the client; calendars sync when the casting is confirmed.',
     clientAssignmentLabel: 'Client assignment',
     clientFlagLabel: 'Client flag',
     clientFlagNone: 'none',
@@ -3339,9 +3344,12 @@ export const uiCopy = {
     optionRequestStatusConfirmed: 'Confirmed',
     /** Workflow badge when toDisplayStatus === Option confirmed (availability cleared, job not final). */
     optionRequestStatusOptionConfirmed: 'Option confirmed',
+    /** Workflow badge when toDisplayStatus === Casting confirmed (casting availability cleared, job not final). */
+    optionRequestStatusCastingConfirmed: 'Casting confirmed',
     /** Agency confirmed availability (option_confirmed) but linked model has not confirmed yet — not fully closed. */
     optionRequestStatusAvailabilityConfirmedAwaitingModel:
       'Availability confirmed · awaiting model',
+    optionRequestStatusCastingConfirmedAwaitingModel: 'Casting confirmed · awaiting model',
     optionRequestStatusRejected: 'Rejected',
     optionRequestStatusJobConfirmed: 'Job confirmed',
     optionRequestStatusPending: 'Pending',

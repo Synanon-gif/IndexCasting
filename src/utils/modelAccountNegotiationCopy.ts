@@ -10,12 +10,17 @@ export type AgencyNegotiationSummaryInput = {
   modelApproval: string | undefined;
   finalStatus: string | null | undefined;
   status: string | undefined;
+  requestType?: string | null;
 };
 
 /** Short line under negotiation header (agency Messages / desktop rail). */
-export function agencyNegotiationThreadSummaryHint(input: AgencyNegotiationSummaryInput): string | null {
+export function agencyNegotiationThreadSummaryHint(
+  input: AgencyNegotiationSummaryInput,
+): string | null {
   if (input.modelAccountLinked === false) {
-    return uiCopy.optionNegotiationChat.noModelAppNegotiationHint;
+    return input.requestType === 'casting'
+      ? uiCopy.optionNegotiationChat.noModelAppNegotiationHintCasting
+      : uiCopy.optionNegotiationChat.noModelAppNegotiationHint;
   }
   if (input.modelApproval === 'approved') {
     return uiCopy.optionNegotiationChat.modelAvailabilityConfirmedHint;
@@ -42,16 +47,20 @@ export function optionConfirmedBannerLabel(input: {
   finalStatus: string | null | undefined;
   modelAccountLinked: boolean | null | undefined;
   modelApproval: string | undefined;
+  requestType?: string | null;
 }): string {
+  const isCasting = input.requestType === 'casting';
   if (input.finalStatus === 'job_confirmed') {
     return uiCopy.dashboard.optionRequestStatusJobConfirmed;
   }
   if (input.finalStatus === 'option_confirmed') {
-    if (
-      input.modelAccountLinked === true &&
-      input.modelApproval === 'pending'
-    ) {
-      return uiCopy.dashboard.optionRequestStatusAvailabilityConfirmedAwaitingModel;
+    if (input.modelAccountLinked === true && input.modelApproval === 'pending') {
+      return isCasting
+        ? uiCopy.dashboard.optionRequestStatusCastingConfirmedAwaitingModel
+        : uiCopy.dashboard.optionRequestStatusAvailabilityConfirmedAwaitingModel;
+    }
+    if (isCasting) {
+      return uiCopy.dashboard.optionRequestStatusCastingConfirmed;
     }
     return uiCopy.dashboard.optionRequestStatusConfirmed;
   }

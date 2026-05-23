@@ -163,7 +163,6 @@ import {
   clientAcceptCounterStore,
   clientConfirmJobStore,
   agencyConfirmJobAgencyOnlyStore,
-  type ChatStatus,
 } from '../store/optionRequests';
 import { resetB2bCachesAfterOrgDissolve } from '../utils/clearAgencyWorkspaceCachesAfterDissolve';
 import { subscribeToOptionMessages } from '../services/optionRequestsSupabase';
@@ -207,7 +206,6 @@ import { supabase } from '../../lib/supabase';
 import { loadArchivedThreadIds, setThreadArchived } from '../services/threadPreferencesSupabase';
 import { B2BUnifiedCalendarBody } from '../components/B2BUnifiedCalendarBody';
 import type { CalendarViewMode } from '../components/CalendarViewModeBar';
-import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
 import { getCalendarDetailNextStepText } from '../utils/calendarDetailNextStep';
 import {
   buildUnifiedAgencyCalendarRows,
@@ -231,6 +229,8 @@ import {
   type OptionRequestTypeChip,
 } from '../utils/optionRequestThreadFilters';
 import { toDisplayStatus } from '../utils/statusHelpers';
+import { optionRequestWorkflowBadge } from '../utils/negotiationWorkflowLabel';
+import { negotiationSystemMessageDisplayText } from '../utils/negotiationSystemMessageDisplayText';
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
 import { filterRelatedOptionRequestsForB2BConversation } from '../utils/b2bRelatedOptionRequests';
 import type { OptionRequest } from '../store/optionRequests';
@@ -5668,14 +5668,6 @@ const AgenciesView: React.FC<{
   );
 };
 
-const STATUS_LABELS: Record<ChatStatus, string> = {
-  in_negotiation: uiCopy.dashboard.optionRequestStatusInNegotiation,
-  confirmed: uiCopy.dashboard.optionRequestStatusConfirmed,
-  rejected: uiCopy.dashboard.optionRequestStatusRejected,
-};
-
-const STATUS_COLORS: Record<ChatStatus, string> = OPTION_REQUEST_CHAT_STATUS_COLORS;
-
 type MessagesViewProps = {
   openThreadId: string | null;
   onClearOpenThreadId: () => void;
@@ -6274,8 +6266,17 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         clientPriceStatus: request.clientPriceStatus ?? null,
         agencyCounterPrice: request.agencyCounterPrice ?? null,
         proposedPrice: request.proposedPrice ?? null,
+        requestType: request.requestType ?? null,
       })
     : 'Draft';
+  const workflowBadge = request
+    ? optionRequestWorkflowBadge(request.status, request.finalStatus ?? null, {
+        clientPriceStatus: request.clientPriceStatus ?? null,
+        agencyCounterPrice: request.agencyCounterPrice ?? null,
+        proposedPrice: request.proposedPrice ?? null,
+        requestType: request.requestType ?? null,
+      })
+    : null;
   const headerAttentionLabel = request
     ? attentionHeaderLabelFromSignals(
         attentionSignalsFromOptionRequestLike({
@@ -6297,13 +6298,19 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     : '';
   const negotiationFinalStatusLine =
     request && request.finalStatus
-      ? `${request.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} — ${optionConfirmedBannerLabel(
-          {
+      ? request.requestType === 'casting'
+        ? optionConfirmedBannerLabel({
             finalStatus: request.finalStatus,
             modelAccountLinked: request.modelAccountLinked,
             modelApproval: request.modelApproval,
-          },
-        )}`
+            requestType: request.requestType ?? null,
+          })
+        : `${uiCopy.dashboard.threadContextOption} — ${optionConfirmedBannerLabel({
+            finalStatus: request.finalStatus,
+            modelAccountLinked: request.modelAccountLinked,
+            modelApproval: request.modelApproval,
+            requestType: request.requestType ?? null,
+          })}`
       : null;
   const negotiationRequestTypeLabel =
     request?.requestType === 'casting'
@@ -6317,6 +6324,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           modelApproval: request.modelApproval,
           finalStatus: request.finalStatus ?? null,
           status: request.status,
+          requestType: request.requestType ?? null,
         })
       : request.modelAccountLinked === false
         ? uiCopy.optionNegotiationChat.clientNoModelAppHint
@@ -6937,7 +6945,6 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   </Text>
                 ) : (
                   visibleRequests.map((r) => {
-                    const reqStatus = getRequestStatus(r.threadId) ?? r.status;
                     const _isArchived = archivedIds.has(r.threadId);
                     const assignment = r.clientOrganizationId
                       ? assignmentByClientOrgId[r.clientOrganizationId]
@@ -6955,6 +6962,16 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                         requestType: r.requestType ?? null,
                       }),
                       'client',
+                    );
+                    const listWorkflowBadge = optionRequestWorkflowBadge(
+                      r.status,
+                      r.finalStatus ?? null,
+                      {
+                        clientPriceStatus: r.clientPriceStatus ?? null,
+                        agencyCounterPrice: r.agencyCounterPrice ?? null,
+                        proposedPrice: r.proposedPrice ?? null,
+                        requestType: r.requestType ?? null,
+                      },
                     );
                     return (
                       <View
@@ -7033,11 +7050,11 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                           <View
                             style={[
                               styles.statusPill,
-                              { backgroundColor: STATUS_COLORS[reqStatus] },
+                              { backgroundColor: listWorkflowBadge.backgroundColor },
                             ]}
                           >
                             <Text style={styles.statusPillLabel} numberOfLines={1}>
-                              {STATUS_LABELS[reqStatus]}
+                              {listWorkflowBadge.label}
                             </Text>
                           </View>
                         </ScrollView>
@@ -7076,8 +7093,8 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                       })
                   : undefined
               }
-              statusLabel={status ? STATUS_LABELS[status] : '—'}
-              statusBackgroundColor={status ? STATUS_COLORS[status] : colors.border}
+              statusLabel={workflowBadge?.label ?? '—'}
+              statusBackgroundColor={workflowBadge?.backgroundColor ?? colors.border}
               headerBelowTitle={
                 <NegotiationChipsRow
                   displayStatus={displayStatus}
@@ -7261,7 +7278,10 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                       key={msg.id}
                       id={msg.id}
                       from={msg.from}
-                      text={msg.text}
+                      text={negotiationSystemMessageDisplayText(
+                        msg.text,
+                        request?.requestType ?? null,
+                      )}
                       viewerRole={isAgency ? 'agency' : 'client'}
                       compactTop={compact}
                       timeLabel={timeLabel}

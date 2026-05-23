@@ -29,7 +29,16 @@ describe('statusHelpers', () => {
   // so raw toDisplayStatus here is never the sole label for a linked model awaiting confirmation.
   it('prioritizes final_status when mapping display state', () => {
     expect(toDisplayStatus('in_negotiation', 'option_confirmed')).toBe('Option confirmed');
+    expect(toDisplayStatus('in_negotiation', 'option_confirmed', { requestType: 'casting' })).toBe(
+      'Casting confirmed',
+    );
     expect(toDisplayStatus('rejected', 'job_confirmed')).toBe('Confirmed');
+  });
+
+  it('maps casting in_negotiation before availability to Pending (not In negotiation)', () => {
+    expect(toDisplayStatus('in_negotiation', 'option_pending', { requestType: 'casting' })).toBe(
+      'Pending',
+    );
   });
 
   it('distinguishes option_confirmed from job_confirmed', () => {
@@ -40,6 +49,8 @@ describe('statusHelpers', () => {
   it('keeps stable colors for Option confirmed', () => {
     expect(statusColor('Option confirmed')).toBe('#0d9488');
     expect(statusBgColor('Option confirmed')).toBe('#ccfbf1');
+    expect(statusColor('Casting confirmed')).toBe('#0d9488');
+    expect(statusBgColor('Casting confirmed')).toBe('#ccfbf1');
   });
 
   it('keeps stable colors for In negotiation', () => {

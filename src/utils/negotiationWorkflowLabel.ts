@@ -12,12 +12,16 @@ export function workflowLabelFromDisplayStatus(display: DisplayStatus): string {
   switch (display) {
     case 'Draft':
       return uiCopy.dashboard.optionRequestWorkflowDraft;
+    case 'Pending':
+      return uiCopy.dashboard.optionRequestStatusPending;
     case 'In negotiation':
       return uiCopy.dashboard.optionRequestStatusInNegotiation;
     case 'Price agreed':
       return uiCopy.dashboard.optionRequestStatusPriceAgreed;
     case 'Option confirmed':
       return uiCopy.dashboard.optionRequestStatusOptionConfirmed;
+    case 'Casting confirmed':
+      return uiCopy.dashboard.optionRequestStatusCastingConfirmed;
     case 'Confirmed':
       return uiCopy.dashboard.optionRequestStatusConfirmed;
     case 'Rejected':
