@@ -22,6 +22,14 @@
  */
 
 import type { SupabaseModel } from '../services/modelsSupabase';
+import type { ModelEditState } from './modelEditState';
+
+function parseIntField(v: string): number | null {
+  const trimmed = v.trim();
+  if (!trimmed) return null;
+  const n = parseInt(trimmed, 10);
+  return Number.isNaN(n) ? null : n;
+}
 
 export type CompletenessIssue = {
   field: string;
@@ -35,6 +43,38 @@ export type CompletenessContext = {
   /** True if model_photos has at least one is_visible_to_clients = true entry. */
   hasVisiblePhoto: boolean;
 };
+
+/**
+ * Merge persisted model row with in-progress agency edit form values so completeness
+ * reflects what the booker sees in the panel (including unsaved edits).
+ */
+export function mergeModelForCompleteness(
+  base: Partial<SupabaseModel>,
+  edit: ModelEditState,
+): Partial<SupabaseModel> {
+  const hasFashion = edit.categories.some((c) => c === 'Fashion' || c === 'High Fashion');
+  const hasCommercial = edit.categories.includes('Commercial');
+  const noCategory = edit.categories.length === 0;
+  const chestVal = parseIntField(edit.chest);
+
+  return {
+    ...base,
+    name: edit.name.trim() || base.name,
+    email: edit.email.trim() || null,
+    sex: edit.sex === 'male' || edit.sex === 'female' ? edit.sex : null,
+    height: parseIntField(edit.height) ?? 0,
+    chest: chestVal,
+    bust: chestVal,
+    waist: parseIntField(edit.waist),
+    hips: parseIntField(edit.hips),
+    hair_color: edit.hair_color.trim() || null,
+    eye_color: edit.eye_color.trim() || null,
+    ethnicity: (edit.ethnicity ?? '').trim() || null,
+    country_code: edit.country_code.trim() || null,
+    is_visible_fashion: noCategory || hasFashion,
+    is_visible_commercial: noCategory || hasCommercial,
+  };
+}
 
 /**
  * Returns an array of completeness issues, critical ones first.

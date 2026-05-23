@@ -275,7 +275,11 @@ import { runNetwalkCronSync } from '../services/netwalkSyncService';
 import { searchMediaslideModelsByEmail } from '../services/mediaslideConnector';
 import { searchNetwalkModelsByEmail } from '../services/netwalkConnector';
 import { getAgencyApiKeys, saveAgencyApiConnection } from '../services/agencySettingsSupabase';
-import { checkModelCompleteness, type CompletenessContext } from '../utils/modelCompleteness';
+import {
+  checkModelCompleteness,
+  mergeModelForCompleteness,
+  type CompletenessContext,
+} from '../utils/modelCompleteness';
 import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
 import { getCalendarDetailNextStepText } from '../utils/calendarDetailNextStep';
 import {
@@ -3015,10 +3019,6 @@ const MyModelsTab: React.FC<{
     message: string;
   } | null>(null);
 
-  // Profile completeness state for the selected model
-  const [completenessIssues, setCompletenessIssues] = useState<
-    ReturnType<typeof checkModelCompleteness>
-  >([]);
   const [saveFeedback, setSaveFeedback] = useState<'saving' | 'success' | 'error' | null>(null);
   const saveFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -3196,19 +3196,15 @@ const MyModelsTab: React.FC<{
     }
   }, [models, selectedModel]);
 
-  // Recalculate completeness whenever the selected model or its territories change.
-  useEffect(() => {
-    if (!selectedModel) {
-      setCompletenessIssues([]);
-      return;
-    }
+  /** Reflects saved model + current edit form + territory/photo context (live while editing). */
+  const completenessIssues = useMemo(() => {
+    if (!selectedModel) return [];
     const ctx: CompletenessContext = {
       hasTerritories: territoryCountryCodes.length > 0,
       hasVisiblePhoto: hasVisibleClientPortfolio,
     };
-    setCompletenessIssues(checkModelCompleteness(selectedModel, ctx));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedModel?.id, territoryCountryCodes, hasVisibleClientPortfolio]);
+    return checkModelCompleteness(mergeModelForCompleteness(selectedModel, editState), ctx);
+  }, [selectedModel, editState, territoryCountryCodes, hasVisibleClientPortfolio]);
 
   // Bulk selection state
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
@@ -4398,18 +4394,15 @@ const MyModelsTab: React.FC<{
     } catch (e) {
       console.error('handleSaveModel refresh error:', e);
     }
-    // Refresh completeness after save (model fields may have changed).
+    // Reconcile edit panel with DB after save so banner + form stay aligned.
     if (selectedModel) {
       const freshModel = await getModelByIdFromSupabase(selectedModel.id).catch(() => null);
       if (freshModel) {
+        setSelectedModel(freshModel);
+        setEditState(buildEditState(freshModel));
         const rows = await getPhotosForModel(selectedModel.id, 'portfolio');
         const hasVis = rows.some((p) => Boolean(p.is_visible_to_clients ?? p.visible));
         setHasVisibleClientPortfolio(hasVis);
-        const ctx: CompletenessContext = {
-          hasTerritories: territoryCountryCodes.length > 0,
-          hasVisiblePhoto: hasVis,
-        };
-        setCompletenessIssues(checkModelCompleteness(freshModel, ctx));
       }
     }
     if (saveFeedbackTimerRef.current) clearTimeout(saveFeedbackTimerRef.current);
