@@ -52,6 +52,9 @@ function allowsConfirmedStatusForPrice(sql: string): boolean {
 const CANONICAL_AGENCY_PRICE_MIGRATION =
   '20261328_agency_price_rpcs_post_availability_confirmed.sql';
 
+/** Latest redefine of agency price RPCs (casting guard + confirmed-status parity). */
+const LATEST_AGENCY_PRICE_RPC_MIGRATION = '20261331_casting_block_price_negotiation_rpcs.sql';
+
 describe('negotiation price flow — migration regression guard', () => {
   it('canonical migration exists', () => {
     expect(fs.existsSync(path.join(MIGRATIONS_DIR, CANONICAL_AGENCY_PRICE_MIGRATION))).toBe(true);
@@ -60,16 +63,18 @@ describe('negotiation price flow — migration regression guard', () => {
   it('latest agency_set_counter_offer allows in_negotiation OR confirmed', () => {
     const latest = latestMigrationDefining(definesAgencySetCounterOffer);
     expect(latest).not.toBeNull();
-    expect(latest!.file).toBe(CANONICAL_AGENCY_PRICE_MIGRATION);
+    expect(latest!.file).toBe(LATEST_AGENCY_PRICE_RPC_MIGRATION);
     expect(allowsConfirmedStatusForPrice(latest!.sql)).toBe(true);
     expect(latest!.sql).toMatch(/awaiting_client_response/i);
+    expect(latest!.sql).toMatch(/price_negotiation_not_applicable_for_casting/i);
   });
 
   it('latest agency_confirm_client_price allows in_negotiation OR confirmed', () => {
     const latest = latestMigrationDefining(definesAgencyConfirmClientPrice);
     expect(latest).not.toBeNull();
-    expect(latest!.file).toBe(CANONICAL_AGENCY_PRICE_MIGRATION);
+    expect(latest!.file).toBe(LATEST_AGENCY_PRICE_RPC_MIGRATION);
     expect(allowsConfirmedStatusForPrice(latest!.sql)).toBe(true);
+    expect(latest!.sql).toMatch(/request_type::text,\s*'option'\)\s*<>\s*'casting'/i);
   });
 
   it('every non-legacy agency_set_counter_offer redefinition allows confirmed status', () => {
