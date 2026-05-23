@@ -49,8 +49,12 @@ describe('B2B related requests — mobile + desktop UI regression guard', () => 
     expect(src).toMatch(/chatTimeline\.map/);
     expect(src).toMatch(/kind === 'related_request'/);
     expect(src).toMatch(/onOpenRelatedRequest\(req\.id\)/);
+    expect(src).toMatch(/onOpenRelatedRequest \? relatedOptionRequests : \[\]/);
+    expect(src).toMatch(/uiCopy\.b2bChat\.openRelatedRequest/);
     expect(src).not.toMatch(/relatedRequestsStrip/);
     expect(src).not.toMatch(/relatedRequestsScrollView/);
+    expect(src).not.toMatch(/relatedRequestsTitle/);
+    expect(src).not.toMatch(/horizontal.*Related requests/is);
   });
 
   it('ClientWebApp wires related requests for B2B org chat (web split + mobile fullscreen)', () => {
@@ -59,16 +63,31 @@ describe('B2B related requests — mobile + desktop UI regression guard', () => 
     expect(src).toMatch(/relatedOptionRequests=\{relatedOptionRequestsForChat\}/);
     expect(src).toMatch(/onOpenRelatedRequest=\{onOpenRelatedRequest\}/);
     expect(src).toMatch(/b2bWebSplit/);
+    expect(
+      countOccurrences(src, 'relatedOptionRequests={relatedOptionRequestsForChat}'),
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it('AgencyControllerView wires related requests on mobile fullscreen and desktop split', () => {
     const src = readSrc('src/views/AgencyControllerView.tsx');
+    expect(src).toMatch(/filterRelatedOptionRequestsForB2BConversation/);
     expect(src).toMatch(/relatedOptionRequestsForActiveB2bChat/);
     expect(
       countOccurrences(src, 'relatedOptionRequests={relatedOptionRequestsForActiveB2bChat}'),
     ).toBeGreaterThanOrEqual(3);
+    expect(countOccurrences(src, 'onOpenRelatedRequest={(optionRequestId)')).toBeGreaterThanOrEqual(
+      3,
+    );
     expect(src).toMatch(/b2bChatFullscreenActive/);
     expect(src).toMatch(/CHAT_MESSENGER_FLEX/);
+  });
+
+  it('b2bRelatedOptionRequests exports timeline builder used by OrgMessengerInline', () => {
+    const util = readSrc('src/utils/b2bRelatedOptionRequests.ts');
+    expect(util).toMatch(/export function buildB2bOrgChatTimeline/);
+    expect(util).toMatch(/message_type !== 'booking'/);
+    expect(util).toMatch(/metadata\?\.option_request_id/);
+    expect(util).toMatch(/sortKey - b\.sortKey/);
   });
 });
 
