@@ -1138,6 +1138,15 @@ export const uiCopy = {
     /** Option request list: archive is local list visibility only — not a server delete. */
     optionRequestListFilterCurrent: 'Current',
     optionRequestListFilterArchived: 'Archived',
+    /** Option request thread list — request type chips (UI-only filter). */
+    optionRequestTypeFilterAll: 'All types',
+    optionRequestTypeFilterOptions: 'Options',
+    optionRequestTypeFilterCastings: 'Castings',
+    optionRequestTypeFilterJobs: 'Jobs',
+    /** Option request thread list — scheduled date chips (UI-only filter). */
+    optionRequestTimeFilterAll: 'All dates',
+    optionRequestTimeFilterFuture: 'Future',
+    optionRequestTimeFilterPast: 'Past',
     archiveThreadInListAccessibility: 'Archive in this list',
     unarchiveThreadInListAccessibility: 'Move back to current list',
     archiveThreadDoesNotDeleteShort:

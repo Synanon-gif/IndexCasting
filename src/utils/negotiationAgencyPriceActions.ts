@@ -4,6 +4,7 @@ import {
   priceCommerciallySettledForUi,
   type AttentionSignalInput,
 } from './optionRequestAttention';
+import { isPriceNegotiationRequest } from './priceNegotiationRequest';
 
 export type AgencyPriceActionInput = {
   isAgency: boolean;
@@ -40,6 +41,7 @@ function buildSignals(input: AgencyPriceActionInput): AttentionSignalInput {
 export function shouldShowAgencyPriceNegotiationActions(input: AgencyPriceActionInput): boolean {
   if (!input.isAgency) return false;
   if (input.isAgencyOnly === true) return false;
+  if (!isPriceNegotiationRequest(input.requestType ?? null)) return false;
 
   const isTerminal = input.finalStatus === 'job_confirmed' || input.status === 'rejected';
   if (isTerminal) return false;

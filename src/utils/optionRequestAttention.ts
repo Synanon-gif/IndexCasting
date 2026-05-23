@@ -1,4 +1,5 @@
 import { priceCommerciallySettled } from './priceSettlement';
+import { isPriceNegotiationRequest } from './priceNegotiationRequest';
 
 /** @deprecated Prefer deriveNegotiationAttention + deriveApprovalAttention */
 export type SmartAttentionState =
@@ -71,6 +72,10 @@ export function deriveNegotiationAttention(input: AttentionSignalInput): Negotia
   if (input.isAgencyOnly === true) {
     return 'price_agreed';
   }
+  // Castings have no price axis — treat as settled so D1 never drives price CTAs or attention.
+  if (!isPriceNegotiationRequest(input.requestType ?? null)) {
+    return 'price_agreed';
+  }
   if (priceCommerciallySettledForUi(input)) {
     return 'price_agreed';
   }
@@ -126,8 +131,9 @@ export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAt
   const modelAccountLinked = input.modelAccountLinked === true;
   const modelApproval = input.modelApproval ?? null;
   const isAgencyOnly = input.isAgencyOnly === true;
-  // Agency-only: price is settled by definition (no client, no negotiation)
-  const priceSettled = isAgencyOnly || priceCommerciallySettledForUi(input);
+  const isCasting = input.requestType === 'casting';
+  // Agency-only and castings: price axis N/A (availability-only for castings).
+  const priceSettled = isAgencyOnly || isCasting || priceCommerciallySettledForUi(input);
 
   if (agencyConfirmed) {
     const isCasting = input.requestType === 'casting';

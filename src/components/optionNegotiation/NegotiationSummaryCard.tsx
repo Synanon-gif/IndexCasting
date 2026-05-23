@@ -27,6 +27,8 @@ export type NegotiationSummaryCardProps = {
   viewerRole?: 'client' | 'agency' | 'model';
   /** When true, suppress price display (agency-only flows have no client price negotiation). */
   isAgencyOnly?: boolean;
+  /** When false, hide commercial price lines (castings — availability only). */
+  showPriceNegotiation?: boolean;
 };
 
 export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
@@ -46,8 +48,9 @@ export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
   confirmationSummaryLine,
   viewerRole = 'client',
   isAgencyOnly,
+  showPriceNegotiation = true,
 }) => {
-  const showPrices = viewerRole !== 'model' && !isAgencyOnly;
+  const showPrices = viewerRole !== 'model' && !isAgencyOnly && showPriceNegotiation;
   const agreed = getCanonicalAgreedPrice({
     proposed_price: proposedPrice ?? null,
     agency_counter_price: agencyCounterPrice ?? null,

@@ -219,8 +219,9 @@ import {
   type UnifiedAgencyCalendarRow,
 } from '../utils/agencyCalendarUnified';
 import { resolveCalendarRowOpenAction } from '../utils/calendarRowOpenAction';
-import { attentionSignalsFromOptionRequestLike } from '../utils/optionRequestAttention';
 import { attentionHeaderLabelFromSignals } from '../utils/negotiationAttentionLabels';
+import { attentionSignalsFromOptionRequestLike } from '../utils/optionRequestAttention';
+import { isPriceNegotiationRequest } from '../utils/priceNegotiationRequest';
 import { extractCounterparties } from '../utils/threadFilters';
 import { toDisplayStatus } from '../utils/statusHelpers';
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
@@ -7050,6 +7051,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                       finalStatusLine={negotiationFinalStatusLine}
                       confirmationSummaryLine={negotiationConfirmationSummaryLine}
                       isAgencyOnly={request.isAgencyOnly}
+                      showPriceNegotiation={isPriceNegotiationRequest(request.requestType ?? null)}
                     />
                   </ScrollView>
                 ) : null
@@ -7152,6 +7154,9 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                         finalStatusLine={negotiationFinalStatusLine}
                         confirmationSummaryLine={negotiationConfirmationSummaryLine}
                         isAgencyOnly={request.isAgencyOnly}
+                        showPriceNegotiation={isPriceNegotiationRequest(
+                          request.requestType ?? null,
+                        )}
                       />
                     ) : null}
                   </>

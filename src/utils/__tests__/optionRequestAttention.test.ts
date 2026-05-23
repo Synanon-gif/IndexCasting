@@ -755,24 +755,25 @@ describe('comprehensive 16-state matrix — all heikle Mischzustände', () => {
     });
   });
 
-  // ──────── 12. Casting request (request_type not part of attention — same D1/D2) ────────
-  describe('12. casting — same attention logic as option', () => {
+  // ──────── 12. Casting — no price axis (availability only) ────────
+  describe('12. casting — no price negotiation (D1 inactive)', () => {
     const castingPending: AttentionSignalInput = {
       status: 'in_negotiation',
       finalStatus: 'option_pending',
       clientPriceStatus: 'pending',
       proposedPrice: 100,
+      requestType: 'casting',
     };
 
-    it('D1 is the same regardless of request_type', () => {
-      expect(deriveNegotiationAttention(castingPending)).toBe('waiting_for_agency_response');
+    it('D1 is price_agreed regardless of pending commercial fields', () => {
+      expect(deriveNegotiationAttention(castingPending)).toBe('price_agreed');
     });
 
-    it('D2 is the same — approval_inactive', () => {
-      expect(deriveApprovalAttention(castingPending)).toBe('approval_inactive');
+    it('D2 signals agency must confirm availability (not blocked by price)', () => {
+      expect(deriveApprovalAttention(castingPending)).toBe('waiting_for_agency_confirmation');
     });
 
-    it('attention signals are request_type agnostic', () => {
+    it('agency header is action required for availability', () => {
       expect(attentionHeaderLabelFromSignals(castingPending, 'agency')).toBe(actionLabel);
     });
   });

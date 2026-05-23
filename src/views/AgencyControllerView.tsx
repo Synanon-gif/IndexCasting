@@ -295,11 +295,7 @@ import {
   type UnifiedAgencyCalendarRow,
 } from '../utils/agencyCalendarUnified';
 import { resolveCalendarRowOpenAction } from '../utils/calendarRowOpenAction';
-import {
-  extractUnifiedClientOrgs,
-  applyUnifiedOrgFilter,
-  applyUnifiedOrgFilterToB2B,
-} from '../utils/threadFilters';
+import { extractUnifiedClientOrgs, applyUnifiedOrgFilterToB2B } from '../utils/threadFilters';
 import { ClientOrgFilterDropdown } from '../components/ClientOrgFilterDropdown';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
@@ -320,6 +316,12 @@ import {
 } from '../utils/canonicalOptionPrice';
 import { formatOptionMoneyAmount } from '../utils/optionMoneyFormat';
 import { attentionHeaderLabelFromSignals } from '../utils/negotiationAttentionLabels';
+import {
+  filterOptionRequestThreads,
+  type OptionRequestTimeFilter,
+  type OptionRequestTypeFilter,
+} from '../utils/optionRequestThreadFilters';
+import { isPriceNegotiationRequest } from '../utils/priceNegotiationRequest';
 import { toDisplayStatus } from '../utils/statusHelpers';
 import {
   resolveCanonicalOptionRequestIdForCalendarItem,
@@ -6883,6 +6885,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [editingAssignmentThreadId, setEditingAssignmentThreadId] = useState<string | null>(null);
   const [msgFilter, setMsgFilter] = useState<'current' | 'archived' | 'applications'>('current');
   const [attentionFilter, setAttentionFilter] = useState<'all' | 'action_required'>('all');
+  const [requestTypeFilter, setRequestTypeFilter] = useState<OptionRequestTypeFilter>('all');
+  const [requestTimeFilter, setRequestTimeFilter] = useState<OptionRequestTimeFilter>('all');
   const [unifiedOrgFilter, setUnifiedOrgFilter] = useState<string | null>(null);
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set();
@@ -7155,32 +7159,32 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     [requests, b2bConversations, assignmentByClientOrgId],
   );
 
-  const visible = requests.filter((r) => {
-    if (msgFilter === 'archived' ? !archivedIds.has(r.threadId) : archivedIds.has(r.threadId))
-      return false;
-    const orgFiltered = applyUnifiedOrgFilter(
-      [r],
+  const visible = useMemo(
+    () =>
+      filterOptionRequestThreads({
+        requests,
+        msgFilter: msgFilter === 'archived' ? 'archived' : 'current',
+        archivedIds,
+        unifiedOrgFilter,
+        assignmentByClientOrgId,
+        currentUserId,
+        attentionFilter,
+        requestTypeFilter,
+        requestTimeFilter,
+        role: 'agency',
+      }),
+    [
+      requests,
+      msgFilter,
+      archivedIds,
       unifiedOrgFilter,
       assignmentByClientOrgId,
       currentUserId,
-    );
-    if (orgFiltered.length === 0) return false;
-    if (attentionFilter === 'action_required') {
-      const sig = attentionSignalsFromOptionRequestLike({
-        status: r.status,
-        finalStatus: r.finalStatus ?? null,
-        clientPriceStatus: r.clientPriceStatus ?? null,
-        modelApproval: r.modelApproval,
-        modelAccountLinked: r.modelAccountLinked ?? false,
-        agencyCounterPrice: r.agencyCounterPrice ?? null,
-        proposedPrice: r.proposedPrice ?? null,
-        isAgencyOnly: r.isAgencyOnly ?? false,
-        requestType: r.requestType ?? null,
-      });
-      if (!attentionHeaderLabelFromSignals(sig, 'agency')) return false;
-    }
-    return true;
-  });
+      attentionFilter,
+      requestTypeFilter,
+      requestTimeFilter,
+    ],
+  );
 
   const filteredB2bConversations = useMemo(
     () =>
@@ -7727,6 +7731,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     finalStatusLine={negotiationFinalStatusLine}
                     confirmationSummaryLine={negotiationConfirmationSummaryLine}
                     isAgencyOnly={request.isAgencyOnly}
+                    showPriceNegotiation={isPriceNegotiationRequest(request.requestType ?? null)}
                   />
                 </ScrollView>
               ) : null
@@ -7819,6 +7824,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   finalStatusLine={negotiationFinalStatusLine}
                   confirmationSummaryLine={negotiationConfirmationSummaryLine}
                   isAgencyOnly={request.isAgencyOnly}
+                  showPriceNegotiation={isPriceNegotiationRequest(request.requestType ?? null)}
                 />
               ) : null}
               {filteredMessages.length >= 50 && selectedThreadId && (
@@ -8627,6 +8633,75 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     </TouchableOpacity>
                   </View>
                 </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  style={{ marginBottom: spacing.sm, maxWidth: '100%' }}
+                  contentContainerStyle={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    gap: spacing.xs,
+                  }}
+                >
+                  {(
+                    [
+                      ['all', uiCopy.messages.optionRequestTypeFilterAll],
+                      ['options', uiCopy.messages.optionRequestTypeFilterOptions],
+                      ['castings', uiCopy.messages.optionRequestTypeFilterCastings],
+                      ['jobs', uiCopy.messages.optionRequestTypeFilterJobs],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <TouchableOpacity
+                      key={key}
+                      style={[s.filterPill, requestTypeFilter === key && s.filterPillActive]}
+                      onPress={() => setRequestTypeFilter(key)}
+                    >
+                      <Text
+                        style={[
+                          s.filterPillLabel,
+                          requestTypeFilter === key && s.filterPillLabelActive,
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  style={{ marginBottom: spacing.sm, maxWidth: '100%' }}
+                  contentContainerStyle={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    gap: spacing.xs,
+                  }}
+                >
+                  {(
+                    [
+                      ['all', uiCopy.messages.optionRequestTimeFilterAll],
+                      ['future', uiCopy.messages.optionRequestTimeFilterFuture],
+                      ['past', uiCopy.messages.optionRequestTimeFilterPast],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <TouchableOpacity
+                      key={key}
+                      style={[s.filterPill, requestTimeFilter === key && s.filterPillActive]}
+                      onPress={() => setRequestTimeFilter(key)}
+                    >
+                      <Text
+                        style={[
+                          s.filterPillLabel,
+                          requestTimeFilter === key && s.filterPillLabelActive,
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
 
                 <ScrollView
                   style={webThreadListScrollOption}
@@ -8717,17 +8792,19 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                                 </Text>
                               </View>
                             ) : null}
-                            {listFee != null && !r.isAgencyOnly && (
-                              <Text
-                                style={{
-                                  ...typography.label,
-                                  fontSize: 9,
-                                  color: colors.accentBrown,
-                                }}
-                              >
-                                {formatOptionMoneyAmount(listFee, r.currency)}
-                              </Text>
-                            )}
+                            {listFee != null &&
+                              !r.isAgencyOnly &&
+                              isPriceNegotiationRequest(r.requestType ?? null) && (
+                                <Text
+                                  style={{
+                                    ...typography.label,
+                                    fontSize: 9,
+                                    color: colors.accentBrown,
+                                  }}
+                                >
+                                  {formatOptionMoneyAmount(listFee, r.currency)}
+                                </Text>
+                              )}
                             <View
                               style={[
                                 s.approvalBadge,
