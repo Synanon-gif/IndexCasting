@@ -4,9 +4,11 @@
  */
 import {
   AGENCY_STORAGE_LIMIT_BYTES,
+  LEGACY_AGENCY_STORAGE_LIMIT_BYTES,
   formatStorageBytes,
   getStorageUsagePercent,
   getMyAgencyStorageUsage,
+  normalizeAgencyStorageUsageFromRpc,
 } from '../agencyStorageSupabase';
 import { PLAN_LIMITS } from '../subscriptionSupabase';
 
@@ -58,6 +60,7 @@ describe('agency Basic storage quota — 10 GB canonical', () => {
         limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
         effective_limit_bytes: AGENCY_STORAGE_LIMIT_BYTES,
         is_unlimited: false,
+        has_custom_storage_limit: false,
       },
       error: null,
     });
@@ -70,6 +73,40 @@ describe('agency Basic storage quota — 10 GB canonical', () => {
     expect(Number(getStorageUsagePercent(result!.used_bytes, result!.limit_bytes).toFixed(0))).toBe(
       1,
     );
+  });
+
+  it('getMyAgencyStorageUsage upgrades legacy 5 GB RPC fallback when not a custom cap', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: {
+        organization_id: 'org-legacy-fallback',
+        used_bytes: 150_000_000,
+        limit_bytes: LEGACY_AGENCY_STORAGE_LIMIT_BYTES,
+        effective_limit_bytes: LEGACY_AGENCY_STORAGE_LIMIT_BYTES,
+        is_unlimited: false,
+        has_custom_storage_limit: false,
+      },
+      error: null,
+    });
+
+    const result = await getMyAgencyStorageUsage();
+
+    expect(result!.limit_bytes).toBe(AGENCY_STORAGE_LIMIT_BYTES);
+    expect(result!.effective_limit_bytes).toBe(AGENCY_STORAGE_LIMIT_BYTES);
+    expect(result!.has_custom_storage_limit).toBe(false);
+  });
+
+  it('normalizeAgencyStorageUsageFromRpc preserves explicit admin 5 GB custom cap', () => {
+    const normalized = normalizeAgencyStorageUsageFromRpc({
+      organization_id: 'org-custom',
+      used_bytes: 1_000,
+      limit_bytes: LEGACY_AGENCY_STORAGE_LIMIT_BYTES,
+      effective_limit_bytes: LEGACY_AGENCY_STORAGE_LIMIT_BYTES,
+      is_unlimited: false,
+      has_custom_storage_limit: true,
+    });
+
+    expect(normalized.limit_bytes).toBe(LEGACY_AGENCY_STORAGE_LIMIT_BYTES);
+    expect(normalized.has_custom_storage_limit).toBe(true);
   });
 
   it('Pro and Enterprise PLAN_LIMITS storageGB unchanged', () => {

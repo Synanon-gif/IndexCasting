@@ -28,6 +28,8 @@ type Props = {
   agency: Agency | null;
   organizationId: string | null;
   onSaved: () => void;
+  /** Bump to refetch storage usage (e.g. after media delete or opening Settings). */
+  storageRefreshTrigger?: number;
   /** `embedded`: inner content only — parent supplies `ScreenScrollView` (e.g. owner settings + metrics + delete). */
   variant?: 'scroll' | 'embedded';
 };
@@ -36,6 +38,7 @@ export const AgencySettingsTab: React.FC<Props> = ({
   agency,
   organizationId,
   onSaved,
+  storageRefreshTrigger,
   variant = 'scroll',
 }) => {
   const { refreshProfile } = useAuth();
@@ -357,7 +360,7 @@ export const AgencySettingsTab: React.FC<Props> = ({
 
       {/* ── Storage Usage ─────────────────────────────────────── */}
       <View style={styles.storageDivider} />
-      <AgencyStorageWidget />
+      <AgencyStorageWidget refreshTrigger={storageRefreshTrigger} />
 
       <TouchableOpacity
         style={[styles.saveBtn, saving && { opacity: 0.6 }]}

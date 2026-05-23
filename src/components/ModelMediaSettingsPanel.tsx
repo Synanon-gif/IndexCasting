@@ -78,6 +78,8 @@ type Props = {
   onHasVisiblePortfolioChange?: (hasVisible: boolean) => void;
   /** After aligning models.portfolio_images / polaroids with model_photos — refresh parent roster. */
   onReconcileComplete?: () => void;
+  /** After upload/delete changed agency storage quota — refresh Settings storage widget. */
+  onStorageUsageChanged?: () => void;
 };
 
 const copy = uiCopy.modelMedia;
@@ -112,6 +114,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   organizationId,
   onHasVisiblePortfolioChange,
   onReconcileComplete,
+  onStorageUsageChanged,
 }) => {
   const [portfolio, setPortfolio] = useState<ResolvedPhoto[]>([]);
   const [polaroids, setPolaroids] = useState<ResolvedPhoto[]>([]);
@@ -433,6 +436,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
         } else {
           setPrivatePhotos((prev) => [...prev, resolved]);
         }
+        onStorageUsageChanged?.();
       }
     } catch (e) {
       console.error('handleUploadFiles error:', e);
@@ -560,6 +564,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
       } else {
         setPrivatePhotos((prev) => prev.filter((p) => p.id !== photo.id));
       }
+      onStorageUsageChanged?.();
     } catch (e) {
       console.error('handleDelete error:', e);
       if (Platform.OS === 'web' && typeof window !== 'undefined') {

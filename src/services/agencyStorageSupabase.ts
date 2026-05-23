@@ -15,6 +15,9 @@ import { logger } from '../utils/logger';
 /** 10 GB (Agency Basic default) in bytes — fallback when RPC omits limit_bytes. */
 export const AGENCY_STORAGE_LIMIT_BYTES = 10 * 1024 * 1024 * 1024; // 10_737_418_240
 
+/** Legacy Basic default before Apr 2026 — still returned by undeployed RPC fallbacks. */
+export const LEGACY_AGENCY_STORAGE_LIMIT_BYTES = 5 * 1024 * 1024 * 1024; // 5_368_709_120
+
 export interface AgencyStorageUsage {
   organization_id: string;
   used_bytes: number;
@@ -25,6 +28,40 @@ export interface AgencyStorageUsage {
   limit_bytes: number;
   /** When true the organization has no storage cap. */
   is_unlimited: boolean;
+  /** True when admin set organization_storage_usage.storage_limit_bytes explicitly. */
+  has_custom_storage_limit: boolean;
+}
+
+type AgencyStorageUsageRpcPayload = {
+  organization_id: string;
+  used_bytes?: number;
+  limit_bytes?: number;
+  effective_limit_bytes?: number | null;
+  is_unlimited?: boolean;
+  has_custom_storage_limit?: boolean;
+};
+
+/** Upgrade stale 5 GB plan defaults from older RPCs; preserve real admin custom caps. */
+export function normalizeAgencyStorageUsageFromRpc(
+  raw: AgencyStorageUsageRpcPayload,
+): AgencyStorageUsage {
+  const hasCustom = raw.has_custom_storage_limit === true;
+  const upgradeIfLegacy = (bytes: number): number =>
+    !hasCustom && bytes === LEGACY_AGENCY_STORAGE_LIMIT_BYTES ? AGENCY_STORAGE_LIMIT_BYTES : bytes;
+
+  const isUnlimited = raw.is_unlimited ?? false;
+  const effectiveRaw = raw.effective_limit_bytes ?? null;
+  const effective = effectiveRaw == null ? null : upgradeIfLegacy(effectiveRaw);
+  const limit = upgradeIfLegacy(raw.limit_bytes ?? AGENCY_STORAGE_LIMIT_BYTES);
+
+  return {
+    organization_id: raw.organization_id,
+    used_bytes: raw.used_bytes ?? 0,
+    effective_limit_bytes: isUnlimited ? null : effective,
+    limit_bytes: isUnlimited ? limit : (effective ?? limit),
+    is_unlimited: isUnlimited,
+    has_custom_storage_limit: hasCustom,
+  };
 }
 
 export interface StorageCheckResult {
@@ -67,21 +104,7 @@ export async function getMyAgencyStorageUsage(): Promise<AgencyStorageUsage | nu
     if (error) throw error;
     if (!data || (data as { error?: string }).error) return null;
 
-    const raw = data as {
-      organization_id: string;
-      used_bytes: number;
-      limit_bytes: number;
-      effective_limit_bytes: number | null;
-      is_unlimited: boolean;
-    };
-
-    return {
-      organization_id: raw.organization_id,
-      used_bytes: raw.used_bytes ?? 0,
-      effective_limit_bytes: raw.effective_limit_bytes ?? null,
-      limit_bytes: raw.limit_bytes ?? AGENCY_STORAGE_LIMIT_BYTES,
-      is_unlimited: raw.is_unlimited ?? false,
-    };
+    return normalizeAgencyStorageUsageFromRpc(data as AgencyStorageUsageRpcPayload);
   } catch (err) {
     console.error('[agencyStorage] getMyAgencyStorageUsage error:', err);
     return null;

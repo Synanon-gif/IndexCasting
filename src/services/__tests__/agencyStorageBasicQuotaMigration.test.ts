@@ -11,6 +11,7 @@ const ROOT = path.join(__dirname, '../../..');
 const MIGRATIONS_DIR = path.join(ROOT, 'supabase/migrations');
 
 const CANONICAL_MIGRATION = '20261330_agency_basic_storage_quota_10gb.sql';
+const LIVE_RECONCILE_MIGRATION = '20261331_agency_storage_10gb_live_reconcile.sql';
 const LEGACY_BASIC_BYTES = 5 * 1024 * 1024 * 1024; // 5368709120
 const CANONICAL_BASIC_BYTES = 10 * 1024 * 1024 * 1024; // 10737418240
 
@@ -57,6 +58,14 @@ function hasLegacyBasicPlanLimit(sql: string): boolean {
 }
 
 describe('agency storage Basic 10 GB migration regression fence', () => {
+  it('live reconcile migration clears legacy 5 GB overrides and keeps 10 GB RPCs', () => {
+    const sql = readFile(`supabase/migrations/${LIVE_RECONCILE_MIGRATION}`);
+    expect(sql).toMatch(/storage_limit_bytes = 5368709120/);
+    expect(sql).toMatch(/SET storage_limit_bytes = NULL/);
+    expect(hasLegacyFiveGbDefault(sql)).toBe(false);
+    expect(sql).toMatch(/has_custom_storage_limit/);
+  });
+
   it('canonical migration exists and encodes 10 GB (not 5 GB fallback)', () => {
     const sql = readFile(`supabase/migrations/${CANONICAL_MIGRATION}`);
     expect(hasLegacyFiveGbDefault(sql)).toBe(false);
@@ -104,7 +113,8 @@ describe('agency storage Basic 10 GB migration regression fence', () => {
   it('frontend AGENCY_STORAGE_LIMIT_BYTES stays 10 GB', () => {
     const src = readFile('src/services/agencyStorageSupabase.ts');
     expect(src).toMatch(/AGENCY_STORAGE_LIMIT_BYTES\s*=\s*10\s*\*\s*1024\s*\*\s*1024\s*\*\s*1024/);
-    expect(src).not.toMatch(/AGENCY_STORAGE_LIMIT_BYTES\s*=\s*5\s*\*\s*1024/);
+    expect(src).not.toMatch(/export const AGENCY_STORAGE_LIMIT_BYTES\s*=\s*5\s*\*\s*1024/);
+    expect(src).toMatch(/LEGACY_AGENCY_STORAGE_LIMIT_BYTES\s*=\s*5\s*\*\s*1024/);
   });
 
   it('PLAN_LIMITS.agency_basic.storageGB stays 10 in subscriptionSupabase', () => {

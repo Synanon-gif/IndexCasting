@@ -391,6 +391,15 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const agencyIsMobile = isMobileWidth(agencyWindowWidth);
   const agencyShellPaddingH = agencyIsMobile ? spacing.sm : spacing.lg;
   const [tab, setTab] = useState<AgencyTab>('dashboard');
+  const [agencyStorageRefreshKey, setAgencyStorageRefreshKey] = useState(0);
+  const bumpAgencyStorageRefresh = useCallback(() => {
+    setAgencyStorageRefreshKey((k) => k + 1);
+  }, []);
+  useEffect(() => {
+    if (tab === 'settings') {
+      bumpAgencyStorageRefresh();
+    }
+  }, [tab, bumpAgencyStorageRefresh]);
   /**
    * GDPR Two-Stage dissolve UX: when the global `OrgDissolvedBanner` (mounted in
    * App.tsx) emits `download_data` or `delete_account`, route the user into the
@@ -989,6 +998,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             agencyShareInviterName={profile?.display_name ?? null}
             initialAgencyShareLinkId={initialAgencyShareLinkId ?? null}
             onInitialAgencyShareConsumed={onInitialAgencyShareConsumed}
+            onStorageUsageChanged={bumpAgencyStorageRefresh}
           />
         )}
 
@@ -1122,6 +1132,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               variant="embedded"
               agency={currentAgency}
               organizationId={agencyOrganizationId}
+              storageRefreshTrigger={agencyStorageRefreshKey}
               onSaved={() => {
                 void getAgencies().then(setAgencies);
               }}
@@ -2940,6 +2951,8 @@ const MyModelsTab: React.FC<{
   agencyShareInviterName?: string | null;
   initialAgencyShareLinkId?: string | null;
   onInitialAgencyShareConsumed?: () => void;
+  /** After model photo upload/delete — refresh Settings storage widget. */
+  onStorageUsageChanged?: () => void;
 }> = ({
   models,
   agencyId,
@@ -2955,6 +2968,7 @@ const MyModelsTab: React.FC<{
   agencyShareInviterName,
   initialAgencyShareLinkId,
   onInitialAgencyShareConsumed,
+  onStorageUsageChanged,
 }) => {
   const { width: _myModelsWidth } = useWindowDimensions();
   const agencyIsMobile = isMobileWidth(_myModelsWidth);
@@ -4494,6 +4508,7 @@ const MyModelsTab: React.FC<{
             organizationId={inviteOrganizationId ?? null}
             onHasVisiblePortfolioChange={refreshClientVisiblePortfolio}
             onReconcileComplete={onRefresh}
+            onStorageUsageChanged={onStorageUsageChanged}
           />
         </View>
 
