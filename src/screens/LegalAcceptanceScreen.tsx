@@ -12,6 +12,7 @@ import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
 import { isAgency as checkIsAgency } from '../types/roles';
 import { uiCopy } from '../constants/uiCopy';
+import { legalAcceptanceCanSubmit } from '../utils/legalAcceptanceGate';
 import { TermsScreen } from './TermsScreen';
 import { PrivacyScreen } from './PrivacyScreen';
 
@@ -26,7 +27,11 @@ export const LegalAcceptanceScreen: React.FC = () => {
   const [privacyVisible, setPrivacyVisible] = useState(false);
 
   const isAgency = checkIsAgency(profile);
-  const canSubmit = tosChecked && privacyChecked && (!isAgency || agencyRightsChecked);
+  const canSubmit = legalAcceptanceCanSubmit(profile, {
+    tosChecked,
+    privacyChecked,
+    agencyRightsChecked,
+  });
 
   const openTos = () => setTermsVisible(true);
   const openPrivacy = () => setPrivacyVisible(true);
@@ -62,7 +67,12 @@ export const LegalAcceptanceScreen: React.FC = () => {
         <PrivacyScreen onClose={() => setPrivacyVisible(false)} />
       </Modal>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+      >
         <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.title}>{uiCopy.legal.title}</Text>
         <Text style={styles.subtitle}>{uiCopy.legal.subtitle}</Text>
@@ -107,6 +117,8 @@ export const LegalAcceptanceScreen: React.FC = () => {
           </TouchableOpacity>
         )}
 
+        <Text style={styles.essentialNotice}>{uiCopy.legal.essentialCookiesNotice}</Text>
+
         {error && <Text style={styles.error}>{error}</Text>}
 
         <TouchableOpacity
@@ -133,10 +145,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  content: { width: '100%', maxWidth: 440, padding: spacing.md, alignItems: 'center' },
+  scroll: { flex: 1, width: '100%' },
+  content: {
+    flexGrow: 1,
+    width: '100%',
+    maxWidth: 440,
+    padding: spacing.md,
+    paddingBottom: spacing.xl * 2,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.sm },
   title: {
     ...typography.heading,
@@ -171,6 +191,14 @@ const styles = StyleSheet.create({
   checkmark: { color: colors.surface, fontSize: 14, fontWeight: '700' },
   checkLabel: { ...typography.body, flex: 1, color: colors.textPrimary },
   link: { textDecorationLine: 'underline', color: colors.textPrimary },
+  essentialNotice: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    width: '100%',
+  },
   error: { ...typography.body, fontSize: 12, color: colors.errorDark, marginBottom: spacing.sm },
   acceptBtn: {
     width: '100%',

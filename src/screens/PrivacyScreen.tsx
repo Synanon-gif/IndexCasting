@@ -153,7 +153,11 @@ export const PrivacyScreen: React.FC<Props> = ({ onClose }) => {
           <Text style={styles.heading}>9. Cookies & Local Storage</Text>
           <Text style={styles.body}>
             The app stores session tokens and user preferences in local storage for functionality.
-            This data is cleared on sign-out. We do not use third-party tracking cookies.
+            This data is cleared on sign-out. We use strictly necessary cookies and local storage to
+            keep you signed in, protect your account, and operate the platform. We do not use
+            third-party tracking cookies for advertising or analytics unless optional tools are
+            introduced with separate consent. Error monitoring (Sentry, EU region) is described in
+            section 5a above and is limited to diagnostic data.
           </Text>
         </View>
 

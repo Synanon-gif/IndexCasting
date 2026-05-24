@@ -946,6 +946,7 @@ export const uiCopy = {
     emailMatchesExistingAccountTitle: 'Email already in use',
     emailMatchesExistingAccountBody:
       'This email belongs to an existing account that is not linked to this model. Use the model claim or invite flow to link the profile instead of changing the email here.',
+    emailUpdatedResendHint: 'Email updated. You can resend the invite to the new address.',
     mediaslideApiKeyPlaceholder: 'Mediaslide API Key',
     netwalkApiKeyPlaceholder: 'Netwalk API Key',
     importUrlPlaceholder: 'https://\u2026/model.json',
@@ -2150,6 +2151,8 @@ export const uiCopy = {
       'I confirm that I hold all necessary rights to use and share the personal data of the models I represent.',
     acceptButton: 'Accept & Continue',
     logoutButton: 'Logout',
+    essentialCookiesNotice:
+      'We use strictly necessary cookies and local storage to keep you signed in, protect your account, and operate the platform. We do not use third-party tracking cookies unless optional analytics or marketing tools are introduced with separate consent.',
     // URLs — update these to point to your hosted legal pages
     tosUrl: 'https://indexcasting.com/terms',
     privacyUrl: 'https://indexcasting.com/privacy',

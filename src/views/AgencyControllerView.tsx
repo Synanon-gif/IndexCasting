@@ -3031,6 +3031,7 @@ const MyModelsTab: React.FC<{
   } | null>(null);
 
   const [saveFeedback, setSaveFeedback] = useState<'saving' | 'success' | 'error' | null>(null);
+  const [emailResendHint, setEmailResendHint] = useState(false);
   const saveFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bulkFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -4208,6 +4209,7 @@ const MyModelsTab: React.FC<{
     }
 
     setSaveFeedback('saving');
+    setEmailResendHint(false);
 
     // ── STEP 1: Save territories — block on failure, show error to user ──
     try {
@@ -4295,6 +4297,8 @@ const MyModelsTab: React.FC<{
 
       const nextEmailNorm = (updates.email as string | null)?.trim().toLowerCase() ?? '';
       const prevEmailNorm = (selectedModel.email ?? '').trim().toLowerCase();
+      const emailChangedForUnlinked =
+        !selectedModel.user_id && nextEmailNorm !== '' && nextEmailNorm !== prevEmailNorm;
       if (nextEmailNorm && nextEmailNorm !== prevEmailNorm) {
         const risky = await agencyModelEmailMatchesUnlinkedProfile(selectedModel.id, updates.email);
         if (risky === true) {
@@ -4391,6 +4395,9 @@ const MyModelsTab: React.FC<{
 
       // Photos are managed directly by ModelMediaSettingsPanel (immediate save on change).
       setSaveFeedback('success');
+      if (emailChangedForUnlinked) {
+        setEmailResendHint(true);
+      }
       step3Succeeded = true;
     } catch (err) {
       console.error('handleSaveModel error:', err);
@@ -4838,6 +4845,19 @@ const MyModelsTab: React.FC<{
             <Text style={{ ...typography.label, fontSize: 13, color: '#fff' }}>
               {uiCopy.modelRoster.modelSaveSuccess}
             </Text>
+            {emailResendHint && (
+              <Text
+                style={{
+                  ...typography.body,
+                  fontSize: 12,
+                  color: '#fff',
+                  marginTop: spacing.xs,
+                  textAlign: 'center',
+                }}
+              >
+                {uiCopy.modelRoster.emailUpdatedResendHint}
+              </Text>
+            )}
           </View>
         )}
         {saveFeedback === 'error' && (

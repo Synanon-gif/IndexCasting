@@ -990,44 +990,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const acceptTerms = async (agencyRights = false) => {
     if (!session?.user) return { error: 'Not authenticated' };
-    const now = new Date().toISOString();
-    const updates: Record<string, unknown> = {
-      tos_accepted: true,
-      privacy_accepted: true,
-      tos_accepted_at: now,
-      privacy_accepted_at: now,
-    };
-    if (agencyRights) updates.agency_model_rights_accepted = true;
-
-    const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id);
-    if (error) return { error: error.message };
-
-    await supabase.from('legal_acceptances').insert([
-      { user_id: session.user.id, document_type: 'terms_of_service', document_version: '1.0' },
-      { user_id: session.user.id, document_type: 'privacy_policy', document_version: '1.0' },
-      ...(agencyRights
-        ? [
-            {
-              user_id: session.user.id,
-              document_type: 'agency_model_rights',
-              document_version: '1.0',
-            },
-          ]
-        : []),
-    ]);
-
-    // Sync to consent_log so that GDPR withdrawal flows work.
-    // consent_log is the authoritative source for withdraw_consent() RPC.
-    // Errors here are non-fatal — legal_acceptances is the primary audit record.
-    try {
-      const { recordConsent } = await import('../services/consentSupabase');
-      await recordConsent(session.user.id, 'terms', '1.0');
-      await recordConsent(session.user.id, 'privacy', '1.0');
-      if (agencyRights) await recordConsent(session.user.id, 'image_rights', '1.0');
-    } catch (consentErr) {
-      console.warn('acceptTerms: consent_log sync failed (non-fatal):', consentErr);
-    }
-
+    const { persistPlatformLegalAcceptance } = await import('../services/legalAcceptanceSupabase');
+    const result = await persistPlatformLegalAcceptance(session.user.id, agencyRights);
+    if (result.error) return result;
     await loadProfile(session.user.id);
     return { error: null };
   };

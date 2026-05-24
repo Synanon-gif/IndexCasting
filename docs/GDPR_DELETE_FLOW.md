@@ -2,6 +2,13 @@
 
 This document describes what happens when a **user account** is removed versus **organization** deletion and **anonymization** paths. It is descriptive of the intended system behavior; verify live FK definitions after schema changes.
 
+## Soft account deletion request (in-app)
+
+1. **`request_account_deletion`** (org owner) or **`request_personal_account_deletion`** (booker/employee) sets **`profiles.deletion_requested_at`** and **`profiles.is_active = false`**.
+2. The app treats a pending deletion as **deactivated** — the user is signed out and cannot use the platform until cancellation or purge.
+3. **`cancel_account_deletion`** (within the grace period) clears **`deletion_requested_at`** and restores **`is_active = true`**.
+4. After **30 days**, **`gdpr_purge_expired_deletions`** selects profiles with **`deletion_requested_at` older than 30 days** and **`is_active = false`**, then runs anonymization/deletion RPCs where legally possible. **Invoices, Stripe records, and audit logs** may be retained per statutory minimums — see [`DATA_RETENTION_POLICY.md`](./DATA_RETENTION_POLICY.md).
+
 ## User account deletion (Edge Function `delete-user`)
 
 1. **Explicit storage cleanup** (not covered by DB cascades): objects under `documents/{userId}/` and `verifications/{userId}/` in the configured buckets (see [`supabase/functions/delete-user/index.ts`](../supabase/functions/delete-user/index.ts)).

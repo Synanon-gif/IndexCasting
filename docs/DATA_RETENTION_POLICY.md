@@ -18,7 +18,7 @@
 | **Booking / calendar metadata** | Operational life of booking; `booking_details` JSON is UI-filtered — see [`BOOKING_BRIEF_SYSTEM.md`](./BOOKING_BRIEF_SYSTEM.md) | Business retention — no automatic deletion |
 | **Invoices / billing** | Statutory (e.g. multi-year) per jurisdiction — Stripe + ledger | Legal retention |
 | **Audit / security** | e.g. `audit_trail` ~7 years, `security_events` ~2 years in compliance migrations (verify live) | Legal / policy retention |
-| **Deleted users** | Anonymization paths in RPCs; auth row removed via Edge | Mixed — see [`GDPR_DELETE_FLOW.md`](./GDPR_DELETE_FLOW.md) |
+| **Deleted users** | Soft-delete request sets `deletion_requested_at` and `is_active=false`; access blocked (sign-out). After **30 days**, eligible accounts are processed by `gdpr_purge_expired_deletions` (anonymization/deletion where legally possible). Billing, audit, and legal-retention categories may remain per jurisdiction. Backups follow backup retention and are not individually edited unless restored. | Mixed — see [`GDPR_DELETE_FLOW.md`](./GDPR_DELETE_FLOW.md) |
 
 ## Catalog hints
 
