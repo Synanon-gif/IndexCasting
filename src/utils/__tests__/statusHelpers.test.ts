@@ -1,3 +1,4 @@
+import { colors } from '../../theme/theme';
 import { toDisplayStatus, statusBgColor, statusColor } from '../statusHelpers';
 
 describe('statusHelpers', () => {
@@ -47,19 +48,19 @@ describe('statusHelpers', () => {
   });
 
   it('keeps stable colors for Option confirmed', () => {
-    expect(statusColor('Option confirmed')).toBe('#0d9488');
-    expect(statusBgColor('Option confirmed')).toBe('#ccfbf1');
-    expect(statusColor('Casting confirmed')).toBe('#0d9488');
-    expect(statusBgColor('Casting confirmed')).toBe('#ccfbf1');
+    expect(statusColor('Option confirmed')).toBe(colors.accentGreen);
+    expect(statusBgColor('Option confirmed')).toBe('#E6EDEA');
+    expect(statusColor('Casting confirmed')).toBe(colors.accentGreen);
+    expect(statusBgColor('Casting confirmed')).toBe('#E6EDEA');
   });
 
   it('keeps stable colors for In negotiation', () => {
-    expect(statusColor('In negotiation')).toBe('#d97706');
-    expect(statusBgColor('In negotiation')).toBe('#fef3c7');
+    expect(statusColor('In negotiation')).toBe('#6B4E1A');
+    expect(statusBgColor('In negotiation')).toBe(colors.surfaceWarm);
   });
 
   it('keeps stable colors for Price agreed', () => {
-    expect(statusColor('Price agreed')).toBe('#2563eb');
-    expect(statusBgColor('Price agreed')).toBe('#dbeafe');
+    expect(statusColor('Price agreed')).toBe(colors.accentBrown);
+    expect(statusBgColor('Price agreed')).toBe(colors.surfaceAlt);
   });
 });

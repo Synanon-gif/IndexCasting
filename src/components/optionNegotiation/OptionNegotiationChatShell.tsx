@@ -23,6 +23,8 @@ export type OptionNegotiationChatShellProps = {
   /** Status pill on the right side of the header. */
   statusLabel: string;
   statusBackgroundColor: string;
+  /** Text color for the status pill (matches statusHelpers.statusColor). */
+  statusTextColor?: string;
   /** Extra control between title block and status pill (e.g. delete). */
   headerAccessory?: React.ReactNode;
   /** Agency: tap status to change negotiation state. */
@@ -62,6 +64,7 @@ export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProp
   subtitle,
   statusLabel,
   statusBackgroundColor,
+  statusTextColor = colors.textPrimary,
   headerAccessory,
   onStatusPress,
   children,
@@ -122,17 +125,33 @@ export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProp
         {headerAccessory ? <View style={styles.headerAccessory}>{headerAccessory}</View> : null}
         {onStatusPress ? (
           <TouchableOpacity
-            style={[styles.statusPill, { backgroundColor: statusBackgroundColor }]}
+            style={[
+              styles.statusPill,
+              {
+                backgroundColor: statusBackgroundColor,
+                borderColor: statusTextColor,
+                borderWidth: StyleSheet.hairlineWidth,
+              },
+            ]}
             onPress={onStatusPress}
             activeOpacity={0.85}
           >
-            <Text style={styles.statusPillText} numberOfLines={1}>
+            <Text style={[styles.statusPillText, { color: statusTextColor }]} numberOfLines={1}>
               {statusLabel}
             </Text>
           </TouchableOpacity>
         ) : (
-          <View style={[styles.statusPill, { backgroundColor: statusBackgroundColor }]}>
-            <Text style={styles.statusPillText} numberOfLines={1}>
+          <View
+            style={[
+              styles.statusPill,
+              {
+                backgroundColor: statusBackgroundColor,
+                borderColor: statusTextColor,
+                borderWidth: StyleSheet.hairlineWidth,
+              },
+            ]}
+          >
+            <Text style={[styles.statusPillText, { color: statusTextColor }]} numberOfLines={1}>
               {statusLabel}
             </Text>
           </View>
@@ -282,7 +301,6 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 11,
     fontWeight: '600',
-    color: '#fff',
     textAlign: 'center',
   },
   scroll: {

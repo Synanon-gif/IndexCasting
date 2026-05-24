@@ -324,6 +324,7 @@ import {
 import { isPriceNegotiationRequest } from '../utils/priceNegotiationRequest';
 import { toDisplayStatus } from '../utils/statusHelpers';
 import { optionRequestWorkflowBadge } from '../utils/negotiationWorkflowLabel';
+import { attentionBadgeColors, modelApprovalBadgeColors } from '../utils/statusHelpers';
 import { negotiationSystemMessageDisplayText } from '../utils/negotiationSystemMessageDisplayText';
 import {
   resolveCanonicalOptionRequestIdForCalendarItem,
@@ -7700,6 +7701,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             }
             statusLabel={workflowBadge?.label ?? '—'}
             statusBackgroundColor={workflowBadge?.backgroundColor ?? colors.border}
+            statusTextColor={workflowBadge?.color ?? colors.textPrimary}
             headerBelowTitle={
               <NegotiationChipsRow
                 displayStatus={displayStatus}
@@ -8826,9 +8828,18 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                             contentContainerStyle={s.optionRequestThreadAttentionScrollContent}
                           >
                             {listAttentionLabel ? (
-                              <View style={[s.statusPill, { backgroundColor: '#dbeafe' }]}>
+                              <View
+                                style={[
+                                  s.statusPill,
+                                  {
+                                    backgroundColor: attentionBadgeColors.background,
+                                    borderColor: attentionBadgeColors.border,
+                                    borderWidth: StyleSheet.hairlineWidth,
+                                  },
+                                ]}
+                              >
                                 <Text
-                                  style={[s.statusPillLabel, { color: '#1d4ed8' }]}
+                                  style={[s.statusPillLabel, { color: attentionBadgeColors.text }]}
                                   numberOfLines={1}
                                 >
                                   {listAttentionLabel}
@@ -8852,7 +8863,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                               style={[
                                 s.approvalBadge,
                                 r.modelAccountLinked === false && {
-                                  backgroundColor: 'rgba(120,120,120,0.2)',
+                                  backgroundColor: modelApprovalBadgeColors.noAccount.background,
+                                  borderColor: modelApprovalBadgeColors.noAccount.border,
                                 },
                                 r.modelAccountLinked !== false &&
                                   r.modelApproval === 'approved' &&
@@ -8868,7 +8880,9 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                               <Text
                                 style={[
                                   s.approvalBadgeLabel,
-                                  r.modelAccountLinked === false && { color: colors.textSecondary },
+                                  r.modelAccountLinked === false && {
+                                    color: modelApprovalBadgeColors.noAccount.text,
+                                  },
                                   r.modelAccountLinked !== false &&
                                     r.modelApproval === 'approved' &&
                                     s.approvalBadgeLabelApproved,
@@ -8892,10 +8906,17 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                             <View
                               style={[
                                 s.statusPill,
-                                { backgroundColor: listWorkflowBadge.backgroundColor },
+                                {
+                                  backgroundColor: listWorkflowBadge.backgroundColor,
+                                  borderColor: listWorkflowBadge.color,
+                                  borderWidth: StyleSheet.hairlineWidth,
+                                },
                               ]}
                             >
-                              <Text style={s.statusPillLabel} numberOfLines={1}>
+                              <Text
+                                style={[s.statusPillLabel, { color: listWorkflowBadge.color }]}
+                                numberOfLines={1}
+                              >
                                 {listWorkflowBadge.label}
                               </Text>
                             </View>
@@ -10475,7 +10496,7 @@ const s = StyleSheet.create({
     minWidth: '100%',
   },
   statusPill: { borderRadius: 999, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  statusPillLabel: { ...typography.label, fontSize: 10, color: colors.surface },
+  statusPillLabel: { ...typography.label, fontSize: 10 },
   chatPanel: {
     marginTop: spacing.md,
     borderWidth: 1,
@@ -10613,15 +10634,21 @@ const s = StyleSheet.create({
     borderColor: colors.border,
   },
   approvalBadgeApproved: {
-    borderColor: colors.buttonOptionGreen,
-    backgroundColor: 'rgba(76,175,80,0.1)',
+    borderColor: modelApprovalBadgeColors.approved.border,
+    backgroundColor: modelApprovalBadgeColors.approved.background,
   },
-  approvalBadgeRejected: { borderColor: colors.error, backgroundColor: 'rgba(231,76,60,0.1)' },
-  approvalBadgePending: { borderColor: colors.warning, backgroundColor: 'rgba(184,134,11,0.1)' },
+  approvalBadgeRejected: {
+    borderColor: modelApprovalBadgeColors.rejected.border,
+    backgroundColor: modelApprovalBadgeColors.rejected.background,
+  },
+  approvalBadgePending: {
+    borderColor: modelApprovalBadgeColors.pending.border,
+    backgroundColor: modelApprovalBadgeColors.pending.background,
+  },
   approvalBadgeLabel: { ...typography.label, fontSize: 9, color: colors.textSecondary },
-  approvalBadgeLabelApproved: { color: colors.buttonOptionGreen },
-  approvalBadgeLabelRejected: { color: colors.error },
-  approvalBadgeLabelPending: { color: colors.warning },
+  approvalBadgeLabelApproved: { color: modelApprovalBadgeColors.approved.text },
+  approvalBadgeLabelRejected: { color: modelApprovalBadgeColors.rejected.text },
+  approvalBadgeLabelPending: { color: modelApprovalBadgeColors.pending.text },
   approvalBanner: {
     borderRadius: 8,
     paddingHorizontal: spacing.sm,

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { colors, spacing, typography } from '../../theme/theme';
 import { uiCopy } from '../../constants/uiCopy';
 import type { DisplayStatus } from '../../utils/statusHelpers';
-import { statusBgColor, statusColor } from '../../utils/statusHelpers';
+import { statusBgColor, statusColor, attentionBadgeColors } from '../../utils/statusHelpers';
 import { workflowLabelFromDisplayStatus } from '../../utils/negotiationWorkflowLabel';
 import { formatOptionMoneyAmount } from '../../utils/optionMoneyFormat';
 import { getCanonicalAgreedPrice } from '../../utils/canonicalOptionPrice';
@@ -112,13 +112,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   attentionChip: {
-    backgroundColor: 'rgba(59, 130, 246, 0.12)',
-    borderColor: 'rgba(59, 130, 246, 0.35)',
+    backgroundColor: attentionBadgeColors.background,
+    borderColor: attentionBadgeColors.border,
   },
   attentionText: {
     ...typography.label,
     fontSize: 11,
-    color: colors.textPrimary,
+    color: attentionBadgeColors.text,
     textTransform: 'none',
     letterSpacing: 0,
     flexShrink: 1,

@@ -6,6 +6,7 @@
  * only the UI presentation is standardized.
  */
 
+import { colors } from '../theme/theme';
 import { priceCommerciallySettled } from './priceSettlement';
 
 export type DisplayStatus =
@@ -64,24 +65,55 @@ export function toDisplayStatus(
   return 'Draft';
 }
 
-/** Returns a color token for a given display status (Tailwind / RN compatible). */
+/** Smart-attention pills in option-request thread lists (shared across agency + client). */
+export const attentionBadgeColors = {
+  text: colors.accentBrown,
+  background: colors.surfaceWarm,
+  border: colors.borderLight,
+} as const;
+
+/** Model-approval pills in option-request thread lists. */
+export const modelApprovalBadgeColors = {
+  noAccount: {
+    text: colors.textSecondary,
+    background: colors.surfaceAlt,
+    border: colors.border,
+  },
+  approved: {
+    text: colors.buttonOptionGreen,
+    background: '#E8EEEB',
+    border: colors.buttonOptionGreen,
+  },
+  rejected: {
+    text: colors.buttonSkipRed,
+    background: '#F0E8E8',
+    border: colors.buttonSkipRed,
+  },
+  pending: {
+    text: colors.warning,
+    background: colors.surfaceWarm,
+    border: colors.warning,
+  },
+} as const;
+
+/** Returns a color token for a given display status (muted, high-contrast, theme-aligned). */
 export function statusColor(displayStatus: DisplayStatus): string {
   switch (displayStatus) {
     case 'Confirmed':
-      return '#16a34a'; // green-600
+      return colors.buttonOptionGreen;
     case 'Option confirmed':
     case 'Casting confirmed':
-      return '#0d9488'; // teal-600
+      return colors.accentGreen;
     case 'Rejected':
-      return '#dc2626'; // red-600
+      return colors.buttonSkipRed;
     case 'In negotiation':
-      return '#d97706'; // amber-600
+      return '#6B4E1A';
     case 'Price agreed':
-      return '#2563eb'; // blue-600
+      return colors.accentBrown;
     case 'Pending':
     case 'Draft':
     default:
-      return '#6b7280'; // gray-500
+      return colors.textSecondary;
   }
 }
 
@@ -89,19 +121,19 @@ export function statusColor(displayStatus: DisplayStatus): string {
 export function statusBgColor(displayStatus: DisplayStatus): string {
   switch (displayStatus) {
     case 'Confirmed':
-      return '#dcfce7'; // green-100
+      return '#E8EEEB';
     case 'Option confirmed':
     case 'Casting confirmed':
-      return '#ccfbf1'; // teal-100
+      return '#E6EDEA';
     case 'Rejected':
-      return '#fee2e2'; // red-100
+      return '#F0E8E8';
     case 'In negotiation':
-      return '#fef3c7'; // amber-100
+      return colors.surfaceWarm;
     case 'Price agreed':
-      return '#dbeafe'; // blue-100
+      return colors.surfaceAlt;
     case 'Pending':
     case 'Draft':
     default:
-      return '#f3f4f6'; // gray-100
+      return colors.surfaceAlt;
   }
 }

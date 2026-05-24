@@ -228,7 +228,12 @@ import {
   type OptionRequestTimeChip,
   type OptionRequestTypeChip,
 } from '../utils/optionRequestThreadFilters';
-import { toDisplayStatus } from '../utils/statusHelpers';
+import {
+  attentionBadgeColors,
+  statusBgColor,
+  statusColor,
+  toDisplayStatus,
+} from '../utils/statusHelpers';
 import { optionRequestWorkflowBadge } from '../utils/negotiationWorkflowLabel';
 import { negotiationSystemMessageDisplayText } from '../utils/negotiationSystemMessageDisplayText';
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
@@ -5151,19 +5156,19 @@ const ActiveOptionsView: React.FC<{
           : copy.optionRequestStatusRejected;
     const badgeLabel = needsAction ? copy.smartAttentionLabel : statusLabel;
     const badgeBg = needsAction
-      ? '#fef3c7'
+      ? attentionBadgeColors.background
       : r.status === 'confirmed'
-        ? '#dcfce7'
+        ? statusBgColor('Confirmed')
         : r.status === 'rejected'
-          ? '#fee2e2'
-          : '#fef3c7';
+          ? statusBgColor('Rejected')
+          : statusBgColor('In negotiation');
     const badgeColor = needsAction
-      ? '#92400e'
+      ? attentionBadgeColors.text
       : r.status === 'confirmed'
-        ? '#16a34a'
+        ? statusColor('Confirmed')
         : r.status === 'rejected'
-          ? '#dc2626'
-          : '#92400e';
+          ? statusColor('Rejected')
+          : statusColor('In negotiation');
 
     return (
       <TouchableOpacity
@@ -7015,9 +7020,21 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                           contentContainerStyle={styles.optionRequestThreadAttentionScrollContent}
                         >
                           {attentionListLabel ? (
-                            <View style={[styles.statusPill, { backgroundColor: '#dbeafe' }]}>
+                            <View
+                              style={[
+                                styles.statusPill,
+                                {
+                                  backgroundColor: attentionBadgeColors.background,
+                                  borderColor: attentionBadgeColors.border,
+                                  borderWidth: StyleSheet.hairlineWidth,
+                                },
+                              ]}
+                            >
                               <Text
-                                style={[styles.statusPillLabel, { color: '#1d4ed8' }]}
+                                style={[
+                                  styles.statusPillLabel,
+                                  { color: attentionBadgeColors.text },
+                                ]}
                                 numberOfLines={1}
                               >
                                 {attentionListLabel}
@@ -7050,10 +7067,17 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                           <View
                             style={[
                               styles.statusPill,
-                              { backgroundColor: listWorkflowBadge.backgroundColor },
+                              {
+                                backgroundColor: listWorkflowBadge.backgroundColor,
+                                borderColor: listWorkflowBadge.color,
+                                borderWidth: StyleSheet.hairlineWidth,
+                              },
                             ]}
                           >
-                            <Text style={styles.statusPillLabel} numberOfLines={1}>
+                            <Text
+                              style={[styles.statusPillLabel, { color: listWorkflowBadge.color }]}
+                              numberOfLines={1}
+                            >
                               {listWorkflowBadge.label}
                             </Text>
                           </View>
@@ -7095,6 +7119,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               }
               statusLabel={workflowBadge?.label ?? '—'}
               statusBackgroundColor={workflowBadge?.backgroundColor ?? colors.border}
+              statusTextColor={workflowBadge?.color ?? colors.textPrimary}
               headerBelowTitle={
                 <NegotiationChipsRow
                   displayStatus={displayStatus}
@@ -10864,7 +10889,6 @@ const styles = StyleSheet.create({
   statusPillLabel: {
     ...typography.label,
     fontSize: 10,
-    color: colors.surface,
   },
   chatPanel: {
     marginTop: spacing.lg,
