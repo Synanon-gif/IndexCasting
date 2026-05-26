@@ -1,16 +1,19 @@
 import { motion, useReducedMotion, useScroll, useTransform } from 'framer-motion';
-import { useMemo, useRef } from 'react';
+import { useRef } from 'react';
 import { EyebrowRule } from '../components/EyebrowRule';
 import { ProductShowcaseFrame } from '../components/ProductShowcaseFrame';
+import { ProductVisual } from '../components/ProductVisual';
 import { RevealTitle } from '../components/RevealTitle';
 import { APP_ORIGIN } from '../constants';
 import { getScreenshotSlot } from '../screenshotSlots';
+import { visual } from '../productVisuals';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 
 const easePremium = [0.16, 1, 0.3, 1] as const;
 
 const heroWeb = getScreenshotSlot('hero-overview-web')!;
 const heroMobile = getScreenshotSlot('hero-overview-mobile')!;
+const heroAsset = visual('hero-stack');
 
 export function HeroSection() {
   const region = useRef<HTMLElement>(null);
@@ -25,20 +28,13 @@ export function HeroSection() {
     offset: ['start start', 'end start'],
   });
 
-  const [y1Max, y2Max, y3Max] = useMemo(
-    () => (parallaxOn ? [-52, -26, -78] : [0, 0, 0]),
-    [parallaxOn],
-  );
+  const yHero = useTransform(scrollYProgress, [0, 1], [0, parallaxOn ? -36 : 0]);
 
-  const y1 = useTransform(scrollYProgress, [0, 1], [0, y1Max]);
-  const y2 = useTransform(scrollYProgress, [0, 1], [0, y2Max]);
-  const y3 = useTransform(scrollYProgress, [0, 1], [0, y3Max]);
-
-  const floatAmp = isNarrow ? 2 : 4;
+  const floatAmp = isNarrow ? 3 : 6;
   const floatDuration = isNarrow ? 11 : 9;
 
   return (
-    <section ref={region} id="top" className="heroSection">
+    <section ref={region} className="heroSection">
       <div className="shell">
         <div className="heroGrid">
           <motion.div
@@ -81,83 +77,43 @@ export function HeroSection() {
             </div>
           </motion.div>
 
-          <motion.div
-            className="heroMock"
-            aria-hidden="true"
-            animate={floatOn ? { y: [0, -floatAmp, 0] } : undefined}
-            transition={
-              floatOn
-                ? {
-                    duration: floatDuration,
-                    repeat: Infinity,
-                    ease: 'easeInOut',
-                  }
-                : undefined
-            }
-          >
-            <div className="heroMockGlow" />
+          <motion.div className="heroProductStage" aria-hidden="true" style={{ y: yHero }}>
             <motion.div
-              className={`heroLayer heroLayerBack${parallaxOn ? '' : ' heroLayerStatic'}`}
-              style={{ y: y3 }}
+              className="heroProductFloat"
+              animate={floatOn ? { y: [0, -floatAmp, 0] } : undefined}
+              transition={
+                floatOn
+                  ? {
+                      duration: floatDuration,
+                      repeat: Infinity,
+                      ease: 'easeInOut',
+                    }
+                  : undefined
+              }
             >
-              <div className="mockPanel mockPanelWide">
-                <span className="mockBar" />
-                <div className="mockGridCols">
-                  <div className="mockThumb" />
-                  <div className="mockThumb" />
-                  <div className="mockThumb" />
-                </div>
-              </div>
-            </motion.div>
-            <motion.div
-              className={`heroLayer heroLayerMid${parallaxOn ? '' : ' heroLayerStatic'}`}
-              style={{ y: y2 }}
-            >
-              <div className="mockPanel mockPanelChat">
-                <div className="mockChatHeader">
-                  <span className="mockDot" />
-                  <span className="mockChatTitle">Agency ↔ Client</span>
-                </div>
-                <div className="mockBubbles">
-                  <span className="mockBubble mockBubbleL" />
-                  <span className="mockBubble mockBubbleR" />
-                  <span className="mockBubble mockBubbleL short" />
-                </div>
-              </div>
-            </motion.div>
-            <motion.div
-              className={`heroLayer heroLayerFront${parallaxOn ? '' : ' heroLayerStatic'}`}
-              style={{ y: y1 }}
-            >
-              <div className="mockPanel mockPanelCal">
-                <div className="mockCalNav">
-                  <span />
-                  <span />
-                </div>
-                <div className="mockCalCells">
-                  {Array.from({ length: 12 }).map((_, i) => (
-                    <span key={i} className={i === 5 ? 'mockCalCell mockCalCellHot' : 'mockCalCell'} />
-                  ))}
-                </div>
-              </div>
-              <div className="mockSwipeCard">
-                <div className="mockSwipePhoto" />
-                <div className="mockSwipeMeta">
-                  <span className="mockSwipeLine" />
-                  <span className="mockSwipeLine mockSwipeLineShort" />
-                </div>
+              <div className="heroProductGlow" />
+              <div className="heroProductFrame">
+                <ProductVisual
+                  src={heroAsset.src}
+                  alt={heroAsset.alt}
+                  width={heroAsset.width}
+                  height={heroAsset.height}
+                  priority
+                  className="heroProductImage"
+                />
               </div>
             </motion.div>
           </motion.div>
         </div>
 
-        <div className="heroShotRow" aria-label="Product overview placeholders">
+        <div className="heroShotRow" aria-label="Product overview">
           <ProductShowcaseFrame
             slotId={heroWeb.id}
             label={heroWeb.label}
             caption={heroWeb.purpose}
-            variant="noir"
+            variant="porcelain"
             aspect="wide"
+            imagePriority
           />
           <ProductShowcaseFrame
             slotId={heroMobile.id}

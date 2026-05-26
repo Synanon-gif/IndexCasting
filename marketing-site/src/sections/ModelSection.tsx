@@ -1,11 +1,14 @@
 import { EyebrowRule } from '../components/EyebrowRule';
 import { ProductShowcaseFrame } from '../components/ProductShowcaseFrame';
+import { ProductVisual } from '../components/ProductVisual';
 import { Reveal } from '../components/Reveal';
 import { RevealTitle } from '../components/RevealTitle';
 import { getScreenshotSlot } from '../screenshotSlots';
+import { visual } from '../productVisuals';
 
 const home = getScreenshotSlot('model-home-inbox')!;
 const apply = getScreenshotSlot('model-apply')!;
+const modelHero = visual('model-phones');
 
 export function ModelSection() {
   return (
@@ -26,21 +29,19 @@ export function ModelSection() {
           </Reveal>
         </div>
 
+        <div className="modelHeroVisual">
+          <ProductVisual
+            src={modelHero.src}
+            alt={modelHero.alt}
+            width={modelHero.width}
+            height={modelHero.height}
+            className="modelHeroImage"
+          />
+        </div>
+
         <div className="modelSlotsRow">
-          <ProductShowcaseFrame
-            slotId={home.id}
-            label={home.label}
-            caption={home.purpose}
-            variant="wine"
-            aspect="phone"
-          />
-          <ProductShowcaseFrame
-            slotId={apply.id}
-            label={apply.label}
-            caption={apply.purpose}
-            variant="porcelain"
-            aspect="phone"
-          />
+          <ProductShowcaseFrame slotId={home.id} label={home.label} variant="wine" aspect="phone" />
+          <ProductShowcaseFrame slotId={apply.id} label={apply.label} variant="porcelain" aspect="phone" />
         </div>
 
         <div className="modelStrip">
@@ -58,10 +59,6 @@ export function ModelSection() {
           ))}
         </div>
 
-        <p className="slotsSectionNote slotsNoteLabel">Model · reserved captures</p>
-        <p className="modelQuietNote">
-          Calendar, availability, and agency chat ship as additional frames when product captures are ready.
-        </p>
       </div>
     </section>
   );

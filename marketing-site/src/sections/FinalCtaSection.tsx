@@ -4,6 +4,21 @@ import { APP_ORIGIN, EARLY_ACCESS_EMAIL } from '../constants';
 
 const easePremium = [0.16, 1, 0.3, 1] as const;
 
+const pillars = [
+  {
+    title: 'One workflow',
+    body: 'Discovery through booking — without the chaos between tools.',
+  },
+  {
+    title: 'Every stakeholder',
+    body: 'Agency · Client · Model · Billing on the same spine.',
+  },
+  {
+    title: 'Trust baseline',
+    body: 'Built in Innsbruck. GDPR-first by design.',
+  },
+];
+
 export function FinalCtaSection() {
   const reduceMotion = useReducedMotion() ?? false;
 
@@ -19,11 +34,23 @@ export function FinalCtaSection() {
         >
           <Reveal>
             <p className="eyebrow sectionEyebrow lightEyebrow">Now</p>
-            <h2 className="finalCtaTitle">Casting finally gets a system.</h2>
+            <h2 className="finalCtaTitle">
+              Casting finally gets a <span className="finalCtaAccent">system</span>.
+            </h2>
             <p className="finalCtaLead">
               One workflow. Every stakeholder. From discovery to booking — without the chaos.
             </p>
           </Reveal>
+
+          <div className="finalCtaPillars">
+            {pillars.map((p) => (
+              <article key={p.title} className="finalCtaPillar">
+                <h3>{p.title}</h3>
+                <p>{p.body}</p>
+              </article>
+            ))}
+          </div>
+
           <div className="finalCtaActions">
             <a className="btn btnLight" href={`${APP_ORIGIN}/`} rel="noopener noreferrer">
               Open Index Casting

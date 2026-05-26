@@ -1,9 +1,11 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { EyebrowRule } from '../components/EyebrowRule';
 import { ProductShowcaseFrame } from '../components/ProductShowcaseFrame';
+import { ProductVisual } from '../components/ProductVisual';
 import { Reveal } from '../components/Reveal';
 import { RevealTitle } from '../components/RevealTitle';
 import { getScreenshotSlot } from '../screenshotSlots';
+import { visual } from '../productVisuals';
 
 const easePremium = [0.16, 1, 0.3, 1] as const;
 
@@ -26,6 +28,8 @@ const agencySlotOrder = [
   'agency-client-thread',
   'agency-projects',
 ] as const;
+
+const agencyHero = visual('agency-workflow');
 
 export function AgencySection() {
   const reduceMotion = useReducedMotion() ?? false;
@@ -78,91 +82,24 @@ export function AgencySection() {
           </div>
 
           <motion.div
-            className="agencyFrame"
+            className="agencyFrame agencyFrame--live"
             initial={{ opacity: reduceMotion ? 1 : 0, y: reduceMotion ? 0 : 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-10% 0px', amount: 0.12 }}
             transition={{ duration: reduceMotion ? 0 : 0.98, ease: easePremium }}
           >
-            <div className="agencyFrameInner">
-              <div className="agencyOrb" />
-              <motion.div
-                className="agencyStack"
-                initial={reduceMotion ? 'show' : 'hidden'}
-                whileInView="show"
-                viewport={{ once: true, margin: '-8% 0px', amount: 0.2 }}
-                variants={{
-                  hidden: {},
-                  show: {
-                    transition: {
-                      staggerChildren: reduceMotion ? 0 : 0.08,
-                      delayChildren: reduceMotion ? 0 : 0.04,
-                    },
-                  },
-                }}
-              >
-                <motion.div
-                  className="agencyRow"
-                  variants={{
-                    hidden: { opacity: 0, y: 10 },
-                    show: {
-                      opacity: 1,
-                      y: 0,
-                      transition: { duration: 0.58, ease: easePremium },
-                    },
-                  }}
-                >
-                  <span className="agencyChip">Roster</span>
-                  <span className="agencyChip">Calendar</span>
-                </motion.div>
-                <motion.div
-                  className="agencyRow"
-                  variants={{
-                    hidden: { opacity: 0, y: 10 },
-                    show: {
-                      opacity: 1,
-                      y: 0,
-                      transition: { duration: 0.58, ease: easePremium },
-                    },
-                  }}
-                >
-                  <span className="agencyChip agencyChipWide">Client threads</span>
-                </motion.div>
-                <motion.div
-                  className="agencyTimeline"
-                  variants={{
-                    hidden: { opacity: 0, y: 10 },
-                    show: {
-                      opacity: 1,
-                      y: 0,
-                      transition: { duration: 0.58, ease: easePremium },
-                    },
-                  }}
-                >
-                  <span className="agencyDot" />
-                  <span className="agencyLine" />
-                  <span className="agencyDot agencyDotHot" />
-                  <span className="agencyLine" />
-                  <span className="agencyDot" />
-                </motion.div>
-                <motion.p
-                  className="agencyFrameCaption"
-                  variants={{
-                    hidden: { opacity: 0 },
-                    show: {
-                      opacity: 1,
-                      transition: { duration: 0.52, ease: easePremium },
-                    },
-                  }}
-                >
-                  One workflow · every stakeholder
-                </motion.p>
-              </motion.div>
+            <div className="agencyFrameInner agencyFrameInner--image">
+              <ProductVisual
+                src={agencyHero.src}
+                alt={agencyHero.alt}
+                width={agencyHero.width}
+                height={agencyHero.height}
+                className="agencyFrameImage"
+              />
             </div>
           </motion.div>
         </div>
 
-        <p className="slotsSectionNote slotsNoteLabel">Agency · reserved captures</p>
         <div className="agencyShowcaseGrid">
           {agencySlotOrder.map((id) => {
             const slot = getScreenshotSlot(id)!;

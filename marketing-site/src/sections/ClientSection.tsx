@@ -56,7 +56,6 @@ export function ClientSection() {
           </div>
         </div>
 
-        <p className="slotsSectionNote slotsNoteLabel">Client · reserved captures</p>
         <div className="clientSlotsGrid">
           <ProductShowcaseFrame
             slotId={shortlist.id}
