@@ -450,6 +450,8 @@ export const uiCopy = {
     agencyAddEventFormTitle: 'Add event',
     agencyAddEventSubmit: 'Add',
     agencyAddEventInvalidDate: 'Use date format YYYY-MM-DD, for example 2025-05-27.',
+    agencyAddEventDateTooFarFromToday:
+      'Choose a date within one year of today (format YYYY-MM-DD).',
     agencyAddEventEndBeforeStart: 'End time must be after start time.',
     agencyAddEventModelsRequired: 'Select at least one model for an option or casting.',
     agencyAddEventNoAgencyContext: 'Agency context is missing. Reload the page and try again.',

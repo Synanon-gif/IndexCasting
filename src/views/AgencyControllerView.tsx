@@ -637,6 +637,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         case 'missing_date':
         case 'invalid_date':
           return uiCopy.calendar.agencyAddEventInvalidDate;
+        case 'date_too_far_from_today':
+          return uiCopy.calendar.agencyAddEventDateTooFarFromToday;
         case 'invalid_time':
           return uiCopy.alerts.invalidTimeBody;
         case 'end_before_start':

@@ -13,9 +13,13 @@ export type CalendarEventFormValidationErrorKey =
   | 'missing_title'
   | 'missing_date'
   | 'invalid_date'
+  | 'date_too_far_from_today'
   | 'invalid_time'
   | 'end_before_start'
   | 'models_required';
+
+/** Agency manual calendar events: block dates more than one year from today (UI guard only). */
+export const CALENDAR_EVENT_MAX_DAYS_FROM_TODAY = 365;
 
 export type CalendarEventFormValidationResult =
   | {
@@ -80,6 +84,28 @@ export function parseCalendarEventDate(raw: string): { ok: true; iso: string } |
   return { ok: false };
 }
 
+/** Day distance between two ISO dates (UTC noon avoids DST edge cases). */
+export function daysBetweenIsoDates(isoA: string, isoB: string): number {
+  const a = new Date(`${isoA}T12:00:00.000Z`);
+  const b = new Date(`${isoB}T12:00:00.000Z`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return Math.abs(Math.round((a.getTime() - b.getTime()) / 86_400_000));
+}
+
+export function todayIsoLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+export function isCalendarEventDateWithinPlausibleRange(
+  isoDate: string,
+  referenceTodayIso: string = todayIsoLocal(),
+): boolean {
+  return daysBetweenIsoDates(isoDate, referenceTodayIso) <= CALENDAR_EVENT_MAX_DAYS_FROM_TODAY;
+}
+
 const TIME_RE = /^\d{2}:\d{2}$/;
 
 function parseTimeMinutes(value: string): number | null {
@@ -102,6 +128,10 @@ export function validateCalendarEventForm(
 
   const parsedDate = parseCalendarEventDate(rawDate);
   if (!parsedDate.ok) return { ok: false, errorKey: 'invalid_date' };
+
+  if (!isCalendarEventDateWithinPlausibleRange(parsedDate.iso)) {
+    return { ok: false, errorKey: 'date_too_far_from_today' };
+  }
 
   const startTime = input.startTime.trim();
   const endTime = input.endTime.trim();

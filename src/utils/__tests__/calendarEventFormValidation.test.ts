@@ -1,4 +1,7 @@
 import {
+  CALENDAR_EVENT_MAX_DAYS_FROM_TODAY,
+  daysBetweenIsoDates,
+  isCalendarEventDateWithinPlausibleRange,
   isStrictIsoDate,
   parseCalendarEventDate,
   validateCalendarEventForm,
@@ -33,9 +36,38 @@ describe('isStrictIsoDate', () => {
   });
 });
 
+describe('isCalendarEventDateWithinPlausibleRange', () => {
+  const ref = '2026-05-26';
+
+  it('accepts same day and dates within one year', () => {
+    expect(isCalendarEventDateWithinPlausibleRange('2026-05-26', ref)).toBe(true);
+    expect(isCalendarEventDateWithinPlausibleRange('2026-05-27', ref)).toBe(true);
+    expect(daysBetweenIsoDates('2026-05-26', ref)).toBe(0);
+    expect(daysBetweenIsoDates('2025-05-27', ref)).toBeLessThanOrEqual(
+      CALENDAR_EVENT_MAX_DAYS_FROM_TODAY,
+    );
+  });
+
+  it('rejects dates more than one year away', () => {
+    expect(isCalendarEventDateWithinPlausibleRange('2016-05-27', ref)).toBe(false);
+    expect(isCalendarEventDateWithinPlausibleRange('2028-06-01', ref)).toBe(false);
+  });
+});
+
 describe('validateCalendarEventForm', () => {
+  const refToday = '2026-05-26';
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(`${refToday}T12:00:00.000Z`));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   const base = {
-    date: '2025-05-27',
+    date: '2026-05-27',
     startTime: '15:00',
     endTime: '17:00',
     eventCategory: 'option' as const,
@@ -46,7 +78,17 @@ describe('validateCalendarEventForm', () => {
   it('accepts valid option with one model', () => {
     const r = validateCalendarEventForm(base);
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.isoDate).toBe('2025-05-27');
+    if (r.ok) expect(r.isoDate).toBe('2026-05-27');
+  });
+
+  it('rejects date more than one year from today (e.g. 2016)', () => {
+    const r = validateCalendarEventForm({ ...base, date: '2016-05-27' });
+    expect(r).toEqual({ ok: false, errorKey: 'date_too_far_from_today' });
+  });
+
+  it('rejects date more than one year in the future', () => {
+    const r = validateCalendarEventForm({ ...base, date: '2028-06-01' });
+    expect(r).toEqual({ ok: false, errorKey: 'date_too_far_from_today' });
   });
 
   it('accepts valid option with multiple models', () => {
