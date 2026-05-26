@@ -300,6 +300,7 @@ import { resolveCalendarRowOpenAction } from '../utils/calendarRowOpenAction';
 import { extractUnifiedClientOrgs, applyUnifiedOrgFilterToB2B } from '../utils/threadFilters';
 import { ClientOrgFilterDropdown } from '../components/ClientOrgFilterDropdown';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
+import { useOrgDashboardRealtimeBump } from '../utils/useOrgDashboardRealtimeBump';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
 import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
 import { BillingHubView } from '../components/billing/BillingHubView';
@@ -598,6 +599,13 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     }
   }, [tab, agencyOrganizationId, dashboardSummaryReloadKey]);
 
+  useOrgDashboardRealtimeBump({
+    enabled: tab === 'dashboard' && Boolean(agencyOrganizationId && session?.user?.id),
+    organizationId: agencyOrganizationId,
+    agencyId: currentAgencyId || null,
+    onBump: bumpDashboardSummary,
+  });
+
   useEffect(() => {
     if (!currentAgencyId) return;
     void refreshAgencyModelLists();
@@ -852,7 +860,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   });
   useEffect(() => {
     if (tab === 'billing' || tab === 'dashboard') void refreshBillingBadge();
-  }, [tab, refreshBillingBadge]);
+  }, [tab, refreshBillingBadge, dashboardSummaryReloadKey]);
 
   const openAgencyBookingChat = (threadId: string) => {
     refreshBookingThreads();
@@ -2324,6 +2332,10 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                           return;
                         }
                         createSucceeded = true;
+                      }
+                      if (createSucceeded) {
+                        bumpDashboardSummary();
+                        void loadOptionRequestsForAgency(currentAgencyId, agencyOrganizationId);
                       }
                       await loadAgencyCalendar();
                       setShowAddManualEvent(false);

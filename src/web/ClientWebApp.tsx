@@ -244,6 +244,7 @@ import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
 import { BillingHubView } from '../components/billing/BillingHubView';
 import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
+import { useOrgDashboardRealtimeBump } from '../utils/useOrgDashboardRealtimeBump';
 import { StorageImage } from '../components/StorageImage';
 import { ImageCarousel } from '../components/ImageCarousel';
 import { ClientOrgProfileScreen } from '../screens/ClientOrgProfileScreen';
@@ -1045,7 +1046,13 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   // signal disappears without forcing a full reload.
   useEffect(() => {
     if (tab === 'billing' || tab === 'dashboard') void refreshBillingBadge();
-  }, [tab, refreshBillingBadge]);
+  }, [tab, refreshBillingBadge, dashboardSummaryReloadKey]);
+
+  useOrgDashboardRealtimeBump({
+    enabled: tab === 'dashboard' && Boolean(clientOrgId && realClientId),
+    organizationId: clientOrgId,
+    onBump: bumpDashboardSummary,
+  });
 
   // Save filters to Supabase (explicit user action via "Save Filters" button).
   const handleSaveFilters = useCallback(async () => {

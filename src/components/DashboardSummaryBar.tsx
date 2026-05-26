@@ -45,7 +45,9 @@ export const DashboardSummaryBar: React.FC<Props> = ({
     }
     setLoading(true);
     const result = await getDashboardSummary(orgId, userId);
-    setSummary(result);
+    if (result) {
+      setSummary(result);
+    }
     setLoading(false);
   }, [orgId, userId]);
 
