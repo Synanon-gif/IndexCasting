@@ -109,7 +109,7 @@ Maßnahmen:
 - Datenbank-Backups durch den Infrastruktur-/Datenbankdienstleister nach dessen technischen Standards.
 - Wiederherstellbarkeit im Rahmen der eingesetzten Dienstleisterfunktionen.
 - Monitoring und Fehlerdiagnose, soweit eingerichtet.
-- Nutzung diagnostischer Tools wie Sentry nur zur Fehleranalyse, Stabilität und Sicherheit, nicht für werbliches Tracking.
+- Nutzung von **Sentry** (`EXPO_PUBLIC_SENTRY_DSN`) nur zur Fehleranalyse, Stabilität und Sicherheit, nicht für werbliches Tracking — **[TODO: produktiv bestätigen, ob DSN in Production/Preview gesetzt ist]**; in `development` ohnehin deaktiviert.
 - Technische Maßnahmen gegen Missbrauch, etwa Rate Limits für relevante Funktionen.
 - Regelmäßige Tests, Typechecks und Linting im Entwicklungsprozess.
 
@@ -132,7 +132,7 @@ Maßnahmen:
 - Transportverschlüsselung per HTTPS/TLS.
 - Speicherung sensibler Authentifizierungsinformationen über Supabase Auth.
 - Zugriff auf Dateien über kontrollierte Storage-Regeln bzw. signierte URLs.
-- Minimierung von im KI-/Support-Kontext eingegebenen personenbezogenen Daten durch Hinweise an Nutzer, soweit KI-Support eingesetzt wird.
+- Minimierung von im KI-/Support-Kontext eingegebenen personenbezogenen Daten durch Hinweise an Nutzer; optionaler **AI Help Assistant** über **Mistral AI** (Edge Function `ai-assistant`, Secret `MISTRAL_API_KEY`) — nur nach In-App-Einwilligung; **[TODO: produktiv bestätigen, ob API-Key gesetzt und Feature freigegeben ist]**.
 - Anonymisierung oder Löschung personenbezogener Daten nach Ablauf definierter Fristen, soweit keine gesetzlichen Aufbewahrungspflichten entgegenstehen.
 - Kein Speichern vollständiger Zahlungsdaten durch Index Casting.
 
@@ -161,14 +161,15 @@ Maßnahmen:
 
 ## 13. Unterauftragsverarbeiter / Dienstleister
 
-Aktuell bzw. typischerweise eingesetzte Dienstleister:
+Aktuell bzw. typischerweise eingesetzte Dienstleister (Code-/Env-Stand im Repository; produktive Secrets siehe TODOs):
 
-- Supabase: Authentifizierung, Datenbank, Storage, Realtime, Edge Functions.
-- Stripe: Zahlungsabwicklung, Rechnungen, Zahlungsstatus.
-- Vercel oder vergleichbarer Hosting-/Deployment-Dienstleister: Bereitstellung der Web-App.
-- E-Mail-/Kommunikationsdienstleister: Versand transaktionaler E-Mails, Einladungen, Benachrichtigungen.
-- Sentry oder vergleichbares Diagnosetool: Fehlerdiagnose und Stabilität.
-- Ggf. KI-Anbieter für KI-Support, sofern diese Funktion aktiviert wird.
+- **Supabase:** Authentifizierung, Datenbank, Storage, Realtime, Edge Functions.
+- **Stripe:** Zahlungsabwicklung, Rechnungen, Zahlungsstatus.
+- **Vercel:** Hosting/Deployment der Web-App (`vercel.json`) — **[TODO: Live-Hosting final bestätigen]**.
+- **Resend:** Transaktionaler E-Mail-Versand (`RESEND_API_KEY` in Supabase Secrets).
+- **Proton Mail:** Geschäftliches Kontakt-Postfach des Betreibers (nicht als Versand-API im Code).
+- **Sentry:** Fehlerdiagnose (`EXPO_PUBLIC_SENTRY_DSN`) — **[TODO: DSN in Production/Preview gesetzt?]**.
+- **Mistral AI:** Optionaler AI Help Assistant (`MISTRAL_API_KEY`) — **[TODO: Key gesetzt und Feature live?]**.
 
 Hinweis: Die konkrete Liste ist als gesonderte Unterauftragsverarbeiterliste aktuell zu halten (siehe `/legal/subprocessors`).
 

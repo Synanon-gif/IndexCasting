@@ -20,29 +20,45 @@ Zweck: Zahlungsabwicklung, Rechnungen, Abonnementstatus
 
 Daten: Zahlungs-/Rechnungsdaten, Kontaktdaten, Transaktionsdaten
 
-### 3. Vercel / Hosting-Anbieter
+### 3. Vercel (Hosting / Deployment)
 
-Zweck: Hosting und Auslieferung der Web-App
+Zweck: Hosting und Auslieferung der Web-App (Expo-Web-Export; `vercel.json` im Repository)
 
 Daten: technische Zugriffsdaten, IP-Adressen, Logdaten
 
-### 4. E-Mail-Dienstleister
+**[TODO — produktiv bestätigen:** Im Code/Repo ist Vercel als Hosting-Ziel konfiguriert (`vercel.json`, Build → `dist`). Ob die Live-Domain `index-casting.com` aktuell über Vercel ausgeliefert wird, ist aus dem Repository allein nicht zweifelsfrei — bitte im Vercel-Dashboard / DNS final bestätigen.]
 
-Zweck: Versand von Einladungen, transaktionalen E-Mails, Benachrichtigungen
+### 4. Resend (transaktionaler E-Mail-Versand)
 
-Daten: E-Mail-Adresse, Name, Einladungstokens, Kommunikationsmetadaten
+Zweck: Versand von Einladungen, transaktionalen E-Mails, Rechnungs-E-Mails und Benachrichtigungen über Supabase Edge Functions (u. a. `send-invite`, `send-invoice-via-email`, `send-agency-share-invite`; Secret `RESEND_API_KEY`)
 
-### 5. Sentry oder vergleichbarer Diagnosedienst
+Daten: E-Mail-Adresse, Name, Einladungstokens, Kommunikationsmetadaten, Rechnungsmetadaten
 
-Zweck: Fehlerdiagnose, Stabilität, technische Sicherheit
+**Hinweis:** Transaktionaler Versand läuft technisch über die Resend-API — nicht über ein SMTP-Postfach.
 
-Daten: technische Fehlerdaten, Geräte-/Browserinformationen, ggf. pseudonyme Nutzerkennung
+### 5. Proton Mail (geschäftliches Kontakt-Postfach)
 
-### 6. KI-Anbieter, falls KI-Support aktiviert wird
+Zweck: Betreiber-Kontakt und geschäftliche E-Mail-Kommunikation (z. B. `ruben@index-casting.com`)
 
-Zweck: Beantwortung von Supportanfragen
+Daten: Kontakt- und Support-Korrespondenz, soweit außerhalb der automatisierten Resend-Flows
 
-Daten: Chat-Inhalte, technische Metadaten, Nutzerrolle, keine Nutzung für Training ohne gesonderte Rechtsgrundlage/Einwilligung
+**Hinweis:** Proton Mail ist im Code **nicht** als programmatischer Versand-API-Anbieter angebunden; transaktionale System-Mails laufen über Resend (siehe oben).
+
+### 6. Sentry (Fehlerdiagnose)
+
+Zweck: Fehlerdiagnose, Stabilität, technische Sicherheit (Integration `@sentry/react-native`; Env `EXPO_PUBLIC_SENTRY_DSN`)
+
+Daten: technische Fehlerdaten, Geräte-/Browserinformationen, ggf. pseudonyme Nutzerkennung (PII-reduziert per Code-Konfiguration)
+
+**[TODO — produktiv bestätigen:** Sentry ist im Code integriert, initialisiert sich aber nur, wenn `EXPO_PUBLIC_APP_ENV` nicht `development` ist **und** `EXPO_PUBLIC_SENTRY_DSN` gesetzt ist. Bitte prüfen, ob der DSN in Production/Preview (z. B. Vercel/EAS) tatsächlich konfiguriert ist.]
+
+### 7. Mistral AI (optionaler AI Help Assistant)
+
+Zweck: Beantwortung von Produkt-Hilfe-Anfragen über die Edge Function `ai-assistant` (La Plateforme API; Secret `MISTRAL_API_KEY`; Modell `mistral-small-latest`)
+
+Daten: vom Nutzer eingegebene Fragen, minimierte Fakten je Rolle, technische Metadaten — nur nach In-App-Einwilligung; keine vollständigen Chat-/Billing-Exporte
+
+**[TODO — produktiv bestätigen:** Feature ist im Code vorhanden, aber ohne gesetztes `MISTRAL_API_KEY` nicht verfügbar. Bitte prüfen, ob der Key in Supabase Secrets gesetzt ist und das Feature produktiv freigegeben ist.]
 
 ## Hinweise
 

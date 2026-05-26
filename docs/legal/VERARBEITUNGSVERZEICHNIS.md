@@ -29,7 +29,7 @@ Datenkategorien: IP-Adresse, Zeitstempel, Browser-/Gerätedaten, Sessiondaten, t
 
 Rechtsgrundlagen: Art. 6 Abs. 1 lit. b DSGVO, soweit zur Vertragserfüllung erforderlich; Art. 6 Abs. 1 lit. f DSGVO, berechtigtes Interesse an sicherem und stabilem Betrieb; Art. 6 Abs. 1 lit. c DSGVO, soweit gesetzliche Pflichten bestehen.
 
-Empfänger: Hosting-/Infrastruktur-Dienstleister, Supabase, Vercel oder vergleichbarer Hosting-Dienst, Diagnose-/Monitoring-Dienstleister, soweit eingesetzt
+Empfänger: Supabase; **Vercel** (Hosting, im Repo konfiguriert — **[TODO: produktiv bestätigen]**); **Sentry** (Fehlerdiagnose, wenn `EXPO_PUBLIC_SENTRY_DSN` gesetzt — **[TODO: produktiv bestätigen]**)
 
 Löschfristen: technische Logs grundsätzlich kurzfristig, typischerweise 7 bis 90 Tage; sicherheitsrelevante Logs länger, soweit erforderlich; Accountbezogene Daten nach Vertragsende gemäß Löschkonzept.
 
@@ -71,7 +71,7 @@ Datenkategorien: Kontaktdaten, Kommunikationsinhalte, technische Informationen, 
 
 Rechtsgrundlagen: Art. 6 Abs. 1 lit. b DSGVO; Art. 6 Abs. 1 lit. f DSGVO.
 
-Empfänger: E-Mail-/Support-Dienstleister, technische Dienstleister, ggf. KI-Support-Anbieter (sofern aktiviert)
+Empfänger: **Resend** (transaktional); **Proton Mail** (Betreiber-Support-Postfach); technische Dienstleister; **Mistral AI** (optionaler AI Help Assistant, sofern `MISTRAL_API_KEY` gesetzt und genutzt — **[TODO: produktiv bestätigen]**)
 
 Löschfristen: solange zur Bearbeitung erforderlich; danach Löschung oder Anonymisierung nach internen Fristen; längere Aufbewahrung bei rechtlichen Ansprüchen möglich.
 
@@ -129,7 +129,7 @@ Betroffene Personen: Models, Bewerber, Booker, Kundenansprechpartner, Gastlink-E
 
 Datenkategorien: Model-Stammdaten, Model-Medien, Maße/Profildaten, Bewerbungsdaten, Projekt- und Buchungsdaten, Kommunikationsinhalte, Kalenderdaten, Kundendaten, interne Notizen, Dateien/Anhänge
 
-Kategorien von Empfängern: Supabase, Hosting-/Storage-Dienstleister, E-Mail-Dienstleister, ggf. KI-/Support-Dienstleister, vom Auftraggeber freigegebene Kunden/Gäste
+Kategorien von Empfängern: Supabase, **Vercel** (Hosting — **[TODO: produktiv bestätigen]**), **Resend** (transaktional), **Proton Mail** (Betreiber-Kontakt), **Mistral AI** (optional — **[TODO: produktiv bestätigen]**), vom Auftraggeber freigegebene Kunden/Gäste
 
 Drittlandtransfer: möglich bei Einsatz internationaler Dienstleister; Absicherung durch Standardvertragsklauseln, Angemessenheitsbeschluss oder zusätzliche Maßnahmen, soweit erforderlich.
 
@@ -147,7 +147,7 @@ Betroffene Personen: Mitarbeitende des Kunden, Agenturansprechpartner, Models, e
 
 Datenkategorien: Projektinformationen, Rollenbeschreibungen, Casting-/Bookingdaten, Preis-/Honorarvorschläge, Kommunikationsinhalte, Kalenderdaten, Teamdaten, Dateien/Anhänge
 
-Kategorien von Empfängern: Supabase, Hosting-/Storage-Dienstleister, E-Mail-Dienstleister, beteiligte Agenturen, ggf. Zahlungsdienstleister bei Plattformgeschäften
+Kategorien von Empfängern: Supabase, **Vercel** (Hosting — **[TODO: produktiv bestätigen]**), **Resend** (transaktional), beteiligte Agenturen, Stripe bei Plattformgeschäften, **Mistral AI** (optional — **[TODO: produktiv bestätigen]**)
 
 Drittlandtransfer: möglich bei Einsatz internationaler Dienstleister; Absicherung durch geeignete Garantien.
 

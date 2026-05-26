@@ -24,6 +24,14 @@ describe('germanLegalDocuments', () => {
     expect(GERMAN_LEGAL_DOCUMENTS.verarbeitungsverzeichnis.stand).toMatch(/26\. Mai 2026/);
   });
 
+  test('subprocessors names Resend and documents production TODOs', () => {
+    const doc = GERMAN_LEGAL_DOCUMENTS.subprocessors;
+    expect(doc.markdown).toContain('Resend');
+    expect(doc.markdown).toContain('Proton Mail');
+    expect(doc.markdown).toContain('Mistral AI');
+    expect(doc.markdown).toMatch(/TODO.*produktiv/i);
+  });
+
   test('route mapping resolves each document', () => {
     expect(germanLegalDocumentForRoute('legal-impressum').id).toBe('impressum');
     expect(germanLegalDocumentForRoute('legal-toms').id).toBe('toms');
