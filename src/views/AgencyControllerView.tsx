@@ -306,6 +306,7 @@ import {
 } from '../services/agencyUsageLimitsSupabase';
 import { getAgencyOrganizationSeatLimit } from '../services/subscriptionSupabase';
 import { getLatestActivityLog, type ActivityLog } from '../services/activityLogsSupabase';
+import { getModelTraction } from '../services/stippenSupabase';
 import { uiCopy as _uiCopy } from '../constants/uiCopy';
 import { attentionSignalsFromOptionRequestLike } from '../utils/optionRequestAttention';
 import {
@@ -530,14 +531,23 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const refreshAgencyModelLists = useCallback(async () => {
     if (!currentAgencyId) return;
     try {
-      const full = await getModelsForAgencyFromSupabase(currentAgencyId);
+      const [full, tractionRows] = await Promise.all([
+        getModelsForAgencyFromSupabase(currentAgencyId),
+        getModelTraction(),
+      ]);
+      const tractionByModelId = new Map<string, number>();
+      for (const row of tractionRows) {
+        if (row.agency_id === currentAgencyId) {
+          tractionByModelId.set(row.model_id, row.stippen_count ?? 0);
+        }
+      }
       setFullModels(full);
       setModels(
         mapAgencyModelsToState(
           full.map((m) => ({
             id: m.id,
             name: m.name,
-            traction: 0,
+            traction: tractionByModelId.get(m.id) ?? 0,
             isVisibleCommercial: m.is_visible_commercial,
             isVisibleFashion: m.is_visible_fashion,
           })),
@@ -581,7 +591,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     if (agencyOrganizationId) {
       void getLatestActivityLog(agencyOrganizationId).then(setLatestActivity);
     }
-  }, [tab, agencyOrganizationId]);
+  }, [tab, agencyOrganizationId, dashboardSummaryReloadKey]);
 
   useEffect(() => {
     if (!currentAgencyId) return;
@@ -814,7 +824,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     mode: 'counts',
   });
   useEffect(() => {
-    if (tab === 'billing') void refreshBillingBadge();
+    if (tab === 'billing' || tab === 'dashboard') void refreshBillingBadge();
   }, [tab, refreshBillingBadge]);
 
   const openAgencyBookingChat = (threadId: string) => {
@@ -952,6 +962,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 organizationId={agencyOrganizationId}
                 variant="agency"
                 role={billingAttentionRole}
+                reloadKey={dashboardSummaryReloadKey}
                 onOpenBilling={() => setTab('billing')}
               />
             )}
@@ -1035,9 +1046,11 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               onPendingOptionRequestConsumed={() => setSearchOptionId(null)}
               assignmentByClientOrgId={assignmentByClientOrgId}
               onOptionRequestDeleted={() => {
+                bumpDashboardSummary();
                 void loadAgencyCalendar();
               }}
               onOptionProjectionChanged={() => {
+                bumpDashboardSummary();
                 void loadAgencyCalendar();
               }}
               onChatFullscreenChange={(active) => setAgencyChatFullscreen(active && agencyIsMobile)}
@@ -7041,13 +7054,14 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       subscribeToConversation(c.id, (msg) => {
         if (msg.sender_id !== currentUserId && activeB2bChatRef.current !== c.id) {
           setModelDirectUnreadById((prev) => ({ ...prev, [c.id]: true }));
+          onDashboardSummaryBump?.();
         }
       }),
     );
     return () => {
       unsubs.forEach((u) => u());
     };
-  }, [modelDirectIdsKey, currentUserId]);
+  }, [modelDirectIdsKey, currentUserId, onDashboardSummaryBump]);
 
   useEffect(() => {
     if (activeConnectionChatId) {
@@ -7063,13 +7077,14 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       subscribeToConversation(c.id, (msg) => {
         if (msg.sender_id !== currentUserId && activeB2bChatRef.current !== c.id) {
           setB2bUnreadById((prev) => ({ ...prev, [c.id]: true }));
+          onDashboardSummaryBump?.();
         }
       }),
     );
     return () => {
       unsubs.forEach((u) => u());
     };
-  }, [b2bConversationIdsKey, currentUserId]);
+  }, [b2bConversationIdsKey, currentUserId, onDashboardSummaryBump]);
 
   const refreshModelDirectConvs = useCallback(() => {
     const orgId = agencyOrgIdB2b ?? agencyOrganizationIdProp;
@@ -7518,6 +7533,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         }
         setRequests(getOptionRequests());
         showNegotiationCalendarHint();
+        onDashboardSummaryBump?.();
         return true;
       } catch (e) {
         console.error(`runNegotiationAction(${label}) exception`, e);
@@ -7531,7 +7547,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         setProcessingRequestId(null);
       }
     },
-    [request?.threadId, processingRequestId, showNegotiationCalendarHint],
+    [request?.threadId, processingRequestId, showNegotiationCalendarHint, onDashboardSummaryBump],
   );
 
   // NegotiationThreadFooter expects `() => Promise<void>` for its action props,

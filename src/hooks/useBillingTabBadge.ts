@@ -58,6 +58,8 @@ export type UseBillingTabBadgeArgs = {
   role: BillingAttentionRole;
   /** When false, the hook short-circuits and returns no badge (e.g. tab hidden). */
   enabled?: boolean;
+  /** Bump to refetch (dashboard return, billing mutations, focus refresh). */
+  reloadKey?: number;
   /**
    * Loading mode. Default `'detailed'` for backwards compatibility with the
    * Billing widget which needs full per-signal context. Bottom-tab badges
@@ -118,6 +120,7 @@ export function useBillingTabBadge({
   role,
   enabled = true,
   mode = 'detailed',
+  reloadKey = 0,
 }: UseBillingTabBadgeArgs): UseBillingTabBadgeResult {
   const [signals, setSignals] = useState<BillingAttentionSignal[]>([]);
   const [loading, setLoading] = useState(false);
@@ -163,7 +166,7 @@ export function useBillingTabBadge({
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, reloadKey]);
 
   const hasBadge = useMemo(() => billingTabBadgeForRole(signals, role), [signals, role]);
   const topSeverity = useMemo(() => highestBillingSeverityForRole(signals, role), [signals, role]);

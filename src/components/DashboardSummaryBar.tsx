@@ -8,19 +8,11 @@
  * Shows a loading skeleton while data is fetching.
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  AppState,
-  type AppStateStatus,
-  Platform,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { colors, spacing } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { getDashboardSummary, type DashboardSummary } from '../services/dashboardSupabase';
+import { useFocusVisibilityRefresh } from '../utils/useFocusVisibilityRefresh';
 
 interface Props {
   orgId: string;
@@ -46,6 +38,11 @@ export const DashboardSummaryBar: React.FC<Props> = ({
   const copy = uiCopy.dashboard;
 
   const load = useCallback(async () => {
+    if (!orgId?.trim() || !userId?.trim()) {
+      setSummary(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const result = await getDashboardSummary(orgId, userId);
     setSummary(result);
@@ -56,27 +53,12 @@ export const DashboardSummaryBar: React.FC<Props> = ({
     void load();
   }, [load, reloadKey]);
 
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (s: AppStateStatus) => {
-      if (s === 'active') void load();
-    });
-    return () => sub.remove();
-  }, [load]);
-
-  useEffect(() => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined' || typeof window === 'undefined')
-      return;
-    const onVis = () => {
-      if (document.visibilityState === 'visible') void load();
-    };
-    const onWinFocus = () => void load();
-    document.addEventListener('visibilitychange', onVis);
-    window.addEventListener('focus', onWinFocus);
-    return () => {
-      document.removeEventListener('visibilitychange', onVis);
-      window.removeEventListener('focus', onWinFocus);
-    };
-  }, [load]);
+  useFocusVisibilityRefresh(
+    () => {
+      void load();
+    },
+    Boolean(orgId?.trim() && userId?.trim()),
+  );
 
   if (loading) {
     return (

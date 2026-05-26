@@ -30,6 +30,8 @@ export type BillingAttentionWidgetProps = {
   variant: 'agency' | 'client';
   role: BillingAttentionRole;
   onOpenBilling: () => void;
+  /** Bump to refetch billing attention (parity with dashboard summary reloadKey). */
+  reloadKey?: number;
 };
 
 const SEVERITY_COLOR: Record<BillingAttentionSeverity, string> = {
@@ -79,11 +81,13 @@ export const BillingAttentionWidget: React.FC<BillingAttentionWidgetProps> = ({
   variant,
   role,
   onOpenBilling,
+  reloadKey = 0,
 }) => {
   const { signals, topSeverity, hasBadge } = useBillingTabBadge({
     organizationId,
     variant,
     role,
+    reloadKey,
   });
 
   if (!hasBadge || !topSeverity) return null;

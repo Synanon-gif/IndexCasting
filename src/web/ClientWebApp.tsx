@@ -1044,7 +1044,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   // Re-evaluate badge whenever the user lands on the billing tab so a freshly-handled
   // signal disappears without forcing a full reload.
   useEffect(() => {
-    if (tab === 'billing') void refreshBillingBadge();
+    if (tab === 'billing' || tab === 'dashboard') void refreshBillingBadge();
   }, [tab, refreshBillingBadge]);
 
   // Save filters to Supabase (explicit user action via "Save Filters" button).
@@ -2912,6 +2912,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 organizationId={clientOrgId}
                 variant="client"
                 role={billingAttentionRole}
+                reloadKey={dashboardSummaryReloadKey}
                 onOpenBilling={() => setTab('billing')}
               />
             )}
@@ -3099,9 +3100,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               void handlePackagePress(meta);
             }}
             onOptionRequestDeleted={() => {
+              bumpDashboardSummary();
               void loadClientCalendar();
             }}
             onOptionProjectionChanged={() => {
+              bumpDashboardSummary();
               void loadClientCalendar();
             }}
             onOptionThreadOpenedFromList={() => {
@@ -5879,13 +5882,14 @@ const ClientB2BChatsPanel: React.FC<{
       subscribeToConversation(c.id, (msg) => {
         if (msg.sender_id !== clientUserId && selectedIdRef.current !== c.id) {
           setB2bUnreadById((prev) => ({ ...prev, [c.id]: true }));
+          onDashboardSummaryBump?.();
         }
       }),
     );
     return () => {
       unsubs.forEach((u) => u());
     };
-  }, [conversationIdsKey, clientUserId]);
+  }, [conversationIdsKey, clientUserId, onDashboardSummaryBump]);
 
   const selectedRowForRelated = selectedId ? rows.find((r) => r.id === selectedId) : undefined;
   const targetAgencyOrgIdForRelated = selectedRowForRelated?.agency_organization_id ?? null;
@@ -6447,6 +6451,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         onSuccess?.();
         setRequests(getOptionRequests());
         showNegotiationCalendarHint();
+        onDashboardSummaryBump?.();
         return true;
       } catch (e) {
         console.error(`runNegotiationAction(${label}) exception`, e);
@@ -6458,7 +6463,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         return false;
       }
     },
-    [showNegotiationCalendarHint],
+    [showNegotiationCalendarHint, onDashboardSummaryBump],
   );
 
   const runAgencyConfirmAvailability = useCallback(async () => {
