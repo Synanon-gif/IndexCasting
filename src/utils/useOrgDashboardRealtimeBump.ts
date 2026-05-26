@@ -2,6 +2,19 @@ import { useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { createDebouncedScheduler } from './debouncedScheduler';
 
+/** Realtime filter strings for option_requests — tested for client/agency parity. */
+export function orgDashboardOptionRequestFilters(
+  orgId: string,
+  agencyId?: string | null,
+): string[] {
+  const trimmedOrg = orgId.trim();
+  const trimmedAgency = agencyId?.trim();
+  if (trimmedAgency) {
+    return [`agency_id=eq.${trimmedAgency}`];
+  }
+  return [`organization_id=eq.${trimmedOrg}`, `client_organization_id=eq.${trimmedOrg}`];
+}
+
 export type OrgDashboardRealtimeBumpArgs = {
   /** When false, no channel is opened. */
   enabled: boolean;
@@ -39,25 +52,14 @@ export function useOrgDashboardRealtimeBump({
 
     let channel = supabase.channel(channelName);
 
-    if (agencyId?.trim()) {
+    for (const filter of orgDashboardOptionRequestFilters(orgId, agencyId)) {
       channel = channel.on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'option_requests',
-          filter: `agency_id=eq.${agencyId.trim()}`,
-        },
-        () => schedule(),
-      );
-    } else {
-      channel = channel.on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'option_requests',
-          filter: `organization_id=eq.${orgId}`,
+          filter,
         },
         () => schedule(),
       );

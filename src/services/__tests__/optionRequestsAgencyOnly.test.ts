@@ -14,9 +14,14 @@ jest.mock('../../../lib/supabase', () => ({
 }));
 
 import { supabase } from '../../../lib/supabase';
-import { insertAgencyOptionRequest, agencyConfirmJobAgencyOnly } from '../optionRequestsSupabase';
+import {
+  insertAgencyOptionRequest,
+  agencyConfirmJobAgencyOnly,
+  ensureBookingEventSyncedFromOptionRequest,
+} from '../optionRequestsSupabase';
 
 const rpc = supabase.rpc as jest.Mock;
+const from = supabase.from as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -63,6 +68,85 @@ describe('insertAgencyOptionRequest', () => {
       requestedDate: '2026-07-01',
     });
     expect(result).toBeNull();
+  });
+});
+
+describe('ensureBookingEventSyncedFromOptionRequest', () => {
+  it('loads option row and upserts booking_events when job_confirmed', async () => {
+    const reqId = 'req-job-sync';
+    const row = {
+      id: reqId,
+      client_id: 'client-1',
+      model_id: 'model-1',
+      agency_id: 'agency-1',
+      requested_date: '2026-05-26',
+      status: 'confirmed',
+      project_id: null,
+      client_name: null,
+      model_name: 'RÉMI',
+      job_description: null,
+      proposed_price: null,
+      agency_counter_price: null,
+      client_price_status: null,
+      final_status: 'job_confirmed',
+      request_type: 'option',
+      currency: 'EUR',
+      start_time: null,
+      end_time: null,
+      model_approval: 'approved',
+      model_approved_at: null,
+      model_account_linked: true,
+      booker_id: null,
+      organization_id: null,
+      agency_organization_id: 'org-agency-1',
+      client_organization_id: null,
+      client_organization_name: null,
+      agency_organization_name: 'Agency Org',
+      created_by: null,
+      agency_assignee_user_id: null,
+      is_agency_only: true,
+      agency_event_group_id: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    from.mockImplementation((table: string) => {
+      if (table === 'option_requests') {
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              maybeSingle: jest.fn().mockResolvedValue({ data: row, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === 'booking_events') {
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              neq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+              }),
+            }),
+          }),
+          insert: jest.fn().mockResolvedValue({ error: null }),
+        };
+      }
+      if (table === 'organizations') {
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              maybeSingle: jest.fn().mockResolvedValue({
+                data: { id: 'org-agency-1' },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+    await ensureBookingEventSyncedFromOptionRequest(reqId);
+    expect(from).toHaveBeenCalledWith('booking_events');
   });
 });
 

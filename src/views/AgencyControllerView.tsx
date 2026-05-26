@@ -600,7 +600,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   }, [tab, agencyOrganizationId, dashboardSummaryReloadKey]);
 
   useOrgDashboardRealtimeBump({
-    enabled: tab === 'dashboard' && Boolean(agencyOrganizationId && session?.user?.id),
+    enabled: Boolean(agencyOrganizationId && session?.user?.id),
     organizationId: agencyOrganizationId,
     agencyId: currentAgencyId || null,
     onBump: bumpDashboardSummary,
@@ -7663,11 +7663,18 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         setNegotiationCounterExpanded(false);
         setRequests(getOptionRequests());
         showNegotiationCalendarHint();
+        onDashboardSummaryBump?.();
       } finally {
         setProcessingRequestId(null);
       }
     },
-    [request?.threadId, processingRequestId, currency, showNegotiationCalendarHint],
+    [
+      request?.threadId,
+      processingRequestId,
+      currency,
+      showNegotiationCalendarHint,
+      onDashboardSummaryBump,
+    ],
   );
 
   const agencyModelDirectThreadContext = useMemo((): ThreadContext => {

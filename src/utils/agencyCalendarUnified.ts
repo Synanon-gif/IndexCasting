@@ -388,6 +388,7 @@ export function preferJobBookingOverOptionRows(
     if (r.kind !== 'booking') continue;
     const e = r.entry;
     const oid = e.option_request_id;
+    // Only suppress the option tile when a canonical job booking_events row is present.
     if (oid && e.entry_type === 'booking') {
       jobBookingOptionIds.add(oid);
     }

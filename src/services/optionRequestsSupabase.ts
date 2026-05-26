@@ -1569,6 +1569,27 @@ export async function resolveAgencyOrgIdForOptionNotification(
  * Ziel-`type` (option/job/casting) angehoben; 23505 auf model_id+date wird per
  * Lookup+UPDATE aufgelöst, nicht ignoriert.
  */
+/**
+ * Ensures a booking_events row exists and matches the option_request lifecycle
+ * (option / job / casting). Idempotent — safe after DB triggers and agency job confirm.
+ */
+export async function ensureBookingEventSyncedFromOptionRequest(requestId: string): Promise<void> {
+  try {
+    const { data, error } = await supabase
+      .from('option_requests')
+      .select(OPTION_REQUEST_SELECT)
+      .eq('id', requestId)
+      .maybeSingle();
+    if (error || !data) {
+      console.error('ensureBookingEventSyncedFromOptionRequest fetch error:', error);
+      return;
+    }
+    await createBookingEventFromRequest(data as SupabaseOptionRequest);
+  } catch (e) {
+    console.error('ensureBookingEventSyncedFromOptionRequest exception:', e);
+  }
+}
+
 async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promise<void> {
   try {
     const eventType: BookingEventType =

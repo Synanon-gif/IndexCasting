@@ -163,6 +163,30 @@ describe('buildUnifiedAgencyCalendarRows — user_calendar_events mirror dedupe'
     expect(rows.filter((r) => r.kind === 'manual')).toHaveLength(0);
   });
 
+  it('keeps option row when job_confirmed but no booking_events projection exists', () => {
+    const optId = 'opt-job-no-be';
+    const opt = minimalOption({
+      id: optId,
+      final_status: 'job_confirmed',
+      status: 'confirmed',
+      model_approval: 'approved',
+    });
+    const item: AgencyCalendarItem = {
+      option: opt,
+      calendar_entry: calendarEntry({
+        option_request_id: optId,
+        entry_type: 'booking',
+        status: 'booked',
+        title: 'Job – Client Co',
+      }),
+    };
+    const rows = preferJobBookingOverOptionRows(
+      buildUnifiedAgencyCalendarRows([item], [], [], {}, itemByOptionId([item])),
+    );
+    expect(rows.filter((r) => r.kind === 'option')).toHaveLength(1);
+    expect(rows.filter((r) => r.kind === 'booking')).toHaveLength(0);
+  });
+
   it('keeps mirror when no matching option is in items (orphan / outside fetch window)', () => {
     const optId = 'opt-missing';
     const mirror = manualEv({

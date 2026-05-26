@@ -10,6 +10,9 @@ import { supabase } from '../../lib/supabase';
 import type { BookingEvent } from './bookingEventsSupabase';
 import type { UserCalendarEvent } from './userCalendarEventsSupabase';
 
+const AGENCY_ROSTER_RELATIONSHIP_OR =
+  'agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link';
+
 export async function getActivelyRepresentedModelIdsForAgency(
   agencyId: string,
   modelIds: string[],
@@ -23,9 +26,7 @@ export async function getActivelyRepresentedModelIdsForAgency(
       .from('models')
       .select('id')
       .in('id', unique)
-      .or(
-        'agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link',
-      );
+      .or(AGENCY_ROSTER_RELATIONSHIP_OR);
 
     if (mErr) {
       console.error('[modelRepresentationGuards] models query error:', mErr);
@@ -63,6 +64,46 @@ export async function isModelActivelyRepresented(
   return s.has(modelId);
 }
 
+/**
+ * Calendar/booking merge: MAT + relationship (roster parity), plus home-agency models
+ * (`models.agency_id`) that can receive `agency_create_option_request` without a MAT row.
+ */
+export async function getActivelyRepresentedModelIdsForAgencyCalendar(
+  agencyId: string,
+  modelIds: string[],
+): Promise<Set<string>> {
+  const base = await getActivelyRepresentedModelIdsForAgency(agencyId, modelIds);
+  const missing = modelIds.filter((id) => id?.trim() && !base.has(id));
+  if (!agencyId?.trim() || missing.length === 0) {
+    return base;
+  }
+  try {
+    const { data, error } = await supabase
+      .from('models')
+      .select('id')
+      .eq('agency_id', agencyId)
+      .in('id', missing)
+      .or(AGENCY_ROSTER_RELATIONSHIP_OR);
+    if (error) {
+      console.error(
+        '[modelRepresentationGuards] getActivelyRepresentedModelIdsForAgencyCalendar home-agency fallback error:',
+        error,
+      );
+      return base;
+    }
+    for (const row of data ?? []) {
+      const id = row.id as string;
+      if (id) base.add(id);
+    }
+  } catch (e) {
+    console.error(
+      '[modelRepresentationGuards] getActivelyRepresentedModelIdsForAgencyCalendar exception:',
+      e,
+    );
+  }
+  return base;
+}
+
 export async function filterBookingEventsForAgencyActiveRepresentation(
   events: BookingEvent[],
   agencyId: string | null | undefined,
@@ -71,7 +112,7 @@ export async function filterBookingEventsForAgencyActiveRepresentation(
     return events;
   }
   const modelIds = events.map((e) => e.model_id).filter(Boolean) as string[];
-  const active = await getActivelyRepresentedModelIdsForAgency(agencyId, modelIds);
+  const active = await getActivelyRepresentedModelIdsForAgencyCalendar(agencyId, modelIds);
   return events.filter((e) => !e.model_id || active.has(e.model_id));
 }
 
@@ -113,7 +154,7 @@ export async function filterManualCalendarEventsForAgencyActiveRepresentation(
       if (id && mid) optionIdToModelId.set(id, mid);
     }
     const modelIds = [...new Set([...optionIdToModelId.values()])];
-    const active = await getActivelyRepresentedModelIdsForAgency(agencyEntityId, modelIds);
+    const active = await getActivelyRepresentedModelIdsForAgencyCalendar(agencyEntityId, modelIds);
     const keptMirrors = mirrors.filter((e) => {
       const oid = e.source_option_request_id as string;
       const mid = optionIdToModelId.get(oid);

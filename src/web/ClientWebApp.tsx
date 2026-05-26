@@ -1049,7 +1049,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   }, [tab, refreshBillingBadge, dashboardSummaryReloadKey]);
 
   useOrgDashboardRealtimeBump({
-    enabled: tab === 'dashboard' && Boolean(clientOrgId && realClientId),
+    enabled: Boolean(clientOrgId && realClientId),
     organizationId: clientOrgId,
     onBump: bumpDashboardSummary,
   });
@@ -6513,8 +6513,9 @@ const MessagesView: React.FC<MessagesViewProps> = ({
       setNegotiationCounterExpanded(false);
       setRequests(getOptionRequests());
       showNegotiationCalendarHint();
+      onDashboardSummaryBump?.();
     },
-    [request?.threadId, currency, showNegotiationCalendarHint],
+    [request?.threadId, currency, showNegotiationCalendarHint, onDashboardSummaryBump],
   );
 
   const runClientAcceptCounter = useCallback(async () => {
@@ -6556,8 +6557,9 @@ const MessagesView: React.FC<MessagesViewProps> = ({
       }
       setRequests(getOptionRequests());
       showNegotiationCalendarHint();
+      onDashboardSummaryBump?.();
     })();
-  }, [request?.threadId, showNegotiationCalendarHint]);
+  }, [request?.threadId, showNegotiationCalendarHint, onDashboardSummaryBump]);
 
   const handleRejectOptionNegotiation = useCallback(() => {
     if (!request?.threadId || !isAgency) return;
@@ -6580,8 +6582,9 @@ const MessagesView: React.FC<MessagesViewProps> = ({
       }
       setRequests(getOptionRequests());
       showNegotiationCalendarHint();
+      onDashboardSummaryBump?.();
     })();
-  }, [request?.threadId, showNegotiationCalendarHint]);
+  }, [request?.threadId, showNegotiationCalendarHint, onDashboardSummaryBump]);
 
   const showClientMessagesTabs = !isAgency && !!clientUserId;
 

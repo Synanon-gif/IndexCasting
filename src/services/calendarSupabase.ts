@@ -15,7 +15,7 @@ import {
   type BookingEventStatus,
 } from './bookingEventsSupabase';
 import {
-  getActivelyRepresentedModelIdsForAgency,
+  getActivelyRepresentedModelIdsForAgencyCalendar,
   filterBookingEventsForAgencyActiveRepresentation,
 } from './modelRepresentationGuards';
 import { filterOutRejectedOptionCalendarRows } from '../utils/b2bCalendarRejectFilter';
@@ -573,7 +573,10 @@ export async function getCalendarEntriesForAgency(agencyId: string): Promise<Age
     if (optionList.length === 0) return [];
 
     const modelIds = [...new Set(optionList.map((o) => o.model_id).filter(Boolean) as string[])];
-    const activeModelIds = await getActivelyRepresentedModelIdsForAgency(agencyId, modelIds);
+    const activeModelIds = await getActivelyRepresentedModelIdsForAgencyCalendar(
+      agencyId,
+      modelIds,
+    );
     const filteredOptions = optionList.filter((o) => {
       const mid = o.model_id;
       if (!mid) return false;

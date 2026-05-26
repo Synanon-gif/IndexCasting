@@ -30,6 +30,7 @@ import {
   resolveAgencyOrgIdForOptionNotification,
   insertAgencyOptionRequest,
   agencyConfirmJobAgencyOnly,
+  ensureBookingEventSyncedFromOptionRequest,
   type SupabaseOptionRequest,
   type SupabaseOptionRequestModelSafe,
   type SupabaseOptionMessage,
@@ -1331,6 +1332,9 @@ export async function agencyConfirmJobAgencyOnlyStore(threadId: string): Promise
         );
       }
     }
+    // booking_events: DB trigger only fires on status → confirmed transition. When the model
+    // already confirmed (status already 'confirmed'), agency job confirm must sync job type explicitly.
+    await ensureBookingEventSyncedFromOptionRequest(req.id);
     // External calendar mirror (Mediaslide / Netwalk) — fire-and-forget.
     void syncOptionRequestConfirmationToExternal(req.id);
 

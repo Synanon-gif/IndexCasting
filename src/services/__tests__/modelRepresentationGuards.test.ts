@@ -7,6 +7,7 @@ jest.mock('../../../lib/supabase', () => ({
 import { supabase } from '../../../lib/supabase';
 import {
   getActivelyRepresentedModelIdsForAgency,
+  getActivelyRepresentedModelIdsForAgencyCalendar,
   filterBookingEventsForAgencyActiveRepresentation,
   filterManualCalendarEventsForAgencyActiveRepresentation,
 } from '../modelRepresentationGuards';
@@ -15,11 +16,23 @@ import type { UserCalendarEvent } from '../userCalendarEventsSupabase';
 
 const from = supabase.from as jest.Mock;
 
-function mockModelsSelect(rows: { id: string }[]) {
+function mockModelsSelectByInOr(rows: { id: string }[]) {
   return {
     select: jest.fn().mockReturnValue({
       in: jest.fn().mockReturnValue({
         or: jest.fn().mockResolvedValue({ data: rows, error: null }),
+      }),
+    }),
+  };
+}
+
+function mockModelsSelectByEqInOr(rows: { id: string }[]) {
+  return {
+    select: jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        in: jest.fn().mockReturnValue({
+          or: jest.fn().mockResolvedValue({ data: rows, error: null }),
+        }),
       }),
     }),
   };
@@ -40,12 +53,32 @@ describe('modelRepresentationGuards', () => {
     jest.clearAllMocks();
   });
 
+  it('getActivelyRepresentedModelIdsForAgencyCalendar includes home-agency models without MAT', async () => {
+    const aid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+    const mMat = '11111111-1111-1111-1111-111111111111';
+    const mHome = '22222222-2222-2222-2222-222222222222';
+    let modelsQuery = 0;
+    from.mockImplementation((table: string) => {
+      if (table === 'models') {
+        modelsQuery += 1;
+        if (modelsQuery === 1) {
+          return mockModelsSelectByInOr([{ id: mMat }, { id: mHome }]);
+        }
+        return mockModelsSelectByEqInOr([{ id: mHome }]);
+      }
+      if (table === 'model_agency_territories') return mockMatSelect([{ model_id: mMat }]);
+      throw new Error(`unexpected table ${table}`);
+    });
+    const set = await getActivelyRepresentedModelIdsForAgencyCalendar(aid, [mMat, mHome]);
+    expect([...set].sort()).toEqual([mHome, mMat].sort());
+  });
+
   it('getActivelyRepresentedModelIdsForAgency intersects status-ok models with MAT (multi-agency safe)', async () => {
     const aid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
     const m1 = '11111111-1111-1111-1111-111111111111';
     const m2 = '22222222-2222-2222-2222-222222222222';
     from.mockImplementation((table: string) => {
-      if (table === 'models') return mockModelsSelect([{ id: m1 }, { id: m2 }]);
+      if (table === 'models') return mockModelsSelectByInOr([{ id: m1 }, { id: m2 }]);
       if (table === 'model_agency_territories') return mockMatSelect([{ model_id: m1 }]);
       throw new Error(`unexpected table ${table}`);
     });
@@ -59,7 +92,7 @@ describe('modelRepresentationGuards', () => {
     const mDrop = '22222222-2222-2222-2222-222222222222';
     const events = [{ model_id: mKeep } as BookingEvent, { model_id: mDrop } as BookingEvent];
     from.mockImplementation((table: string) => {
-      if (table === 'models') return mockModelsSelect([{ id: mKeep }, { id: mDrop }]);
+      if (table === 'models') return mockModelsSelectByInOr([{ id: mKeep }, { id: mDrop }]);
       if (table === 'model_agency_territories') return mockMatSelect([{ model_id: mKeep }]);
       throw new Error(`unexpected table ${table}`);
     });
@@ -140,7 +173,7 @@ describe('modelRepresentationGuards', () => {
           }),
         };
       }
-      if (table === 'models') return mockModelsSelect([{ id: mKeep }, { id: mDrop }]);
+      if (table === 'models') return mockModelsSelectByInOr([{ id: mKeep }, { id: mDrop }]);
       if (table === 'model_agency_territories') return mockMatSelect([{ model_id: mKeep }]);
       throw new Error(`unexpected table ${table}`);
     });
