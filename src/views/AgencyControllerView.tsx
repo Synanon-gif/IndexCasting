@@ -30,6 +30,10 @@ import {
   shouldUseB2BWebSplit,
 } from '../theme/chatLayout';
 import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
+import {
+  validateCalendarEventForm,
+  type CalendarEventFormValidationErrorKey,
+} from '../utils/calendarEventFormValidation';
 import { messageForDissolveOrganizationError } from '../utils/accountDeletionFeedback';
 import { clearAgencyWorkspaceCachesAfterDissolve } from '../utils/clearAgencyWorkspaceCachesAfterDissolve';
 import { isImageFile } from '../../lib/validation/file';
@@ -469,6 +473,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const [savingAgencySharedNote, setSavingAgencySharedNote] = useState(false);
   const lastAppendSharedNoteAtRef = useRef(0);
   const [savingManualEvent, setSavingManualEvent] = useState(false);
+  const [addEventFormError, setAddEventFormError] = useState<string | null>(null);
   const [savingNotes, setSavingNotes] = useState(false);
   const [bookingScheduleDraft, setBookingScheduleDraft] = useState({
     date: '',
@@ -607,6 +612,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const startAgencyCalendarEvent = useCallback((kind: 'option' | 'casting' | 'private') => {
     setShowAgencyAddEventMenu(false);
     setAgencyAddEventModelSearch('');
+    setAddEventFormError(null);
     setNewEventForm((f) => ({
       ...f,
       eventCategory: kind,
@@ -614,6 +620,27 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     }));
     setShowAddManualEvent(true);
   }, []);
+
+  const agencyAddEventValidationMessage = useCallback(
+    (key: CalendarEventFormValidationErrorKey): string => {
+      switch (key) {
+        case 'missing_title':
+          return uiCopy.calendar.eventTitlePlaceholder + ' is required.';
+        case 'missing_date':
+        case 'invalid_date':
+          return uiCopy.calendar.agencyAddEventInvalidDate;
+        case 'invalid_time':
+          return uiCopy.alerts.invalidTimeBody;
+        case 'end_before_start':
+          return uiCopy.calendar.agencyAddEventEndBeforeStart;
+        case 'models_required':
+          return uiCopy.calendar.agencyAddEventModelsRequired;
+        default:
+          return uiCopy.calendar.agencyAddEventCreateFailed;
+      }
+    },
+    [],
+  );
 
   const agencyAddEventSearchResults = useMemo(() => {
     const q = agencyAddEventModelSearch.trim().toLowerCase();
@@ -2163,10 +2190,25 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                   </View>
                 </>
               )}
+              {addEventFormError ? (
+                <Text
+                  style={{
+                    ...typography.label,
+                    color: colors.error,
+                    marginTop: spacing.sm,
+                  }}
+                  accessibilityRole="alert"
+                >
+                  {addEventFormError}
+                </Text>
+              ) : null}
               <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
                 <TouchableOpacity
                   style={[s.filterPill, { flex: 1 }]}
-                  onPress={() => setShowAddManualEvent(false)}
+                  onPress={() => {
+                    setAddEventFormError(null);
+                    setShowAddManualEvent(false);
+                  }}
                 >
                   <Text style={s.filterPillLabel}>{uiCopy.common.cancel}</Text>
                 </TouchableOpacity>
@@ -2180,31 +2222,31 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                       newEventForm.selectedModelIds.length === 0)
                   }
                   onPress={async () => {
-                    if (!currentAgencyId) return;
-
-                    // Normalize date to ISO YYYY-MM-DD (handles DD-MM-YYYY, DD.MM.YYYY, etc.)
-                    const rawDate = newEventForm.date.trim();
-                    let isoDate = rawDate;
-                    const ddMmYyyy = rawDate.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$/);
-                    if (ddMmYyyy) {
-                      const [, dd, mm, yyyy] = ddMmYyyy;
-                      isoDate = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
-                    }
-                    if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate) || isNaN(Date.parse(isoDate))) {
-                      Alert.alert(uiCopy.alerts.invalidDateTitle, uiCopy.alerts.invalidDateBody);
+                    if (!currentAgencyId) {
+                      const msg = uiCopy.calendar.agencyAddEventNoAgencyContext;
+                      setAddEventFormError(msg);
+                      showAppAlert(uiCopy.calendar.agencyAddEventFormTitle, msg);
                       return;
                     }
 
-                    const timeRe = /^\d{2}:\d{2}$/;
-                    if (
-                      (newEventForm.start_time && !timeRe.test(newEventForm.start_time)) ||
-                      (newEventForm.end_time && !timeRe.test(newEventForm.end_time))
-                    ) {
-                      Alert.alert(uiCopy.alerts.invalidTimeTitle, uiCopy.alerts.invalidTimeBody);
+                    const validation = validateCalendarEventForm({
+                      date: newEventForm.date,
+                      startTime: newEventForm.start_time,
+                      endTime: newEventForm.end_time,
+                      eventCategory: newEventForm.eventCategory,
+                      selectedModelIds: newEventForm.selectedModelIds,
+                      title: newEventForm.title,
+                    });
+                    if (!validation.ok) {
+                      const msg = agencyAddEventValidationMessage(validation.errorKey);
+                      setAddEventFormError(msg);
+                      showAppAlert(uiCopy.calendar.agencyAddEventFormTitle, msg);
                       return;
                     }
 
+                    setAddEventFormError(null);
                     setSavingManualEvent(true);
+                    let createSucceeded = false;
                     try {
                       if (newEventForm.eventCategory === 'private') {
                         let calOrg = agencyOrganizationId;
@@ -2222,19 +2264,20 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                           owner_type: 'agency',
                           organization_id: calOrg,
                           created_by: calUser.user?.id ?? null,
-                          date: isoDate,
-                          start_time: newEventForm.start_time,
-                          end_time: newEventForm.end_time,
-                          title: newEventForm.title,
+                          date: validation.isoDate,
+                          start_time: validation.startTime,
+                          end_time: validation.endTime,
+                          title: newEventForm.title.trim(),
                           note: newEventForm.note,
                           color: newEventForm.color,
                         });
                         if (!result.ok) {
-                          Alert.alert(
-                            'Calendar',
-                            result.errorMessage || uiCopy.alerts.calendarNotSaved,
-                          );
+                          const msg = result.errorMessage || uiCopy.alerts.calendarNotSaved;
+                          setAddEventFormError(msg);
+                          showAppAlert(uiCopy.calendar.agencyAddEventFormTitle, msg);
+                          return;
                         }
+                        createSucceeded = true;
                       } else {
                         // Agency-only Option / Casting: create one request per selected model
                         let groupId: string | undefined;
@@ -2244,10 +2287,10 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                             .insert({
                               agency_id: currentAgencyId,
                               agency_organization_id: agencyOrganizationId ?? null,
-                              title: newEventForm.title,
-                              event_date: isoDate,
-                              start_time: newEventForm.start_time || null,
-                              end_time: newEventForm.end_time || null,
+                              title: newEventForm.title.trim(),
+                              event_date: validation.isoDate,
+                              start_time: validation.startTime || null,
+                              end_time: validation.endTime || null,
                               event_type: newEventForm.eventCategory,
                               note: newEventForm.note || null,
                               created_by: session?.user?.id ?? null,
@@ -2262,27 +2305,29 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                           const reqId = await createAgencyOnlyOptionRequest({
                             modelId,
                             agencyId: currentAgencyId,
-                            requestedDate: isoDate,
+                            requestedDate: validation.isoDate,
                             requestType:
                               newEventForm.eventCategory === 'casting' ? 'casting' : 'option',
-                            title: newEventForm.title,
+                            title: newEventForm.title.trim(),
                             jobDescription: newEventForm.note || undefined,
-                            startTime: newEventForm.start_time || undefined,
-                            endTime: newEventForm.end_time || undefined,
+                            startTime: validation.startTime || undefined,
+                            endTime: validation.endTime || undefined,
                             agencyEventGroupId: groupId,
                             agencyOrganizationId: agencyOrganizationId ?? undefined,
                           });
                           if (!reqId) anyFailed = true;
                         }
                         if (anyFailed) {
-                          Alert.alert(
-                            uiCopy.calendar.agencyAddEventFormTitle,
-                            uiCopy.alerts.someRequestsNotCreated,
-                          );
+                          const msg = uiCopy.alerts.someRequestsNotCreated;
+                          setAddEventFormError(msg);
+                          showAppAlert(uiCopy.calendar.agencyAddEventFormTitle, msg);
+                          return;
                         }
+                        createSucceeded = true;
                       }
                       await loadAgencyCalendar();
                       setShowAddManualEvent(false);
+                      setAddEventFormError(null);
                       setNewEventForm({
                         date: '',
                         start_time: '09:00',
@@ -2295,9 +2340,14 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                       });
                     } catch (e) {
                       console.error('addEvent error:', e);
-                      Alert.alert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
+                      const msg = uiCopy.calendar.agencyAddEventCreateFailed;
+                      setAddEventFormError(msg);
+                      showAppAlert(uiCopy.common.error, msg);
                     } finally {
                       setSavingManualEvent(false);
+                      if (!createSucceeded) {
+                        console.error('[AgencyControllerView] add calendar event did not succeed');
+                      }
                     }
                   }}
                 >
