@@ -6,11 +6,9 @@ Angaben gemäß § 5 DDG
 
 Ruben Elge  
 Einzelunternehmen  
-Hausmat 20  
+Hausmatt 20  
 77723 Gengenbach  
 Deutschland
-
-**[Hinweis zur Adressschreibweise:** Derzeit „Hausmat 20“ — bitte vor Veröffentlichung prüfen.]
 
 ## Website / Plattform
 
@@ -32,7 +30,7 @@ Ein Handelsregistereintrag besteht derzeit nicht.
 ## Verantwortlich für journalistisch-redaktionelle Inhalte gemäß § 18 Abs. 2 MStV
 
 Ruben Elge  
-Hausmat 20  
+Hausmatt 20  
 77723 Gengenbach  
 Deutschland
 

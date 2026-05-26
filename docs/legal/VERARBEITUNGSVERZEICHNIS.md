@@ -2,15 +2,13 @@
 
 Stand: 26. Mai 2026
 
-Verantwortlicher: Ruben Elge, Einzelunternehmen, Hausmat 20, 77723 Gengenbach, Deutschland
+Verantwortlicher: Ruben Elge, Einzelunternehmen, Hausmatt 20, 77723 Gengenbach, Deutschland
 
 E-Mail: ruben@index-casting.com
 
 Website / Plattform: Index Casting
 
 Datenschutzkontakt: Ruben Elge, E-Mail: ruben@index-casting.com
-
-**[Hinweis zur Adressschreibweise:** Derzeit „Hausmat 20“ — bitte vor Veröffentlichung prüfen.]
 
 ## Teil A — Verarbeitungstätigkeiten als Verantwortlicher
 

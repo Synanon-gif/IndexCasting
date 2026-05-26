@@ -15,7 +15,7 @@ describe('germanLegalDocuments', () => {
     expect(doc.markdown).toContain('Ruben Elge');
     expect(doc.markdown).toContain('ruben@index-casting.com');
     expect(doc.markdown).toContain('+4915207175787');
-    expect(doc.markdown).toContain('Hausmat 20');
+    expect(doc.markdown).toContain('Hausmatt 20');
   });
 
   test('TOMs, Löschkonzept and Verzeichnis have Stand date', () => {
