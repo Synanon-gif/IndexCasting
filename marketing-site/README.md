@@ -51,7 +51,7 @@ Confirm the effective record with Vercel + your registrar; do **not** repoint ap
 - `public/sitemap.xml`
 - Meta + OpenGraph placeholders in `index.html`
 
-**Product visuals:** Cropped UI regions from the pitch deck live under `public/images/product/` (WebP). Regenerate with `python3 scripts/extract-pitch-visuals.py` after replacing the source PDF path in that script.
+**Product visuals:** Cropped UI regions from the pitch deck live under `public/images/product/` (WebP). Regenerate with `python3 scripts/extract-pitch-visuals.py` after replacing the source PDF path in that script. Region boxes in the script are defined for a **1920×1080** render (`Matrix(2,2)`); the script scales them to `RENDER_SCALE` automatically — do not multiply coordinates by render scale manually.
 
 **Social preview:** `index.html` references `https://web.index-casting.com/images/product/hero-stack.webp` for Open Graph / Twitter.
 
