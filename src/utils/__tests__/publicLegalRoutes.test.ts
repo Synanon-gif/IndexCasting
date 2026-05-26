@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import {
   normalizePublicLegalPath,
   normalizeTrustPath,
+  normalizeGermanLegalPath,
   isStatusPath,
   getPublicAgencySlugFromPath,
   getPublicClientSlugFromPath,
@@ -73,6 +74,32 @@ describe('publicLegalRoutes — Trust Center routing', () => {
     expect(getPublicAgencySlugFromPath('/trust/security')).toBeNull();
     expect(getPublicClientSlugFromPath('/trust')).toBeNull();
     expect(getPublicClientSlugFromPath('/trust/security')).toBeNull();
+  });
+});
+
+describe('publicLegalRoutes — German legal documents', () => {
+  test('maps each /legal path to its route id', () => {
+    expect(normalizeGermanLegalPath('/legal')).toBe('legal-center');
+    expect(normalizeGermanLegalPath('/legal/impressum')).toBe('legal-impressum');
+    expect(normalizeGermanLegalPath('/legal/toms')).toBe('legal-toms');
+    expect(normalizeGermanLegalPath('/legal/loeschkonzept')).toBe('legal-loeschkonzept');
+    expect(normalizeGermanLegalPath('/legal/verarbeitungsverzeichnis')).toBe(
+      'legal-verarbeitungsverzeichnis',
+    );
+    expect(normalizeGermanLegalPath('/legal/subprocessors')).toBe('legal-subprocessors');
+  });
+
+  test('tolerates trailing slash', () => {
+    expect(normalizeGermanLegalPath('/legal/')).toBe('legal-center');
+    expect(normalizeGermanLegalPath('/legal/impressum/')).toBe('legal-impressum');
+    expect(normalizeGermanLegalPath('/legal/toms/')).toBe('legal-toms');
+  });
+
+  test('does not match unrelated paths', () => {
+    expect(normalizeGermanLegalPath('/')).toBeNull();
+    expect(normalizeGermanLegalPath('/terms')).toBeNull();
+    expect(normalizeGermanLegalPath('/trust')).toBeNull();
+    expect(normalizeGermanLegalPath('/legal/unknown')).toBeNull();
   });
 });
 

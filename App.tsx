@@ -66,6 +66,7 @@ import {
   INDEXCASTING_LOCATION_EVENT,
   normalizePublicLegalPath,
   normalizeTrustPath,
+  normalizeGermanLegalPath,
   isStatusPath,
   replaceWebPathToHome,
   navigatePublicPath,
@@ -84,6 +85,9 @@ import { TrustSubprocessorsView } from './src/views/trust/TrustSubprocessorsView
 import { TrustGdprView } from './src/views/trust/TrustGdprView';
 import { TrustIncidentResponseView } from './src/views/trust/TrustIncidentResponseView';
 import { StatusPageView } from './src/views/StatusPageView';
+import { LegalDeCenterView } from './src/views/legal/LegalDeCenterView';
+import { GermanLegalDocumentView } from './src/views/legal/GermanLegalDocumentView';
+import { germanLegalDocumentForRoute } from './src/content/germanLegal/documents';
 import { roleFromProfile, isAdmin, type NavigationRole } from './src/types/roles';
 import {
   clampInviteOrClaimToken,
@@ -981,6 +985,22 @@ function AppContent() {
       return (
         <>
           <StatusPageView />
+          <StatusBar style="dark" />
+        </>
+      );
+    }
+
+    const germanLegalRoute = normalizeGermanLegalPath(window.location.pathname);
+    if (germanLegalRoute) {
+      const node =
+        germanLegalRoute === 'legal-center' ? (
+          <LegalDeCenterView />
+        ) : (
+          <GermanLegalDocumentView document={germanLegalDocumentForRoute(germanLegalRoute)} />
+        );
+      return (
+        <>
+          {node}
           <StatusBar style="dark" />
         </>
       );

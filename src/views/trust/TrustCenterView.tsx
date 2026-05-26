@@ -59,6 +59,31 @@ export const TrustCenterView: React.FC = () => (
         onPress={() => navigatePublicPath('/trust/incident-response')}
       />
       <TrustCard
+        title="Impressum"
+        body="Anbieterkennzeichnung gemäß § 5 DDG (Deutsch)"
+        onPress={() => navigatePublicPath('/legal/impressum')}
+      />
+      <TrustCard
+        title="TOMs"
+        body="Technische und organisatorische Maßnahmen gemäß Art. 32 DSGVO (Deutsch)"
+        onPress={() => navigatePublicPath('/legal/toms')}
+      />
+      <TrustCard
+        title="Löschkonzept"
+        body="Speicherbegrenzung, Löschung und Aufbewahrung (Deutsch)"
+        onPress={() => navigatePublicPath('/legal/loeschkonzept')}
+      />
+      <TrustCard
+        title="Verarbeitungsverzeichnis"
+        body="Verzeichnis von Verarbeitungstätigkeiten gemäß Art. 30 DSGVO (Deutsch)"
+        onPress={() => navigatePublicPath('/legal/verarbeitungsverzeichnis')}
+      />
+      <TrustCard
+        title="Unterauftragsverarbeiter (DE)"
+        body="Deutsche Unterauftragsverarbeiterliste — ergänzt die englische Übersicht"
+        onPress={() => navigatePublicPath('/legal/subprocessors')}
+      />
+      <TrustCard
         title={uiCopy.trust.cardStatusTitle}
         body={uiCopy.trust.cardStatusBody}
         onPress={() => navigatePublicPath('/status')}

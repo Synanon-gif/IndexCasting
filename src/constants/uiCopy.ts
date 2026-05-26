@@ -2160,6 +2160,9 @@ export const uiCopy = {
     trustUrl: 'https://indexcasting.com/trust',
     /** Canonical public system status (same path as in-app /status on web). */
     statusUrl: 'https://indexcasting.com/status',
+    /** German Impressum (§ 5 DDG) — public path /legal/impressum */
+    impressumUrl: 'https://indexcasting.com/legal/impressum',
+    impressumLabel: 'Impressum',
     // In-app screens
     termsScreenTitle: 'Terms of Service',
     privacyScreenTitle: 'Privacy Policy',

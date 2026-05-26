@@ -127,6 +127,17 @@ export const LoginScreen: React.FC<Props> = ({ onSelectRole }) => {
           >
             <Text style={styles.legalLink}>{uiCopy.legal.statusLabel}</Text>
           </TouchableOpacity>
+          <Text style={styles.legalSep}>·</Text>
+          <TouchableOpacity
+            onPress={() =>
+              openAuthAreaPublicPage({
+                webPath: '/legal/impressum',
+                publicUrl: uiCopy.legal.impressumUrl,
+              })
+            }
+          >
+            <Text style={styles.legalLink}>{uiCopy.legal.impressumLabel}</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </View>

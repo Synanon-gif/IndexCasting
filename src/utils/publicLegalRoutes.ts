@@ -28,6 +28,15 @@ export type TrustRoute =
   | 'trust-gdpr'
   | 'trust-incident-response';
 
+/** German operational legal documents (Impressum, TOMs, etc.) — public, unauthenticated. */
+export type GermanLegalRoute =
+  | 'legal-center'
+  | 'legal-impressum'
+  | 'legal-toms'
+  | 'legal-loeschkonzept'
+  | 'legal-verarbeitungsverzeichnis'
+  | 'legal-subprocessors';
+
 /**
  * Maps a public web pathname to a Trust Center route, or null if it does not match.
  * Trust pages live entirely outside auth/session and may be visited by anyone.
@@ -40,6 +49,21 @@ export function normalizeTrustPath(pathname: string): TrustRoute | null {
   if (p === '/trust/subprocessors') return 'trust-subprocessors';
   if (p === '/trust/gdpr') return 'trust-gdpr';
   if (p === '/trust/incident-response') return 'trust-incident-response';
+  return null;
+}
+
+/**
+ * Maps a public web pathname to a German legal document route, or null.
+ * Content lives under docs/legal/ and src/content/germanLegal/.
+ */
+export function normalizeGermanLegalPath(pathname: string): GermanLegalRoute | null {
+  const p = pathname.replace(/\/+$/, '') || '/';
+  if (p === '/legal') return 'legal-center';
+  if (p === '/legal/impressum') return 'legal-impressum';
+  if (p === '/legal/toms') return 'legal-toms';
+  if (p === '/legal/loeschkonzept') return 'legal-loeschkonzept';
+  if (p === '/legal/verarbeitungsverzeichnis') return 'legal-verarbeitungsverzeichnis';
+  if (p === '/legal/subprocessors') return 'legal-subprocessors';
   return null;
 }
 
