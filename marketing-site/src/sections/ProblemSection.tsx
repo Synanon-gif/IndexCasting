@@ -1,6 +1,6 @@
 import { EyebrowRule } from '../components/EyebrowRule';
 import { ProblemWorkflowCollage } from '../components/ProblemWorkflowCollage';
-import { ProductVisual } from '../components/ProductVisual';
+import { ProductShot } from '../components/ProductShot';
 import { Reveal } from '../components/Reveal';
 import { RevealTitle } from '../components/RevealTitle';
 import { visual } from '../productVisuals';
@@ -56,15 +56,14 @@ export function ProblemSection() {
                 Index holds one spine from first look to locked date — calendar, messaging, and billing connected.
               </p>
             </div>
-            <div className="problemBridgeVisual">
-              <ProductVisual
-                src={platformVisual.src}
-                alt={platformVisual.alt}
-                width={platformVisual.width}
-                height={platformVisual.height}
-                className="problemBridgeImage"
-              />
-            </div>
+            <ProductShot
+              src={platformVisual.src}
+              alt={platformVisual.alt}
+              width={platformVisual.width}
+              height={platformVisual.height}
+              wide
+              className="problemBridgeShot"
+            />
           </div>
         </Reveal>
       </div>

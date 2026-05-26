@@ -1,13 +1,8 @@
-import { motion, useReducedMotion } from 'framer-motion';
 import { EyebrowRule } from '../components/EyebrowRule';
-import { ProductShowcaseFrame } from '../components/ProductShowcaseFrame';
-import { ProductVisual } from '../components/ProductVisual';
+import { ProductShot } from '../components/ProductShot';
 import { Reveal } from '../components/Reveal';
 import { RevealTitle } from '../components/RevealTitle';
-import { getScreenshotSlot } from '../screenshotSlots';
 import { visual } from '../productVisuals';
-
-const easePremium = [0.16, 1, 0.3, 1] as const;
 
 const pillars = [
   'Roster & territories',
@@ -20,20 +15,11 @@ const pillars = [
   'Web + mobile · one spine',
 ];
 
-const agencySlotOrder = [
-  'agency-dashboard',
-  'agency-roster',
-  'agency-recruiting',
-  'agency-calendar',
-  'agency-client-thread',
-  'agency-projects',
-] as const;
-
 const agencyHero = visual('agency-workflow');
+const agencyCalendar = visual('agency-calendar');
+const agencyClientChat = visual('agency-client-chat');
 
 export function AgencySection() {
-  const reduceMotion = useReducedMotion() ?? false;
-
   return (
     <section id="agency" className="section agencySection">
       <div className="shell">
@@ -81,41 +67,30 @@ export function AgencySection() {
             </Reveal>
           </div>
 
-          <motion.div
-            className="agencyFrame agencyFrame--live"
-            initial={{ opacity: reduceMotion ? 1 : 0, y: reduceMotion ? 0 : 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-10% 0px', amount: 0.12 }}
-            transition={{ duration: reduceMotion ? 0 : 0.98, ease: easePremium }}
-          >
-            <div className="agencyFrameInner agencyFrameInner--image">
-              <ProductVisual
-                src={agencyHero.src}
-                alt={agencyHero.alt}
-                width={agencyHero.width}
-                height={agencyHero.height}
-                className="agencyFrameImage"
-              />
-            </div>
-          </motion.div>
+          <ProductShot
+            src={agencyHero.src}
+            alt={agencyHero.alt}
+            width={agencyHero.width}
+            height={agencyHero.height}
+            className="agencyHeroShot"
+          />
         </div>
 
-        <div className="agencyShowcaseGrid">
-          {agencySlotOrder.map((id) => {
-            const slot = getScreenshotSlot(id)!;
-            const span = id === 'agency-client-thread';
-            return (
-              <ProductShowcaseFrame
-                key={id}
-                slotId={slot.id}
-                className={span ? 'agencyShowcaseSpan2' : ''}
-                label={slot.label}
-                caption={slot.purpose}
-                variant={id === 'agency-recruiting' ? 'noir' : 'porcelain'}
-                aspect={span ? 'cinema' : 'wide'}
-              />
-            );
-          })}
+        <div className="agencyProductStrip">
+          <ProductShot
+            src={agencyCalendar.src}
+            alt={agencyCalendar.alt}
+            width={agencyCalendar.width}
+            height={agencyCalendar.height}
+            wide
+          />
+          <ProductShot
+            src={agencyClientChat.src}
+            alt={agencyClientChat.alt}
+            width={agencyClientChat.width}
+            height={agencyClientChat.height}
+            wide
+          />
         </div>
       </div>
     </section>

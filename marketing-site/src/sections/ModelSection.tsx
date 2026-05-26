@@ -1,14 +1,12 @@
 import { EyebrowRule } from '../components/EyebrowRule';
-import { ProductShowcaseFrame } from '../components/ProductShowcaseFrame';
-import { ProductVisual } from '../components/ProductVisual';
+import { ProductShot } from '../components/ProductShot';
 import { Reveal } from '../components/Reveal';
 import { RevealTitle } from '../components/RevealTitle';
-import { getScreenshotSlot } from '../screenshotSlots';
 import { visual } from '../productVisuals';
 
-const home = getScreenshotSlot('model-home-inbox')!;
-const apply = getScreenshotSlot('model-apply')!;
 const modelHero = visual('model-phones');
+const modelInbox = visual('model-phone-inbox');
+const modelRequest = visual('model-phone-request');
 
 export function ModelSection() {
   return (
@@ -29,19 +27,28 @@ export function ModelSection() {
           </Reveal>
         </div>
 
-        <div className="modelHeroVisual">
-          <ProductVisual
-            src={modelHero.src}
-            alt={modelHero.alt}
-            width={modelHero.width}
-            height={modelHero.height}
-            className="modelHeroImage"
-          />
-        </div>
+        <ProductShot
+          src={modelHero.src}
+          alt={modelHero.alt}
+          width={modelHero.width}
+          height={modelHero.height}
+          wide
+          className="modelHeroShot"
+        />
 
-        <div className="modelSlotsRow">
-          <ProductShowcaseFrame slotId={home.id} label={home.label} variant="wine" aspect="phone" />
-          <ProductShowcaseFrame slotId={apply.id} label={apply.label} variant="porcelain" aspect="phone" />
+        <div className="modelPhoneRow">
+          <ProductShot
+            src={modelInbox.src}
+            alt={modelInbox.alt}
+            width={modelInbox.width}
+            height={modelInbox.height}
+          />
+          <ProductShot
+            src={modelRequest.src}
+            alt={modelRequest.alt}
+            width={modelRequest.width}
+            height={modelRequest.height}
+          />
         </div>
 
         <div className="modelStrip">
@@ -58,7 +65,6 @@ export function ModelSection() {
             </Reveal>
           ))}
         </div>
-
       </div>
     </section>
   );

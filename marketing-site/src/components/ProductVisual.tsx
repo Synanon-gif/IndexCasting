@@ -6,7 +6,7 @@ type ProductVisualProps = {
   className?: string;
   /** LCP / above-the-fold */
   priority?: boolean;
-  objectFit?: 'cover' | 'contain';
+  objectFit?: 'natural' | 'cover' | 'contain';
   objectPosition?: string;
 };
 
@@ -17,9 +17,12 @@ export function ProductVisual({
   height,
   className = '',
   priority = false,
-  objectFit = 'contain',
+  objectFit = 'natural',
   objectPosition = 'center top',
 }: ProductVisualProps) {
+  const fitClass =
+    objectFit === 'natural' ? 'productVisual--natural' : `productVisual--${objectFit}`;
+
   return (
     <img
       src={src}
@@ -29,8 +32,8 @@ export function ProductVisual({
       loading={priority ? 'eager' : 'lazy'}
       decoding="async"
       fetchPriority={priority ? 'high' : 'auto'}
-      className={`productVisual productVisual--${objectFit} ${className}`.trim()}
-      style={{ objectPosition }}
+      className={`productVisual ${fitClass} ${className}`.trim()}
+      style={objectFit === 'natural' ? undefined : { objectPosition }}
     />
   );
 }

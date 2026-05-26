@@ -1,18 +1,14 @@
 import { motion, useReducedMotion, useScroll, useTransform } from 'framer-motion';
 import { useRef } from 'react';
 import { EyebrowRule } from '../components/EyebrowRule';
-import { ProductShowcaseFrame } from '../components/ProductShowcaseFrame';
-import { ProductVisual } from '../components/ProductVisual';
+import { ProductShot } from '../components/ProductShot';
 import { RevealTitle } from '../components/RevealTitle';
 import { APP_ORIGIN } from '../constants';
-import { getScreenshotSlot } from '../screenshotSlots';
 import { visual } from '../productVisuals';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 
 const easePremium = [0.16, 1, 0.3, 1] as const;
 
-const heroWeb = getScreenshotSlot('hero-overview-web')!;
-const heroMobile = getScreenshotSlot('hero-overview-mobile')!;
 const heroAsset = visual('hero-stack');
 
 export function HeroSection() {
@@ -92,36 +88,16 @@ export function HeroSection() {
               }
             >
               <div className="heroProductGlow" />
-              <div className="heroProductFrame">
-                <ProductVisual
-                  src={heroAsset.src}
-                  alt={heroAsset.alt}
-                  width={heroAsset.width}
-                  height={heroAsset.height}
-                  priority
-                  className="heroProductImage"
-                />
-              </div>
+              <ProductShot
+                src={heroAsset.src}
+                alt={heroAsset.alt}
+                width={heroAsset.width}
+                height={heroAsset.height}
+                priority
+                className="heroProductShot"
+              />
             </motion.div>
           </motion.div>
-        </div>
-
-        <div className="heroShotRow" aria-label="Product overview">
-          <ProductShowcaseFrame
-            slotId={heroWeb.id}
-            label={heroWeb.label}
-            caption={heroWeb.purpose}
-            variant="porcelain"
-            aspect="wide"
-            imagePriority
-          />
-          <ProductShowcaseFrame
-            slotId={heroMobile.id}
-            label={heroMobile.label}
-            caption={heroMobile.purpose}
-            variant="porcelain"
-            aspect="phone"
-          />
         </div>
       </div>
     </section>
