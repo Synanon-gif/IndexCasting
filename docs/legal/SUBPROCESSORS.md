@@ -2,7 +2,7 @@
 
 Stand: 26. Mai 2026
 
-Verantwortlicher: Ruben Helge, Einzelunternehmen, Betreiber der Plattform „Index Casting“
+Verantwortlicher: Ruben Elge, Einzelunternehmen, Betreiber der Plattform „Index Casting“
 
 Diese Liste ergänzt das Verzeichnis von Verarbeitungstätigkeiten und die TOMs. Sie ist aktuell zu halten, insbesondere bei Einführung neuer Dienstleister.
 

@@ -4,7 +4,7 @@ Angaben gemäß § 5 DDG
 
 ## Diensteanbieter
 
-Ruben Helge  
+Ruben Elge  
 Einzelunternehmen  
 Hausmat 20  
 77723 Gengenbach  
@@ -23,7 +23,7 @@ Telefon: +4915207175787
 
 ## Vertreten durch
 
-Ruben Helge
+Ruben Elge
 
 ## Registereintrag
 
@@ -31,7 +31,7 @@ Ein Handelsregistereintrag besteht derzeit nicht.
 
 ## Verantwortlich für journalistisch-redaktionelle Inhalte gemäß § 18 Abs. 2 MStV
 
-Ruben Helge  
+Ruben Elge  
 Hausmat 20  
 77723 Gengenbach  
 Deutschland

@@ -12,7 +12,7 @@ describe('germanLegalDocuments', () => {
 
   test('impressum contains operator contact details', () => {
     const doc = GERMAN_LEGAL_DOCUMENTS.impressum;
-    expect(doc.markdown).toContain('Ruben Helge');
+    expect(doc.markdown).toContain('Ruben Elge');
     expect(doc.markdown).toContain('ruben@index-casting.com');
     expect(doc.markdown).toContain('+4915207175787');
     expect(doc.markdown).toContain('Hausmat 20');

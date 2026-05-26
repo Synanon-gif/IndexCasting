@@ -2,7 +2,7 @@
 
 Stand: 26. Mai 2026
 
-Verantwortlicher / Anbieter: Ruben Helge, Einzelunternehmen, Betreiber der Plattform „Index Casting“
+Verantwortlicher / Anbieter: Ruben Elge, Einzelunternehmen, Betreiber der Plattform „Index Casting“
 
 ## 1. Zweck dieses Dokuments
 
