@@ -16,7 +16,7 @@ const pillars = [
 ];
 
 const agencyHero = visual('agency-workflow');
-const agencyCalendar = visual('agency-calendar');
+const agencyOptionThreads = visual('agency-option-threads');
 const agencyClientChat = visual('agency-client-chat');
 
 export function AgencySection() {
@@ -78,10 +78,10 @@ export function AgencySection() {
 
         <div className="agencyProductStrip">
           <ProductShot
-            src={agencyCalendar.src}
-            alt={agencyCalendar.alt}
-            width={agencyCalendar.width}
-            height={agencyCalendar.height}
+            src={agencyOptionThreads.src}
+            alt={agencyOptionThreads.alt}
+            width={agencyOptionThreads.width}
+            height={agencyOptionThreads.height}
             wide
           />
           <ProductShot

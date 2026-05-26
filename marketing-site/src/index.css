@@ -1894,13 +1894,13 @@ main section[id] {
   object-fit: cover;
 }
 
-/* Frameless product shots — no aspect-ratio boxes or dark letterboxing */
+/* Frameless product shots — natural aspect, no letterbox frames */
 .productShot {
   margin: 0;
   border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: var(--shadow-soft);
-  background: transparent;
+  box-shadow: 0 14px 42px rgba(12, 11, 10, 0.07);
+  background: rgba(255, 253, 248, 0.65);
   line-height: 0;
 }
 
@@ -1910,7 +1910,17 @@ main section[id] {
   height: auto;
   max-width: 100%;
   vertical-align: top;
-  image-rendering: auto;
+}
+
+.clientShowcase .productShot,
+.clientSlotsGrid .productShot,
+.modelPhoneRow .productShot {
+  background: transparent;
+  box-shadow: 0 10px 32px rgba(12, 11, 10, 0.06);
+}
+
+.clientSlotsGrid .productShot {
+  align-self: start;
 }
 
 .productShot--wide {
