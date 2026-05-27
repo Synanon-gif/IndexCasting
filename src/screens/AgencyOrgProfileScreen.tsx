@@ -58,6 +58,8 @@ export interface AgencyOrgProfileScreenProps {
   orgName: string | null;
   /** 'owner' | 'booker' | null */
   orgMemberRole: string | null;
+  /** When set, reuse the same MAT roster as My Models (avoids stale/duplicate fetch). */
+  rosterModels?: SupabaseModel[];
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -67,12 +69,13 @@ export function AgencyOrgProfileScreen({
   agencyId,
   orgName,
   orgMemberRole,
+  rosterModels,
 }: AgencyOrgProfileScreenProps): React.ReactElement {
   const [orgProfile, setOrgProfile] = useState<OrganizationProfile | null>(null);
-  const [models, setModels] = useState<SupabaseModel[]>([]);
+  const [fetchedModels, setFetchedModels] = useState<SupabaseModel[]>([]);
   const [loadingProfile, setLoadingProfile] = useState(true);
-  const [loadingModels, setLoadingModels] = useState(true);
-  const [segment, setSegment] = useState<Segment>('women');
+  const [loadingModels, setLoadingModels] = useState(rosterModels === undefined);
+  const [segment, setSegment] = useState<Segment>('all');
   const [editOpen, setEditOpen] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
 
@@ -111,18 +114,24 @@ export function AgencyOrgProfileScreen({
     });
   }, [organizationId]);
 
-  // Load agency models
+  // Load agency models (skip when parent supplies the My Models roster)
   useEffect(() => {
+    if (rosterModels !== undefined) {
+      setLoadingModels(false);
+      return;
+    }
     if (!agencyId) {
       setLoadingModels(false);
       return;
     }
     setLoadingModels(true);
     void getModelsForAgencyFromSupabase(agencyId).then((m) => {
-      setModels(m);
+      setFetchedModels(m);
       setLoadingModels(false);
     });
-  }, [agencyId]);
+  }, [agencyId, rosterModels]);
+
+  const models = rosterModels ?? fetchedModels;
 
   const filteredModels = useMemo(
     () => filterAndSortModelsBySegment(models, segment),
@@ -492,10 +501,10 @@ export function AgencyOrgProfileScreen({
 
         {/* ── Segment bar ── */}
         <View style={s.segmentBar}>
-          {(['women', 'men'] as Segment[]).map((seg) => (
+          {(['all', 'women', 'men'] as Segment[]).map((seg) => (
             <TouchableOpacity key={seg} onPress={() => setSegment(seg)} style={s.segmentItem}>
               <Text style={[s.segmentLabel, segment === seg && s.segmentLabelActive]}>
-                {seg === 'women' ? 'Women' : 'Men'}
+                {seg === 'all' ? 'All' : seg === 'women' ? 'Women' : 'Men'}
               </Text>
               {segment === seg && <View style={s.segmentUnderline} />}
             </TouchableOpacity>
@@ -506,7 +515,13 @@ export function AgencyOrgProfileScreen({
         {!loading && filteredModels.length === 0 && (
           <View style={s.emptyState}>
             <Text style={s.emptyText}>
-              No {segment === 'women' ? 'women' : 'men'} models in this roster yet.
+              {models.length === 0
+                ? 'No models in this roster yet.'
+                : segment === 'all'
+                  ? 'No models in this roster yet.'
+                  : segment === 'women'
+                    ? 'No women models in this roster yet. Try All, or set gender on the model profile.'
+                    : 'No men models in this roster yet. Try All, or set gender on the model profile.'}
             </Text>
           </View>
         )}
@@ -518,6 +533,7 @@ export function AgencyOrgProfileScreen({
     isOwner,
     segment,
     filteredModels.length,
+    models.length,
     loading,
     logoUploading,
     handleLogoPress,

@@ -718,7 +718,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 
   /** Re-load roster when opening My Models (e.g. after accepting an application in Recruiting). */
   useEffect(() => {
-    if (tab === 'myModels' && currentAgencyId) void refreshAgencyModelLists();
+    if ((tab === 'myModels' || tab === 'profile') && currentAgencyId) {
+      void refreshAgencyModelLists();
+    }
   }, [tab, currentAgencyId, refreshAgencyModelLists]);
 
   const loadAgencyCalendar = async () => {
@@ -1401,6 +1403,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             agencyId={currentAgencyId ?? null}
             orgName={currentAgency?.name ?? profile?.company_name ?? null}
             orgMemberRole={profile?.org_member_role ?? null}
+            rosterModels={fullModels}
           />
         )}
       </View>

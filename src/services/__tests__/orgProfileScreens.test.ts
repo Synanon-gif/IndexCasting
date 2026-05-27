@@ -98,6 +98,13 @@ describe('filterAndSortModelsBySegment', () => {
   it('returns empty array when model list is empty', () => {
     expect(filterAndSortModelsBySegment([], 'women')).toHaveLength(0);
     expect(filterAndSortModelsBySegment([], 'men')).toHaveLength(0);
+    expect(filterAndSortModelsBySegment([], 'all')).toHaveLength(0);
+  });
+
+  it('returns all models sorted for the "all" segment (includes null sex)', () => {
+    const result = filterAndSortModelsBySegment(models, 'all');
+    expect(result.map((m) => m.id)).toEqual(['2', '3', '1', '4', '5']);
+    expect(result).toHaveLength(5);
   });
 
   it('handles models already in alphabetical order correctly', () => {

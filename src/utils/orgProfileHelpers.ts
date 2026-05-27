@@ -5,18 +5,20 @@
 
 import type { SupabaseModel } from '../services/modelsSupabase';
 
-export type ModelSegment = 'women' | 'men';
+export type ModelSegment = 'women' | 'men' | 'all';
 
 /**
- * Filter models by Women/Men segment and sort alphabetically by name.
- * Models with null sex are excluded from both segments.
+ * Filter models by Women/Men/All segment and sort alphabetically by name.
+ * Models with null sex appear only under "all" (same as public agency profile).
  * Does not mutate the input array.
  */
 export function filterAndSortModelsBySegment(
   models: SupabaseModel[],
   segment: ModelSegment,
 ): SupabaseModel[] {
-  return models
-    .filter((m) => (segment === 'women' ? m.sex === 'female' : m.sex === 'male'))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const filtered =
+    segment === 'all'
+      ? models
+      : models.filter((m) => (segment === 'women' ? m.sex === 'female' : m.sex === 'male'));
+  return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
 }
