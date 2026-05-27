@@ -387,6 +387,33 @@ export async function getAgencyIdForOrganization(organizationId: string): Promis
 }
 
 /**
+ * Mirror organizations.name into profiles.company_name for the signed-in user.
+ * Same product signal as accept_organization_invitation — keeps AuthContext fresh after rename.
+ */
+export async function syncCurrentUserProfileCompanyName(name: string): Promise<boolean> {
+  try {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return false;
+    const { error } = await supabase
+      .from('profiles')
+      .update({ company_name: trimmed })
+      .eq('id', user.id);
+    if (error) {
+      console.error('syncCurrentUserProfileCompanyName error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('syncCurrentUserProfileCompanyName exception:', e);
+    return false;
+  }
+}
+
+/**
  * Update the display name of an organization.
  * Only the owner / members with org-level write access can do this (enforced by RLS).
  */
@@ -405,6 +432,7 @@ export async function updateOrganizationName(
       console.error('updateOrganizationName error:', error);
       return { ok: false, error: error.message };
     }
+    void syncCurrentUserProfileCompanyName(trimmed);
     return { ok: true };
   } catch (e) {
     console.error('updateOrganizationName exception:', e);

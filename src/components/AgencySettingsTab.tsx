@@ -243,6 +243,7 @@ export const AgencySettingsTab: React.FC<Props> = ({
         showAppAlert(uiCopy.common.error, r.message);
         return;
       }
+      await refreshProfile();
       showAppAlert(uiCopy.common.success, uiCopy.agencySettings.saveSuccess);
       onSaved();
     } catch (e) {

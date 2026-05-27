@@ -6,6 +6,7 @@
  * keys are never exposed via a broad SELECT on `agencies`.
  */
 import { supabase } from '../../lib/supabase';
+import { syncCurrentUserProfileCompanyName } from './organizationsInvitationsSupabase';
 
 export type AgencyApiKeys = {
   mediaslide_api_key: string | null;
@@ -65,6 +66,8 @@ export async function updateAgencySettings(params: {
         return { ok: false, message: oErr.message || 'Could not sync organization name.' };
       }
     }
+
+    void syncCurrentUserProfileCompanyName(payload.name.trim());
 
     return { ok: true };
   } catch (e) {

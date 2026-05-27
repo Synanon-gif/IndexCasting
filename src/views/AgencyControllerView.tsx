@@ -1180,6 +1180,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               storageRefreshTrigger={agencyStorageRefreshKey}
               onSaved={() => {
                 void getAgencies().then(setAgencies);
+                void refreshProfile();
               }}
             />
             <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
@@ -1398,7 +1399,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           <AgencyOrgProfileScreen
             organizationId={agencyOrganizationId ?? null}
             agencyId={currentAgencyId ?? null}
-            orgName={profile?.company_name ?? null}
+            orgName={currentAgency?.name ?? profile?.company_name ?? null}
             orgMemberRole={profile?.org_member_role ?? null}
           />
         )}

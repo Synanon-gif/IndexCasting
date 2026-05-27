@@ -1,16 +1,23 @@
 import { updateAgencySettings } from '../agencySettingsSupabase';
 
 const fromMock = jest.fn();
+const getUserMock = jest.fn(() =>
+  Promise.resolve({ data: { user: { id: 'user-1' } }, error: null }),
+);
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     from: (...args: unknown[]) => fromMock(...args),
+    auth: {
+      getUser: () => getUserMock(),
+    },
   },
 }));
 
 describe('updateAgencySettings', () => {
   beforeEach(() => {
     fromMock.mockReset();
+    getUserMock.mockClear();
   });
 
   it('returns ok when agencies and organizations updates succeed', async () => {
@@ -39,5 +46,7 @@ describe('updateAgencySettings', () => {
     expect(r.ok).toBe(true);
     expect(fromMock).toHaveBeenCalledWith('agencies');
     expect(fromMock).toHaveBeenCalledWith('organizations');
+    expect(fromMock).toHaveBeenCalledWith('profiles');
+    expect(getUserMock).toHaveBeenCalled();
   });
 });

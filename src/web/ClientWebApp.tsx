@@ -3156,7 +3156,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         {tab === 'profile' && (
           <ClientOrgProfileScreen
             organizationId={clientOrgId}
-            orgName={auth.profile?.company_name ?? null}
+            orgName={resolvedClientOrgDisplayName ?? auth.profile?.company_name ?? null}
             orgMemberRole={auth.profile?.org_member_role ?? null}
             scrollBottomInset={bottomTabInset}
           />
@@ -3871,6 +3871,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           realClientId={realClientId}
           onClose={() => setSettingsOpen(false)}
           onOrganizationDissolved={clearClientWorkspaceAfterOrgDissolved}
+          onOrganizationNameUpdated={(name) => setResolvedClientOrgDisplayName(name.trim() || null)}
         />
       )}
 
@@ -8425,7 +8426,8 @@ const SettingsPanel: React.FC<{
   realClientId: string | null;
   onClose: () => void;
   onOrganizationDissolved?: () => void;
-}> = ({ realClientId, onClose, onOrganizationDissolved }) => {
+  onOrganizationNameUpdated?: (name: string) => void;
+}> = ({ realClientId, onClose, onOrganizationDissolved, onOrganizationNameUpdated }) => {
   const { signOut, profile, updateDisplayName, refreshProfile } = useAuth();
   const [displayName, setDisplayName] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -8505,7 +8507,11 @@ const SettingsPanel: React.FC<{
       }
       // Only the org owner may update the organization name.
       if (clientIsOwner && clientOrgId && companyName.trim()) {
-        await updateOrganizationName(clientOrgId, companyName.trim());
+        const nameResult = await updateOrganizationName(clientOrgId, companyName.trim());
+        if (nameResult.ok) {
+          onOrganizationNameUpdated?.(companyName.trim());
+          await refreshProfile();
+        }
       }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);

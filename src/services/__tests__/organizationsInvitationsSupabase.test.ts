@@ -21,10 +21,14 @@ import {
   getMyClientMemberRole,
   dissolveOrganization,
   cancelDissolvedOrgStripeSubscription,
+  updateOrganizationName,
+  syncCurrentUserProfileCompanyName,
 } from '../organizationsInvitationsSupabase';
 
 const rpc = supabase.rpc as jest.Mock;
 const invoke = supabase.functions.invoke as jest.Mock;
+const fromMock = supabase.from as jest.Mock;
+const getUserMock = supabase.auth.getUser as jest.Mock;
 
 describe('organizationsInvitationsSupabase', () => {
   let consoleErrorSpy: jest.SpyInstance;
@@ -32,6 +36,12 @@ describe('organizationsInvitationsSupabase', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    fromMock.mockReturnValue({
+      update: () => ({
+        eq: () => Promise.resolve({ error: null }),
+      }),
+    });
+    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
   });
 
   afterEach(() => {
@@ -257,6 +267,34 @@ describe('organizationsInvitationsSupabase', () => {
       invoke.mockRejectedValueOnce(new Error('boom'));
       const res = await cancelDissolvedOrgStripeSubscription('org-x');
       expect(res).toEqual({ ok: false, error: 'boom' });
+    });
+  });
+
+  describe('syncCurrentUserProfileCompanyName', () => {
+    it('updates profiles.company_name for the signed-in user', async () => {
+      const ok = await syncCurrentUserProfileCompanyName('Renamed Org');
+      expect(ok).toBe(true);
+      expect(fromMock).toHaveBeenCalledWith('profiles');
+      expect(getUserMock).toHaveBeenCalled();
+    });
+
+    it('returns false when name is empty', async () => {
+      const ok = await syncCurrentUserProfileCompanyName('   ');
+      expect(ok).toBe(false);
+    });
+  });
+
+  describe('updateOrganizationName', () => {
+    it('updates organizations.name and mirrors into profiles.company_name', async () => {
+      const res = await updateOrganizationName('org-1', 'New Client Org');
+      expect(res).toEqual({ ok: true });
+      expect(fromMock).toHaveBeenCalledWith('organizations');
+      expect(fromMock).toHaveBeenCalledWith('profiles');
+    });
+
+    it('rejects empty name', async () => {
+      const res = await updateOrganizationName('org-1', '   ');
+      expect(res.ok).toBe(false);
     });
   });
 });
