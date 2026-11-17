@@ -1,30 +1,31 @@
-import { SiteFooter } from './components/SiteFooter';
-import { SiteNav } from './components/SiteNav';
-import { AgencySection } from './sections/AgencySection';
-import { ClientSection } from './sections/ClientSection';
-import { FinalCtaSection } from './sections/FinalCtaSection';
-import { HeroSection } from './sections/HeroSection';
-import { ModelSection } from './sections/ModelSection';
-import { ProblemSection } from './sections/ProblemSection';
-import { TrustSection } from './sections/TrustSection';
+import { Footer } from '@/components/Footer';
+import { Nav } from '@/components/Nav';
+import { Audience } from '@/sections/Audience';
+import { Cta } from '@/sections/Cta';
+import { Hero } from '@/sections/Hero';
+import { Lifecycle } from '@/sections/Lifecycle';
+import { Problem } from '@/sections/Problem';
+import { Trust } from '@/sections/Trust';
 
 export function App() {
   return (
-    <div className="page">
-      <a href="#main-content" className="skipLink">
+    <div>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-foreground focus:px-4 focus:py-2 focus:text-background"
+      >
         Skip to main content
       </a>
-      <SiteNav />
+      <Nav />
       <main id="main-content" tabIndex={-1}>
-        <HeroSection />
-        <ProblemSection />
-        <AgencySection />
-        <ClientSection />
-        <ModelSection />
-        <TrustSection />
-        <FinalCtaSection />
+        <Hero />
+        <Lifecycle />
+        <Problem />
+        <Audience />
+        <Trust />
+        <Cta />
       </main>
-      <SiteFooter />
+      <Footer />
     </div>
   );
 }

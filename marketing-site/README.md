@@ -51,9 +51,11 @@ Confirm the effective record with Vercel + your registrar; do **not** repoint ap
 - `public/sitemap.xml`
 - Meta + OpenGraph placeholders in `index.html`
 
-**Product visuals:** Cropped UI regions from the pitch deck live under `public/images/product/` (WebP). Regenerate with `python3 scripts/extract-pitch-visuals.py` after replacing the source PDF path in that script. Region boxes in the script are defined for a **1920×1080** render (`Matrix(2,2)`); the script scales them to `RENDER_SCALE` automatically — do not multiply coordinates by render scale manually.
+**Stack:** Vite + React 19 + Tailwind v4 + shadcn/ui, Motion, Magic UI (`src/components/ui/`) and React Bits (`SplitText`, `Magnet`, `CountUp`). Vendored component files are excluded from lint.
 
-**Social preview:** `index.html` references `https://web.index-casting.com/images/product/hero-stack.webp` for Open Graph / Twitter.
+**Visuals:** The product scenes (calendar, option threads, discover card, model phone) are coded UI in `src/scenes/` and use clearly labelled sample data. The three editorial photos live in `public/images/editorial/` (each used once). Replace them with other approved photos of the same aspect ratio; only use images of people who consented to publication.
+
+**Social preview:** `index.html` references `https://web.index-casting.com/og.jpg` (1200×630) for Open Graph / Twitter.
 
 Canonical is `https://web.index-casting.com/` in `index.html`.
 
